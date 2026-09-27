@@ -11,7 +11,7 @@ function authorized(request: NextRequest) {
   return request.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-export async function POST(request: NextRequest) {
+async function runSync(request: NextRequest) {
   if (!authorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -59,3 +59,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
+
+export const GET = runSync;
+export const POST = runSync;
