@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncAmazonCatalog } from "../../../lib/catalog-sync";
 import { supabaseAdminFetch } from "../../../lib/supabase/admin";
+import { adminCookie, verifyAdminSessionValue } from "../../../lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function authorized(request: NextRequest) {
+function isCronAuthorized(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return request.headers.get("authorization") === `Bearer ${secret}`;
+  return Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
+}
+
+function isAdminAuthorized(request: NextRequest) {
+  return verifyAdminSessionValue(request.cookies.get(adminCookie.name)?.value);
+}
+
+function isAuthorized(request: NextRequest) {
+  return isCronAuthorized(request) || (request.method === "POST" && isAdminAuthorized(request));
+}
+
+function adminRedirect(request: NextRequest, status: "success" | "error") {
+  return NextResponse.redirect(new URL(`/admin?sync=${status}`, request.url), 303);
 }
 
 async function runSync(request: NextRequest) {
-  if (!authorized(request)) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -40,6 +52,10 @@ async function runSync(request: NextRequest) {
       });
     }
 
+    if (request.method === "POST" && isAdminAuthorized(request)) {
+      return adminRedirect(request, "success");
+    }
+
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown sync error";
@@ -54,6 +70,10 @@ async function runSync(request: NextRequest) {
           finished_at: new Date().toISOString(),
         }),
       });
+    }
+
+    if (request.method === "POST" && isAdminAuthorized(request)) {
+      return adminRedirect(request, "error");
     }
 
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
