@@ -1,9 +1,9 @@
-const categories = ["Tutte", "Casa", "Tecnologia", "Cucina", "Bellezza", "Tempo libero"];
+import ProductBrowser from "../components/ProductBrowser";
 
 const demoCards = [
   ["HAUL", "Occasioni recenti", "Prodotti selezionati e aggiornati dal catalogo."],
   ["VETRINA", "In evidenza", "Una selezione ordinata delle proposte più interessanti."],
-  ["CERCA", "Trova subito", "Ricerca per nome, categoria e fascia di prezzo."]
+  ["CERCA", "Trova subito", "Ricerca per nome e categoria con risultati immediati."]
 ];
 
 export default function Home() {
@@ -26,25 +26,17 @@ export default function Home() {
           <p className="lead">Consulta prodotti Amazon selezionati in una vetrina semplice, rapida e pensata anche per smartphone.</p>
           <div className="heroActions"><a className="cta" href="#cerca">Cerca un prodotto</a><a className="secondary" href="#vetrina">Apri la vetrina</a></div>
         </div>
-        <aside className="heroPanel"><span>CATALOGO</span><strong>Amazon Italia</strong><p>Prezzi e disponibilità verranno verificati tramite il servizio Amazon prima della pubblicazione.</p></aside>
-      </section>
-
-      <section className="searchArea" id="cerca">
-        <div><p className="eyebrow">RICERCA</p><h2>Cosa stai cercando?</h2></div>
-        <form className="searchBox" action="/" method="get">
-          <label className="srOnly" htmlFor="q">Cerca prodotti</label>
-          <input id="q" name="q" type="search" placeholder="Es. cuffie, aspirapolvere, friggitrice..." />
-          <button type="submit">Cerca</button>
-        </form>
-        <div className="chips" aria-label="Categorie">{categories.map((category) => <button type="button" key={category}>{category}</button>)}</div>
+        <aside className="heroPanel"><span>CATALOGO</span><strong>Amazon Italia</strong><p>Prezzi e disponibilità vengono verificati tramite Amazon Creators API prima della pubblicazione.</p></aside>
       </section>
 
       <section className="showcase" id="vetrina">
-        <div className="sectionHead"><div><p className="eyebrow">ESPLORA</p><h2>Tre modi per trovare ciò che ti serve</h2></div><p>La struttura è pronta per ricevere i prodotti reali dal database.</p></div>
+        <div className="sectionHead"><div><p className="eyebrow">ESPLORA</p><h2>Tre modi per trovare ciò che ti serve</h2></div><p>Il catalogo viene alimentato dal database e aggiornato automaticamente.</p></div>
         <div className="cards">
           {demoCards.map(([tag,title,text],index) => <article id={index === 0 ? "haul" : undefined} key={tag}><span className="cardTag">{tag}</span><div className="cardNumber">0{index+1}</div><h3>{title}</h3><p>{text}</p><a href="#cerca">Esplora <span aria-hidden="true">→</span></a></article>)}
         </div>
       </section>
+
+      <ProductBrowser />
 
       <section className="notice"><strong>Trasparenza</strong><p>Scala dei Turchi partecipa al Programma Affiliazione Amazon. Alcuni link ai prodotti possono generare una commissione senza costi aggiuntivi per chi acquista.</p></section>
       <footer><strong>Scala dei Turchi</strong><span>Offerte Amazon · Italia</span></footer>
