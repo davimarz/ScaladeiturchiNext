@@ -3,10 +3,22 @@ import { getServerEnv } from "../env";
 
 function headers(extra?: HeadersInit) {
   const env = getServerEnv();
-  return {
-    apikey: env.SUPABASE_SECRET_KEY,
-    authorization: `Bearer ${env.SUPABASE_SECRET_KEY}`,
+  const apiKey = env.SUPABASE_SECRET_KEY;
+
+  const baseHeaders: Record<string, string> = {
+    apikey: apiKey,
     "content-type": "application/json",
+  };
+
+  // New Supabase secret keys (sb_secret_...) are opaque API keys, not JWTs.
+  // Sending them as Authorization: Bearer causes PostgREST to reject the request.
+  // Legacy service_role JWTs still require the Authorization header.
+  if (!apiKey.startsWith("sb_secret_")) {
+    baseHeaders.authorization = `Bearer ${apiKey}`;
+  }
+
+  return {
+    ...baseHeaders,
     ...extra,
   };
 }
