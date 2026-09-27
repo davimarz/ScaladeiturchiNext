@@ -26,6 +26,8 @@ const feeds = [
 ] as const;
 
 function mapProduct(item: AmazonCatalogItem, categoryId: string) {
+  if (!item.detailPageURL) return null;
+
   const listing = item.offersV2?.listings?.[0];
   const price = listing?.price;
   const now = new Date().toISOString();
@@ -35,8 +37,8 @@ function mapProduct(item: AmazonCatalogItem, categoryId: string) {
     title: item.itemInfo?.title?.displayValue ?? item.asin,
     category_id: categoryId,
     image_url: item.images?.primary?.medium?.url ?? null,
-    amazon_url: item.detailPageURL ?? `https://www.amazon.it/dp/${item.asin}`,
-    affiliate_url: item.detailPageURL ?? `https://www.amazon.it/dp/${item.asin}`,
+    amazon_url: item.detailPageURL,
+    affiliate_url: item.detailPageURL,
     current_price: price?.money?.amount ?? null,
     list_price: price?.savingBasis?.money?.amount ?? null,
     currency: price?.money?.currency ?? "EUR",
@@ -73,8 +75,13 @@ export async function syncAmazonCatalog() {
     if (!categoryId) continue;
 
     const result = await searchAmazonItems(feed.query, 10);
-    const rows = (result.items as AmazonCatalogItem[]).map((item) => mapProduct(item, categoryId));
-    seen += rows.length;
+    const items = result.items as AmazonCatalogItem[];
+    seen += items.length;
+
+    const rows = items
+      .map((item) => mapProduct(item, categoryId))
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+
     if (!rows.length) continue;
 
     await supabaseAdminFetch(
