@@ -75,10 +75,10 @@ export default async function AdminPage({
           Nel frattempo puoi pubblicare prodotti usando i link generati da SiteStripe/Product Links.
         </p>
         {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
-        {params.manual === "invalid" ? <p className="adminError">Inserisci un titolo e un link Amazon valido (amazon.it, amzn.to o link.amazon).</p> : null}\n        {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
+        {params.manual === "invalid" ? <p className="adminError">Inserisci un titolo, un link Amazon valido (amazon.it, amzn.to o link.amazon) e, se presente, un URL immagine https valido.</p> : null}\n        {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
         <form action="/api/admin/products" method="post" className="adminForm">
           <input type="text" name="title" required maxLength={300} placeholder="Titolo del prodotto" />
-          <input type="url" name="affiliate_url" required placeholder="Link SiteStripe / Product Link Amazon" />
+          <input type="url" name="affiliate_url" required placeholder="Link SiteStripe / Product Link Amazon" />\n          <input type="url" name="image_url" placeholder="URL immagine prodotto (opzionale)" />
           <button type="submit">Aggiungi prodotto</button>
         </form>
         <p className="adminHint">In modalità manuale non mostriamo prezzi copiati a mano: il visitatore vede il prezzo aggiornato direttamente su Amazon.</p>
