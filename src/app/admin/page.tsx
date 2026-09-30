@@ -22,12 +22,13 @@ type Product = {
   currency: string;
   updated_at: string;
   active: boolean;
+  source: string | null;
 };
 
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sync?: string }>;
+  searchParams: Promise<{ error?: string; sync?: string; manual?: string }>;
 }) {
   const cookieStore = await cookies();
   const session = cookieStore.get(adminCookie.name)?.value;
@@ -54,7 +55,7 @@ export default async function AdminPage({
 
   const [runs, products] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>("sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10"),
-    supabaseAdminFetch<Product[]>("products?select=id,asin,title,current_price,currency,updated_at,active&order=updated_at.desc&limit=20"),
+    supabaseAdminFetch<Product[]>("products?select=id,asin,title,current_price,currency,updated_at,active,source&order=updated_at.desc&limit=30"),
   ]);
 
   return (
@@ -62,17 +63,29 @@ export default async function AdminPage({
       <section className="adminHeader">
         <div><p className="eyebrow">SCALA DEI TURCHI</p><h1>Dashboard</h1></div>
         <div className="adminActions">
-          <form action="/api/admin/sync" method="post"><button type="submit">Aggiorna catalogo</button></form>
           <a href="/">Apri il sito</a>
           <form action="/api/admin/logout" method="post"><button type="submit">Esci</button></form>
         </div>
       </section>
 
-      {params.sync === "success" ? <p className="adminNotice">Catalogo aggiornato con successo.</p> : null}
-      {params.sync === "error" ? <p className="adminError">Aggiornamento non riuscito. Controlla l'ultima sincronizzazione qui sotto.</p> : null}
+      <section className="adminPanel">
+        <h2>Catalogo manuale</h2>
+        <p>
+          Creators API è pronta ma Amazon sta restituendo <strong>AssociateNotEligible</strong>.
+          Nel frattempo puoi pubblicare prodotti usando i link generati da SiteStripe/Product Links.
+        </p>
+        {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
+        {params.manual === "invalid" ? <p className="adminError">Inserisci un titolo e un link Amazon valido (amazon.it o amzn.to).</p> : null}
+        <form action="/api/admin/products" method="post" className="adminForm">
+          <input type="text" name="title" required maxLength={300} placeholder="Titolo del prodotto" />
+          <input type="url" name="affiliate_url" required placeholder="Link SiteStripe / Product Link Amazon" />
+          <button type="submit">Aggiungi prodotto</button>
+        </form>
+        <p className="adminHint">In modalità manuale non mostriamo prezzi copiati a mano: il visitatore vede il prezzo aggiornato direttamente su Amazon.</p>
+      </section>
 
       <section className="adminPanel">
-        <h2>Ultime sincronizzazioni</h2>
+        <h2>Ultime sincronizzazioni API</h2>
         <div className="adminTableWrap">
           <table className="adminTable">
             <thead><tr><th>Stato</th><th>Prodotti</th><th>Aggiornati</th><th>Avvio</th><th>Errore</th></tr></thead>
@@ -92,16 +105,17 @@ export default async function AdminPage({
       </section>
 
       <section className="adminPanel">
-        <h2>Prodotti aggiornati di recente</h2>
+        <h2>Prodotti nel catalogo</h2>
         <div className="adminTableWrap">
           <table className="adminTable">
-            <thead><tr><th>ASIN</th><th>Titolo</th><th>Prezzo</th><th>Aggiornato</th></tr></thead>
+            <thead><tr><th>Codice</th><th>Titolo</th><th>Fonte</th><th>Prezzo</th><th>Aggiornato</th></tr></thead>
             <tbody>
               {products.map((product) => (
                 <tr key={product.id}>
                   <td>{product.asin}</td>
                   <td>{product.title}</td>
-                  <td>{product.current_price == null ? "—" : new Intl.NumberFormat("it-IT", { style: "currency", currency: product.currency }).format(product.current_price)}</td>
+                  <td>{product.source ?? "—"}</td>
+                  <td>{product.current_price == null ? "Su Amazon" : new Intl.NumberFormat("it-IT", { style: "currency", currency: product.currency }).format(product.current_price)}</td>
                   <td>{new Date(product.updated_at).toLocaleString("it-IT")}</td>
                 </tr>
               ))}
