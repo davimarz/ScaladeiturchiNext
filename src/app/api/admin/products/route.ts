@@ -1,10 +1,12 @@
-import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const PARTNER_TAG = "eiapromo-21";
+const AMAZON_HOSTS = new Set(["amazon.it", "www.amazon.it", "amzn.to", "link.amazon"]);
 
 function redirect303(path: string) {
   return new Response(null, {
@@ -13,34 +15,87 @@ function redirect303(path: string) {
   });
 }
 
-function validAmazonUrl(value: string) {
+function isAllowedAmazonUrl(value: string) {
   try {
     const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    return url.protocol === "https:" && (
-      host === "amzn.to" ||
-      host === "link.amazon" ||
-      host === "amazon.it" ||
-      host.endsWith(".amazon.it")
-    );
+    return url.protocol === "https:" && AMAZON_HOSTS.has(url.hostname.toLowerCase());
   } catch {
     return false;
   }
 }
 
-function validImageUrl(value: string) {
-  if (!value) return true;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:";
-  } catch {
-    return false;
+async function resolveAmazonUrl(input: string) {
+  let current = input;
+
+  for (let i = 0; i < 5; i += 1) {
+    const url = new URL(current);
+    const host = url.hostname.toLowerCase();
+
+    if (host === "amazon.it" || host === "www.amazon.it") {
+      return url;
+    }
+
+    const response = await fetch(url, {
+      method: "HEAD",
+      redirect: "manual",
+      cache: "no-store",
+      headers: {
+        "user-agent": "Mozilla/5.0 ScalaDeiTurchiCatalog/1.0",
+      },
+    });
+
+    const location = response.headers.get("location");
+    if (!location) break;
+
+    current = new URL(location, url).toString();
   }
+
+  return new URL(current);
+}
+
+function extractAsin(url: URL) {
+  const patterns = [
+    /\/dp\/([A-Z0-9]{10})(?:[/?]|$)/i,
+    /\/gp\/product\/([A-Z0-9]{10})(?:[/?]|$)/i,
+    /\/gp\/aw\/d\/([A-Z0-9]{10})(?:[/?]|$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = url.pathname.match(pattern);
+    if (match?.[1]) return match[1].toUpperCase();
+  }
+
+  return null;
+}
+
+function deriveTitle(url: URL, asin: string) {
+  const parts = url.pathname.split("/").filter(Boolean);
+  const dpIndex = parts.findIndex((part) => part.toLowerCase() === "dp");
+  const productIndex = parts.findIndex((part) => part.toLowerCase() === "product");
+  const marker = dpIndex >= 0 ? dpIndex : productIndex;
+
+  if (marker > 0) {
+    const raw = decodeURIComponent(parts[marker - 1])
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (raw && !/^[A-Z0-9]{10}$/i.test(raw)) {
+      return raw.slice(0, 300);
+    }
+  }
+
+  return `Prodotto Amazon ${asin}`;
+}
+
+function buildAffiliateUrl(asin: string) {
+  const url = new URL(`https://www.amazon.it/dp/${asin}`);
+  url.searchParams.set("tag", PARTNER_TAG);
+  return url.toString();
 }
 
 type ExistingProduct = {
   id: string;
-  image_url: string | null;
 };
 
 export async function POST(request: NextRequest) {
@@ -50,26 +105,36 @@ export async function POST(request: NextRequest) {
   }
 
   const form = await request.formData();
-  const title = String(form.get("title") ?? "").trim().slice(0, 300);
-  const affiliateUrl = String(form.get("affiliate_url") ?? "").trim();
-  const imageUrl = String(form.get("image_url") ?? "").trim();
+  const submittedUrl = String(form.get("amazon_url") ?? "").trim();
 
-  if (!title || !validAmazonUrl(affiliateUrl) || !validImageUrl(imageUrl)) {
+  if (!isAllowedAmazonUrl(submittedUrl)) {
     return redirect303("/admin?manual=invalid");
   }
 
-  const asin = "MAN-" + createHash("sha256").update(affiliateUrl).digest("hex").slice(0, 16);
-  const now = new Date().toISOString();
-
   try {
+    const resolved = await resolveAmazonUrl(submittedUrl);
+    const host = resolved.hostname.toLowerCase();
+
+    if (host !== "amazon.it" && host !== "www.amazon.it") {
+      return redirect303("/admin?manual=unresolved");
+    }
+
+    const asin = extractAsin(resolved);
+    if (!asin) {
+      return redirect303("/admin?manual=noasin");
+    }
+
+    const affiliateUrl = buildAffiliateUrl(asin);
+    const title = deriveTitle(resolved, asin);
+    const now = new Date().toISOString();
+
     const existing = await supabaseAdminFetch<ExistingProduct[]>(
-      `products?affiliate_url=eq.${encodeURIComponent(affiliateUrl)}&select=id,image_url&limit=1`,
+      `products?asin=eq.${encodeURIComponent(asin)}&select=id&limit=1`,
     );
 
     const payload = {
       title,
-      image_url: imageUrl || existing[0]?.image_url || null,
-      amazon_url: affiliateUrl,
+      amazon_url: `https://www.amazon.it/dp/${asin}`,
       affiliate_url: affiliateUrl,
       source: "manual-amazon-link",
       active: true,
@@ -95,6 +160,7 @@ export async function POST(request: NextRequest) {
         asin,
         ...payload,
         category_id: null,
+        image_url: null,
         current_price: null,
         list_price: null,
         currency: "EUR",
