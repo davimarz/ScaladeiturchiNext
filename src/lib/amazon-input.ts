@@ -123,7 +123,8 @@ export async function fetchAmazonProductImage(asin: string, fetcher: typeof fetc
       url = new URL(location, url);
       continue;
     }
-    if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon product page unavailable");
+    if (!response.ok) throw new Error("Amazon HTTP " + response.status);
+    if (!response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon response is not HTML");
     const reader = response.body?.getReader();
     if (!reader) return null;
     const decoder = new TextDecoder();
