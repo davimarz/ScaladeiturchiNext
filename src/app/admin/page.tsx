@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import DeleteProductButton from "../../components/DeleteProductButton";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
 
@@ -28,7 +29,12 @@ type Product = {
 export default async function AdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sync?: string; manual?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    sync?: string;
+    manual?: string;
+    delete?: string;
+  }>;
 }) {
   const cookieStore = await cookies();
   const session = cookieStore.get(adminCookie.name)?.value;
@@ -54,17 +60,26 @@ export default async function AdminPage({
   }
 
   const [runs, products] = await Promise.all([
-    supabaseAdminFetch<SyncRun[]>("sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10"),
-    supabaseAdminFetch<Product[]>("products?select=id,asin,title,current_price,currency,updated_at,active,source&order=updated_at.desc&limit=30"),
+    supabaseAdminFetch<SyncRun[]>(
+      "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
+    ),
+    supabaseAdminFetch<Product[]>(
+      "products?select=id,asin,title,current_price,currency,updated_at,active,source&order=updated_at.desc&limit=30",
+    ),
   ]);
 
   return (
     <main className="adminShell">
       <section className="adminHeader">
-        <div><p className="eyebrow">SCALA DEI TURCHI</p><h1>Dashboard</h1></div>
+        <div>
+          <p className="eyebrow">SCALA DEI TURCHI</p>
+          <h1>Dashboard</h1>
+        </div>
         <div className="adminActions">
           <a href="/">Apri il sito</a>
-          <form action="/api/admin/logout" method="post"><button type="submit">Esci</button></form>
+          <form action="/api/admin/logout" method="post">
+            <button type="submit">Esci</button>
+          </form>
         </div>
       </section>
 
@@ -74,21 +89,43 @@ export default async function AdminPage({
           Creators API è pronta ma Amazon sta restituendo <strong>AssociateNotEligible</strong>.
           Nel frattempo puoi pubblicare prodotti usando i link generati da SiteStripe/Product Links.
         </p>
+
         {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
-        {params.manual === "invalid" ? <p className="adminError">Inserisci un titolo, un link Amazon valido (amazon.it, amzn.to o link.amazon) e, se presente, un URL immagine https valido.</p> : null}\n        {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
+        {params.manual === "invalid" ? (
+          <p className="adminError">
+            Inserisci un titolo, un link Amazon valido (amazon.it, amzn.to o link.amazon) e, se presente, un URL immagine https valido.
+          </p>
+        ) : null}
+        {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
+        {params.delete === "success" ? <p className="adminNotice">Prodotto eliminato dal catalogo.</p> : null}
+        {params.delete === "invalid" ? <p className="adminError">Prodotto non valido.</p> : null}
+        {params.delete === "error" ? <p className="adminError">Errore durante l'eliminazione del prodotto.</p> : null}
+
         <form action="/api/admin/products" method="post" className="adminForm">
           <input type="text" name="title" required maxLength={300} placeholder="Titolo del prodotto" />
-          <input type="url" name="affiliate_url" required placeholder="Link SiteStripe / Product Link Amazon" />\n          <input type="url" name="image_url" placeholder="URL immagine prodotto (opzionale)" />
+          <input type="url" name="affiliate_url" required placeholder="Link SiteStripe / Product Link Amazon" />
+          <input type="url" name="image_url" placeholder="URL immagine prodotto (opzionale)" />
           <button type="submit">Aggiungi prodotto</button>
         </form>
-        <p className="adminHint">In modalità manuale non mostriamo prezzi copiati a mano: il visitatore vede il prezzo aggiornato direttamente su Amazon.</p>
+
+        <p className="adminHint">
+          In modalità manuale non mostriamo prezzi copiati a mano: il visitatore vede il prezzo aggiornato direttamente su Amazon.
+        </p>
       </section>
 
       <section className="adminPanel">
         <h2>Ultime sincronizzazioni API</h2>
         <div className="adminTableWrap">
           <table className="adminTable">
-            <thead><tr><th>Stato</th><th>Prodotti</th><th>Aggiornati</th><th>Avvio</th><th>Errore</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Stato</th>
+                <th>Prodotti</th>
+                <th>Aggiornati</th>
+                <th>Avvio</th>
+                <th>Errore</th>
+              </tr>
+            </thead>
             <tbody>
               {runs.map((run) => (
                 <tr key={run.id}>
@@ -108,15 +145,38 @@ export default async function AdminPage({
         <h2>Prodotti nel catalogo</h2>
         <div className="adminTableWrap">
           <table className="adminTable">
-            <thead><tr><th>Codice</th><th>Titolo</th><th>Fonte</th><th>Prezzo</th><th>Aggiornato</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Codice</th>
+                <th>Titolo</th>
+                <th>Fonte</th>
+                <th>Prezzo</th>
+                <th>Aggiornato</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
             <tbody>
               {products.map((product) => (
                 <tr key={product.id}>
                   <td>{product.asin}</td>
                   <td>{product.title}</td>
                   <td>{product.source ?? "—"}</td>
-                  <td>{product.current_price == null ? "Su Amazon" : new Intl.NumberFormat("it-IT", { style: "currency", currency: product.currency }).format(product.current_price)}</td>
+                  <td>
+                    {product.current_price == null
+                      ? "Su Amazon"
+                      : new Intl.NumberFormat("it-IT", {
+                          style: "currency",
+                          currency: product.currency,
+                        }).format(product.current_price)}
+                  </td>
                   <td>{new Date(product.updated_at).toLocaleString("it-IT")}</td>
+                  <td>
+                    {product.source === "manual-amazon-link" ? (
+                      <DeleteProductButton id={product.id} />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
