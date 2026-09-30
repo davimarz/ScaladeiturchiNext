@@ -149,7 +149,12 @@ export async function fetchAmazonProductImage(asin: string, fetcher: typeof fetc
       html += decoder.decode();
     } finally { reader.releaseLock(); }
     if (/\/errors\/validateCaptcha|<title>\s*Robot Check/i.test(html)) throw new Error("Amazon blocked the product page");
-    return extractAmazonProductImage(html, asin);
+    const image = extractAmazonProductImage(html, asin);
+    if (!image) {
+      const title = decodeEntities(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "senza titolo").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 120);
+      throw new Error("Amazon image missing on page: " + title);
+    }
+    return image;
   }
   return null;
 }
