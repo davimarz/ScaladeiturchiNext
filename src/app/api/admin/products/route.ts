@@ -18,10 +18,46 @@ function redirect303(path: string) {
   });
 }
 
+function firstMatch(value: string, regex: RegExp) {
+  return value.match(regex)?.[1]?.trim() ?? null;
+}
+
+function parseAmazonInput(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed.includes("<")) {
+    return { amazonUrl: trimmed, imageUrl: null as string | null };
+  }
+
+  const href =
+    firstMatch(trimmed, /href\s*=\s*["']([^"']+)["']/i) ??
+    firstMatch(trimmed, /(https:\/\/(?:www\.)?amazon\.it\/[^\s"'<>]+)/i) ??
+    firstMatch(trimmed, /(https:\/\/(?:amzn\.to|link\.amazon)\/[^\s"'<>]+)/i);
+
+  const imageUrl =
+    firstMatch(trimmed, /<img[^>]+src\s*=\s*["']([^"']+)["']/i) ??
+    firstMatch(trimmed, /data-src\s*=\s*["']([^"']+)["']/i);
+
+  return {
+    amazonUrl: href ?? "",
+    imageUrl,
+  };
+}
+
 function isAllowedAmazonUrl(value: string) {
   try {
     const url = new URL(value);
     return url.protocol === "https:" && AMAZON_HOSTS.has(url.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedImageUrl(value: string | null) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:";
   } catch {
     return false;
   }
@@ -109,10 +145,12 @@ export async function POST(request: NextRequest) {
   }
 
   const form = await request.formData();
-  const submittedUrl = String(form.get("amazon_url") ?? "").trim();
+  const rawInput = String(form.get("amazon_input") ?? "").trim();
   const image = form.get("image");
+  const parsed = parseAmazonInput(rawInput);
+  const submittedUrl = parsed.amazonUrl;
 
-  if (!isAllowedAmazonUrl(submittedUrl)) {
+  if (!isAllowedAmazonUrl(submittedUrl) || !isAllowedImageUrl(parsed.imageUrl)) {
     return redirect303("/admin?manual=invalid");
   }
 
@@ -143,7 +181,8 @@ export async function POST(request: NextRequest) {
       `products?asin=eq.${encodeURIComponent(asin)}&select=id,image_url&limit=1`,
     );
 
-    let imageUrl = existing[0]?.image_url ?? null;
+    let imageUrl = parsed.imageUrl || existing[0]?.image_url || null;
+
     if (image instanceof File && image.size > 0) {
       imageUrl = await uploadProductImage(image, asin);
     }
@@ -153,7 +192,7 @@ export async function POST(request: NextRequest) {
       amazon_url: `https://www.amazon.it/dp/${asin}`,
       affiliate_url: affiliateUrl,
       image_url: imageUrl,
-      source: "manual-amazon-link",
+      source: parsed.imageUrl ? "manual-sitestripe-image" : "manual-amazon-link",
       active: true,
       updated_at: now,
     };
@@ -167,7 +206,7 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify(payload),
         },
       );
-      return redirect303("/admin?manual=updated");
+      return redirect303(parsed.imageUrl || image instanceof File ? "/admin?manual=updated-image" : "/admin?manual=updated");
     }
 
     await supabaseAdminFetch("products", {
@@ -187,7 +226,7 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    return redirect303("/admin?manual=success");
+    return redirect303(parsed.imageUrl || image instanceof File ? "/admin?manual=success-image" : "/admin?manual=success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "manual-save-error";
     console.error("manual-product-save", message);
