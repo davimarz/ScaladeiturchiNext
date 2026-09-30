@@ -95,18 +95,20 @@ export default async function AdminPage({
         {params.manual === "invalid" ? <p className="adminError">Inserisci un link Amazon valido (amazon.it, amzn.to o link.amazon).</p> : null}
         {params.manual === "unresolved" ? <p className="adminError">Non sono riuscito a risolvere il link corto Amazon. Prova con il link completo del prodotto.</p> : null}
         {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l'ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
+        {params.manual === "image-invalid" ? <p className="adminError">Immagine non valida. Usa JPG, PNG o WEBP fino a 5 MB.</p> : null}
         {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
         {params.delete === "success" ? <p className="adminNotice">Prodotto eliminato dal catalogo.</p> : null}
         {params.delete === "invalid" ? <p className="adminError">Prodotto non valido.</p> : null}
         {params.delete === "error" ? <p className="adminError">Errore durante l'eliminazione del prodotto.</p> : null}
 
-        <form action="/api/admin/products" method="post" className="adminForm">
+        <form action="/api/admin/products" method="post" encType="multipart/form-data" className="adminForm">
           <input type="url" name="amazon_url" required placeholder="Incolla qui il link Amazon del prodotto" />
+          <input type="file" name="image" accept="image/jpeg,image/png,image/webp" />
           <button type="submit">Aggiungi prodotto</button>
         </form>
 
         <p className="adminHint">
-          Il sistema prova a risolvere il link, individua l'ASIN, rimuove eventuali parametri di tracking e crea il link con il tag affiliato eiapromo-21. Prezzo e immagine automatici resteranno disattivati finché Creators API non sarà disponibile.
+          Il sistema prova a risolvere il link, individua l'ASIN, rimuove eventuali parametri di tracking e crea il link con il tag affiliato eiapromo-21. Se vuoi, puoi anche caricare una foto del prodotto dal PC; il link resta l'unico campo obbligatorio.
         </p>
       </section>
 
