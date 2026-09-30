@@ -68,3 +68,6 @@ Il repository è pronto per essere importato in Vercel. Dopo il primo deploy van
 - Si estraggono immagini HTTPS sui domini Amazon consentiti, ignorando pixel 1x1. Si salva l'URL esterno; le foto caricate da PC sono salvate su Storage.
 - Il catalogo manuale richiede solo le credenziali Supabase. Le credenziali Amazon sono necessarie soltanto per la sincronizzazione API.
 - AssociateNotEligible richiede l'idoneità dell'account Amazon e non viene aggirato dal codice.
+
+## Immagini automatiche dal link Amazon
+Se non esiste una foto e non viene fornita un’immagine, l’admin legge la pagina pubblica canonica Amazon del prodotto e seleziona soltanto l’immagine principale. Le richieste hanno un timeout complessivo di 10 secondi, massimo 3 redirect verificati e un limite di 2 MB di HTML. Non vengono aggirati CAPTCHA o blocchi: se Amazon non permette la lettura, il prodotto viene salvato e l’admin segnala la foto mancante. Le foto esistenti sono conservate. Si salva il collegamento CDN Amazon, senza copiare il file.
