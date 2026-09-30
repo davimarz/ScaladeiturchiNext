@@ -52,3 +52,7 @@ test("bounds HTML size, but stops reading after main image and ASIN",async()=>{
 test("rejects invalid ASIN without making a network request",async()=>{
   await assert.rejects(fetchAmazonProductImage("../private",()=>assert.fail("must not fetch")));
 });
+
+test("reports the returned page title when Amazon does not provide a product image",async()=>{
+ await assert.rejects(fetchAmazonProductImage(asin,async()=>htmlResponse("<title>Amazon.it: conferma accesso</title><img src=\"https://m.media-amazon.com/logo.jpg\">")),/Amazon image missing on page: Amazon.it: conferma accesso/);
+});

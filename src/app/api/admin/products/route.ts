@@ -98,7 +98,8 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         const message = error instanceof Error ? error.message : "unavailable";
         const status = message.match(/^Amazon HTTP (\d{3})$/)?.[1];
-        imageError = status ? "http-" + status : /blocked/.test(message) ? "blocked" : /too large/.test(message) ? "large" : /timeout|abort/i.test(message) ? "timeout" : "unavailable";
+        const pageTitle = message.startsWith("Amazon image missing on page: ") ? message.slice("Amazon image missing on page: ".length).slice(0, 120) : null;
+        imageError = pageTitle ? "page-" + encodeURIComponent(pageTitle) : status ? "http-" + status : /blocked/.test(message) ? "blocked" : /too large/.test(message) ? "large" : /timeout|abort/i.test(message) ? "timeout" : "unavailable";
         console.warn("amazon-product-image", message);
       }
     }
