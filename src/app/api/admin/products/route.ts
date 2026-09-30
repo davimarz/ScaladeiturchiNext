@@ -12,6 +12,7 @@ function validAmazonUrl(value: string) {
     const host = url.hostname.toLowerCase();
     return url.protocol === "https:" && (
       host === "amzn.to" ||
+      host === "link.amazon" ||
       host === "amazon.it" ||
       host.endsWith(".amazon.it")
     );
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
       currency: "EUR",
       discount_percent: null,
       prime: null,
-      source: "manual-sitestripe",
+      source: "manual-amazon-link",
       price_verified_at: null,
       active: true,
       featured: false,
