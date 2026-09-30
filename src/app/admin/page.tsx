@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { MANUAL_SOURCES } from "../../lib/product-validation";
 import { cookies } from "next/headers";
 import DeleteProductButton from "../../components/DeleteProductButton";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
@@ -24,6 +26,7 @@ type Product = {
   updated_at: string;
   active: boolean;
   source: string | null;
+  category_id: string | null;
 };
 
 export default async function AdminPage({
@@ -34,6 +37,7 @@ export default async function AdminPage({
     sync?: string;
     manual?: string;
     delete?: string;
+    page?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -48,24 +52,27 @@ export default async function AdminPage({
           <p className="eyebrow">AREA RISERVATA</p>
           <h1>Amministrazione</h1>
           <p>Inserisci la password amministratore.</p>
-          {params.error ? <p className="adminError">Password non valida.</p> : null}
+          {params.error ? <p className="adminError">{params.error === "rate-limit" ? "Troppi tentativi. Riprova tra 15 minuti." : params.error === "unavailable" ? "Accesso temporaneamente non disponibile. Riprova più tardi." : "Password non valida o sessione scaduta."}</p> : null}
           <form action="/api/admin/login" method="post" className="adminForm">
             <input type="password" name="password" required autoComplete="current-password" placeholder="Password" />
             <button type="submit">Accedi</button>
           </form>
-          <a href="/">← Torna al sito</a>
+          <Link href="/">← Torna al sito</Link>
         </section>
       </main>
     );
   }
 
-  const [runs, products] = await Promise.all([
+  const pageNumber = Number(params.page ?? 1);
+  const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
+  const [runs, products, categories] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
     supabaseAdminFetch<Product[]>(
-      "products?select=id,asin,title,current_price,currency,updated_at,active,source&order=updated_at.desc&limit=30",
+      `products?active=eq.true&select=id,asin,title,current_price,currency,updated_at,active,source,category_id&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
     ),
+    supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
   ]);
 
   return (
@@ -76,7 +83,7 @@ export default async function AdminPage({
           <h1>Dashboard</h1>
         </div>
         <div className="adminActions">
-          <a href="/">Apri il sito</a>
+          <Link href="/">Apri il sito</Link>
           <form action="/api/admin/logout" method="post">
             <button type="submit">Esci</button>
           </form>
@@ -86,8 +93,8 @@ export default async function AdminPage({
       <section className="adminPanel">
         <h2>Catalogo manuale</h2>
         <p>
-          Creators API è pronta ma Amazon sta restituendo <strong>AssociateNotEligible</strong>.
-          Nel frattempo puoi pubblicare prodotti usando i link generati da SiteStripe/Product Links.
+          Aggiungi prodotti con un link Amazon o con codice HTML che contiene il link e l&apos;immagine.
+          Puoi anche scegliere titolo e categoria oppure caricare una foto.
         </p>
 
         {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
@@ -96,21 +103,30 @@ export default async function AdminPage({
         {params.manual === "updated-image" ? <p className="adminNotice">Prodotto aggiornato con immagine.</p> : null}
         {params.manual === "invalid" ? <p className="adminError">Inserisci un link Amazon valido (amazon.it, amzn.to o link.amazon).</p> : null}
         {params.manual === "unresolved" ? <p className="adminError">Non sono riuscito a risolvere il link corto Amazon. Prova con il link completo del prodotto.</p> : null}
-        {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l'ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
+        {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l&apos;ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
         {params.manual === "image-invalid" ? <p className="adminError">Immagine non valida. Usa JPG, PNG o WEBP fino a 5 MB.</p> : null}
         {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
-        {params.delete === "success" ? <p className="adminNotice">Prodotto eliminato dal catalogo.</p> : null}
+        {params.delete === "success" ? <p className="adminNotice">Prodotto nascosto dal catalogo. I dati restano conservati.</p> : null}
         {params.delete === "invalid" ? <p className="adminError">Prodotto non valido.</p> : null}
-        {params.delete === "error" ? <p className="adminError">Errore durante l'eliminazione del prodotto.</p> : null}
+        {params.delete === "error" ? <p className="adminError">Errore durante l&apos;eliminazione del prodotto.</p> : null}
 
         <form action="/api/admin/products" method="post" encType="multipart/form-data" className="adminForm">
-          <textarea name="amazon_input" required rows={5} placeholder="Incolla qui il link Amazon oppure il codice SiteStripe Immagine / Testo + immagine" />
-          <input type="file" name="image" accept="image/jpeg,image/png,image/webp" />
+          <label htmlFor="amazon-input">Link Amazon o codice HTML</label>
+          <textarea id="amazon-input" name="amazon_input" required maxLength={100000} rows={5} placeholder="Incolla il link Amazon oppure il codice HTML con link e immagine" />
+          <label htmlFor="product-title">Titolo (facoltativo)</label>
+          <input id="product-title" name="title" maxLength={300} placeholder="Nome del prodotto" />
+          <label htmlFor="product-category">Categoria</label>
+          <select id="product-category" name="category_id" defaultValue="">
+            <option value="">Non specificata / mantieni quella esistente</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+          <label htmlFor="product-image">Foto da PC (facoltativa, massimo 5 MB)</label>
+          <input id="product-image" type="file" name="image" accept="image/jpeg,image/png,image/webp" />
           <button type="submit">Aggiungi prodotto</button>
         </form>
 
         <p className="adminHint">
-          Se incolli un normale link Amazon, il sistema pulisce il link e applica il tag affiliato eiapromo-21. Se incolli il codice SiteStripe “Immagine” o “Testo + immagine”, estrae anche l'immagine automaticamente. Il caricamento da PC resta facoltativo.
+          Il link viene pulito e associato al tuo tag affiliato. Se il codice contiene un&apos;immagine Amazon valida, viene salvato il suo collegamento esterno. Un normale link prodotto non contiene la foto: puoi caricarla da PC.
         </p>
       </section>
 
@@ -144,6 +160,11 @@ export default async function AdminPage({
 
       <section className="adminPanel">
         <h2>Prodotti nel catalogo</h2>
+        <nav className="adminActions" aria-label="Pagine del catalogo">
+          {page > 1 ? <Link href={"/admin?page=" + (page - 1)}>← Precedenti</Link> : null}
+          <span>Pagina {page}</span>
+          {products.length === 30 ? <Link href={"/admin?page=" + (page + 1)}>Successivi →</Link> : null}
+        </nav>
         <div className="adminTableWrap">
           <table className="adminTable">
             <thead>
@@ -153,6 +174,7 @@ export default async function AdminPage({
                 <th>Fonte</th>
                 <th>Prezzo</th>
                 <th>Aggiornato</th>
+                <th>Modifica</th>
                 <th>Azioni</th>
               </tr>
             </thead>
@@ -172,7 +194,20 @@ export default async function AdminPage({
                   </td>
                   <td>{new Date(product.updated_at).toLocaleString("it-IT")}</td>
                   <td>
-                    {product.source === "manual-amazon-link" ? (
+                    {MANUAL_SOURCES.some((source) => source === product.source) ? (
+                      <form action="/api/admin/products/update" method="post" className="adminForm">
+                        <input type="hidden" name="id" value={product.id} />
+                        <input name="title" aria-label={"Titolo " + product.asin} defaultValue={product.title} required maxLength={300} />
+                        <select name="category_id" aria-label={"Categoria " + product.asin} defaultValue={product.category_id ?? ""}>
+                          <option value="">Senza categoria</option>
+                          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                        </select>
+                        <button type="submit">Salva</button>
+                      </form>
+                    ) : "—"}
+                  </td>
+                  <td>
+                    {MANUAL_SOURCES.some((source) => source === product.source) ? (
                       <DeleteProductButton id={product.id} />
                     ) : (
                       "—"

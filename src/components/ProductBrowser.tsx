@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 
 type Product = {
   id: string;
@@ -41,34 +42,41 @@ export default function ProductBrowser() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  async function load(search = q, selectedCategory = category) {
+  const [selection, setSelection] = useState({ q: "", category: "tutte", revision: 0 });
+  const latestRequest = useRef(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const requestId = ++latestRequest.current;
+    const params = new URLSearchParams({ limit: "30" });
+    if (selection.q.trim()) params.set("q", selection.q.trim());
+    if (selection.category !== "tutte") params.set("category", selection.category);
+    fetch("/api/catalog?" + params.toString(), { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Impossibile caricare il catalogo.");
+        return await response.json() as { products?: Product[] };
+      })
+      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) setProducts(data.products ?? []); })
+      .catch((err) => {
+        if (!controller.signal.aborted && latestRequest.current === requestId) setError(err instanceof Error ? err.message : "Errore durante il caricamento.");
+      })
+      .finally(() => { if (!controller.signal.aborted && latestRequest.current === requestId) setLoading(false); });
+    return () => controller.abort();
+  }, [selection]);
+
+  function startSearch(search: string, selectedCategory: string) {
     setLoading(true);
     setError("");
-    try {
-      const params = new URLSearchParams({ limit: "30" });
-      if (search.trim()) params.set("q", search.trim());
-      if (selectedCategory !== "tutte") params.set("category", selectedCategory);
-      const response = await fetch(`/api/catalog?${params.toString()}`, { cache: "no-store" });
-      if (!response.ok) throw new Error("Impossibile caricare il catalogo.");
-      const data = await response.json() as { products?: Product[] };
-      setProducts(data.products ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Errore durante il caricamento.");
-    } finally {
-      setLoading(false);
-    }
+    setProducts([]);
+    setSelection((previous) => ({ q: search, category: selectedCategory, revision: previous.revision + 1 }));
   }
-
-  useEffect(() => { void load("", "tutte"); }, []);
-
   function submit(event: FormEvent) {
     event.preventDefault();
-    void load();
+    startSearch(q, category);
   }
-
   function selectCategory(next: string) {
     setCategory(next);
-    void load(q, next);
+    startSearch(q, next);
   }
 
   return (
@@ -98,7 +106,7 @@ export default function ProductBrowser() {
           return (
             <article className="productCard" key={product.id}>
               <a className="productImage" href={product.affiliate_url} target="_blank" rel="sponsored noopener noreferrer">
-                {product.image_url ? <img src={product.image_url} alt="" /> : <span>Immagine non disponibile</span>}
+                {product.image_url ? <Image src={product.image_url} alt={product.title} width={400} height={300} unoptimized /> : <span>Immagine non disponibile</span>}
               </a>
               <div className="productBody">
                 {fresh && product.discount_percent ? <span className="discount">-{product.discount_percent}%</span> : null}

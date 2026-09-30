@@ -37,6 +37,7 @@ export async function uploadProductImage(file: File, key: string) {
       headers: storageHeaders(file.type || "image/jpeg"),
       body: bytes,
       cache: "no-store",
+    signal: AbortSignal.timeout(15000),
     },
   );
 

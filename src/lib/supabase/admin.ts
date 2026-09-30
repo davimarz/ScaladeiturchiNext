@@ -29,6 +29,7 @@ export async function supabaseAdminFetch<T>(
     ...init,
     headers: headers(init.headers),
     cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {

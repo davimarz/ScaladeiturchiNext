@@ -22,6 +22,7 @@ export function createAdminSessionValue() {
 
 export function verifyAdminSessionValue(value?: string) {
   if (!value) return false;
+  if (!/^\d{10}\.[a-f0-9]{64}$/.test(value)) return false;
   const [expiresRaw, sig] = value.split(".");
   if (!expiresRaw || !sig) return false;
   const expires = Number(expiresRaw);

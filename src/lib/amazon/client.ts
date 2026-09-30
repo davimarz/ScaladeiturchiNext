@@ -38,6 +38,7 @@ export async function amazonRequest<T>(operation: string, payload: Record<string
       partnerTag: config.partnerTag,
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { catalogLimit } from "../../../lib/product-validation";
 import { supabaseAdminFetch } from "../../../lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -26,14 +27,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const q = safeSearch(searchParams.get("q") ?? "");
   const category = safeSearch(searchParams.get("category") ?? "");
-  const limit = Math.min(Math.max(Number(searchParams.get("limit") ?? 30), 1), 60);
+  const limit = catalogLimit(searchParams.get("limit"));
 
   let categoryId: string | null = null;
   if (category && category !== "tutte") {
     const categories = await supabaseAdminFetch<Array<{ id: string }>>(
       `categories?slug=eq.${encodeURIComponent(category)}&active=eq.true&select=id&limit=1`,
     );
-    categoryId = categories[0]?.id ?? "__none__";
+    categoryId = categories[0]?.id ?? null;
+    if (!categoryId) return NextResponse.json({ products: [] });
   }
 
   const filters = [
