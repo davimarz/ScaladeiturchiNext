@@ -67,3 +67,88 @@ export function deriveTitle(url: URL, asin: string) {
   }
   return "Prodotto Amazon " + asin;
 }
+
+/** Read only the main image of the requested product, never recommendation images. */
+export function extractAmazonProductImage(html: string, asin: string) {
+  const asinInput = [...html.matchAll(/<input\b[^>]*>/gi)].find(([tag]) => attribute(tag, "id") === "ASIN" || attribute(tag, "name") === "ASIN");
+  if (asinInput) {
+    const pageAsin = attribute(asinInput[0], "value").toUpperCase();
+    if (pageAsin && pageAsin !== asin.toUpperCase()) return null;
+  }
+  for (const [tag] of html.matchAll(/<img\b[^>]*>/gi)) {
+    if (!["landingImage", "imgBlkFront", "mainImage"].includes(attribute(tag, "id"))) continue;
+    const hires = allowedAmazonImage(attribute(tag, "data-old-hires"));
+    if (hires) return hires;
+    try {
+      const dynamic = JSON.parse(attribute(tag, "data-a-dynamic-image")) as Record<string, unknown>;
+      const candidates = Object.entries(dynamic).flatMap(([url, dimensions]) => {
+        const image = allowedAmazonImage(url);
+        if (!image || !Array.isArray(dimensions)) return [];
+        const width = Number(dimensions[0]), height = Number(dimensions[1]);
+        return Number.isFinite(width) && Number.isFinite(height) && width > 1 && height > 1 ? [{ image, area: width * height }] : [];
+      }).sort((a, b) => b.area - a.area);
+      if (candidates[0]) return candidates[0].image;
+    } catch { /* Some Amazon templates have only src. */ }
+    const src = allowedAmazonImage(attribute(tag, "src"));
+    if (src) return src;
+  }
+  // A fallback is safe only when the document explicitly identifies this ASIN.
+  if (asinInput) {
+    for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
+      if (attribute(tag, "property") === "og:image") {
+        const image = allowedAmazonImage(attribute(tag, "content"));
+        if (image) return image;
+      }
+    }
+  }
+  return null;
+}
+
+export async function fetchAmazonProductImage(asin: string, fetcher: typeof fetch = fetch) {
+  if (!/^[A-Z0-9]{10}$/i.test(asin)) throw new Error("Invalid product ASIN");
+  let url = new URL("https://www.amazon.it/dp/" + asin.toUpperCase());
+  const signal = AbortSignal.timeout(10000);
+  for (let redirects = 0; redirects <= 3; redirects++) {
+    if (!allowedAmazonUrl(url.href) || !["amazon.it", "www.amazon.it"].includes(url.hostname)) throw new Error("Unapproved Amazon image redirect");
+    const redirectedAsin = extractAsin(url);
+    if (redirectedAsin && redirectedAsin !== asin.toUpperCase()) throw new Error("Amazon redirected to another product");
+    const response = await fetcher(url, {
+      redirect: "manual", cache: "no-store", signal,
+      headers: { accept: "text/html", "accept-language": "it-IT,it;q=0.9", "user-agent": "ScalaDeiTurchiCatalog/1.0" },
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location || redirects === 3) throw new Error("Amazon image redirect limit");
+      await response.body?.cancel();
+      url = new URL(location, url);
+      continue;
+    }
+    if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon product page unavailable");
+    const reader = response.body?.getReader();
+    if (!reader) return null;
+    const decoder = new TextDecoder();
+    let bytes = 0, html = "";
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > 2 * 1024 * 1024) {
+          await reader.cancel();
+          throw new Error("Amazon product page too large");
+        }
+        html += decoder.decode(value, { stream: true });
+        // Amazon pages can contain megabytes of recommendations after the product.
+        // Stop once both the ASIN and the main image have been received.
+        if (/<input\b[^>]*(?:id|name)\s*=\s*["']ASIN["'][^>]*>/i.test(html)) {
+          const image = extractAmazonProductImage(html, asin);
+          if (image) { await reader.cancel(); return image; }
+        }
+      }
+      html += decoder.decode();
+    } finally { reader.releaseLock(); }
+    if (/\/errors\/validateCaptcha|<title>\s*Robot Check/i.test(html)) throw new Error("Amazon blocked the product page");
+    return extractAmazonProductImage(html, asin);
+  }
+  return null;
+}

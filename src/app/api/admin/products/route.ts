@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { allowedAmazonUrl, parseAmazonInput, resolveAmazonUrl, extractAsin, deriveTitle } from "../../../../lib/amazon-input";
+import { allowedAmazonUrl, parseAmazonInput, resolveAmazonUrl, extractAsin, deriveTitle, fetchAmazonProductImage } from "../../../../lib/amazon-input";
 import { isSameOrigin } from "../../../../lib/admin-request";
 import { isUuid } from "../../../../lib/product-validation";
 import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
@@ -49,7 +49,6 @@ export async function POST(request: NextRequest) {
   const categoryId = String(form.get("category_id") ?? "").trim();
   if (submittedTitle.length > 300 || (categoryId && !isUuid(categoryId))) return redirect303("/admin?manual=invalid");
   const image = form.get("image");
-  const hasUpload = image instanceof File && image.size > 0;
   const parsed = parseAmazonInput(rawInput);
   const submittedUrl = parsed.amazonUrl;
 
@@ -92,6 +91,12 @@ export async function POST(request: NextRequest) {
 
     if (image instanceof File && image.size > 0) {
       imageUrl = await uploadProductImage(image, asin);
+    } else if (!imageUrl) {
+      try {
+        imageUrl = await fetchAmazonProductImage(asin);
+      } catch (error) {
+        console.warn("amazon-product-image", error instanceof Error ? error.message : "unavailable");
+      }
     }
 
     const payload = {
@@ -114,7 +119,7 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify(payload),
         },
       );
-      return redirect303(parsed.imageUrl || hasUpload ? "/admin?manual=updated-image" : "/admin?manual=updated");
+      return redirect303(imageUrl ? "/admin?manual=updated-image" : "/admin?manual=updated-no-image");
     }
 
     await supabaseAdminFetch("products", {
@@ -133,7 +138,7 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    return redirect303(parsed.imageUrl || hasUpload ? "/admin?manual=success-image" : "/admin?manual=success");
+    return redirect303(imageUrl ? "/admin?manual=success-image" : "/admin?manual=success-no-image");
   } catch (error) {
     const message = error instanceof Error ? error.message : "manual-save-error";
     console.error("manual-product-save", message);

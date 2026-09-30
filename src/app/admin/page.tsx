@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { MANUAL_SOURCES } from "../../lib/product-validation";
 import { cookies } from "next/headers";
 import DeleteProductButton from "../../components/DeleteProductButton";
@@ -27,6 +28,7 @@ type Product = {
   active: boolean;
   source: string | null;
   category_id: string | null;
+  image_url: string | null;
 };
 
 export default async function AdminPage({
@@ -70,7 +72,7 @@ export default async function AdminPage({
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
     supabaseAdminFetch<Product[]>(
-      `products?active=eq.true&select=id,asin,title,current_price,currency,updated_at,active,source,category_id&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
+      `products?active=eq.true&select=id,asin,title,current_price,currency,updated_at,active,source,category_id,image_url&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
   ]);
@@ -94,13 +96,14 @@ export default async function AdminPage({
         <h2>Catalogo manuale</h2>
         <p>
           Aggiungi prodotti con un link Amazon o con codice HTML che contiene il link e l&apos;immagine.
-          Puoi anche scegliere titolo e categoria oppure caricare una foto.
+          Dal normale link il sistema cerca automaticamente l&apos;immagine principale su Amazon. Puoi anche scegliere titolo e categoria.
         </p>
 
         {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
         {params.manual === "success-image" ? <p className="adminNotice">Prodotto aggiunto con immagine.</p> : null}
         {params.manual === "updated" ? <p className="adminNotice">Prodotto aggiornato nel catalogo.</p> : null}
         {params.manual === "updated-image" ? <p className="adminNotice">Prodotto aggiornato con immagine.</p> : null}
+        {params.manual === "success-no-image" || params.manual === "updated-no-image" ? <p className="adminError">Prodotto salvato, ma Amazon non ha reso disponibile la foto. Reincolla il link per riprovare il recupero automatico.</p> : null}
         {params.manual === "invalid" ? <p className="adminError">Inserisci un link Amazon valido (amazon.it, amzn.to o link.amazon).</p> : null}
         {params.manual === "unresolved" ? <p className="adminError">Non sono riuscito a risolvere il link corto Amazon. Prova con il link completo del prodotto.</p> : null}
         {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l&apos;ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
@@ -126,7 +129,7 @@ export default async function AdminPage({
         </form>
 
         <p className="adminHint">
-          Il link viene pulito e associato al tuo tag affiliato. Se il codice contiene un&apos;immagine Amazon valida, viene salvato il suo collegamento esterno. Un normale link prodotto non contiene la foto: puoi caricarla da PC.
+          Incolla il link e premi “Aggiungi prodotto”: la foto viene cercata automaticamente sulla pagina Amazon. Le immagini già presenti vengono conservate. Il caricamento da PC è soltanto un&apos;alternativa facoltativa.
         </p>
       </section>
 
@@ -169,6 +172,7 @@ export default async function AdminPage({
           <table className="adminTable">
             <thead>
               <tr>
+                <th>Immagine</th>
                 <th>Codice</th>
                 <th>Titolo</th>
                 <th>Fonte</th>
@@ -181,6 +185,7 @@ export default async function AdminPage({
             <tbody>
               {products.map((product) => (
                 <tr key={product.id}>
+                  <td>{product.image_url ? <Image src={product.image_url} alt={product.title} width={72} height={72} unoptimized style={{ objectFit: "contain" }} /> : "Foto non disponibile"}</td>
                   <td>{product.asin}</td>
                   <td>{product.title}</td>
                   <td>{product.source ?? "—"}</td>
