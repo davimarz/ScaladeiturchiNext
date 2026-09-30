@@ -91,7 +91,9 @@ export default async function AdminPage({
         </p>
 
         {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
+        {params.manual === "success-image" ? <p className="adminNotice">Prodotto aggiunto con immagine.</p> : null}
         {params.manual === "updated" ? <p className="adminNotice">Prodotto aggiornato nel catalogo.</p> : null}
+        {params.manual === "updated-image" ? <p className="adminNotice">Prodotto aggiornato con immagine.</p> : null}
         {params.manual === "invalid" ? <p className="adminError">Inserisci un link Amazon valido (amazon.it, amzn.to o link.amazon).</p> : null}
         {params.manual === "unresolved" ? <p className="adminError">Non sono riuscito a risolvere il link corto Amazon. Prova con il link completo del prodotto.</p> : null}
         {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l'ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
@@ -102,13 +104,13 @@ export default async function AdminPage({
         {params.delete === "error" ? <p className="adminError">Errore durante l'eliminazione del prodotto.</p> : null}
 
         <form action="/api/admin/products" method="post" encType="multipart/form-data" className="adminForm">
-          <input type="url" name="amazon_url" required placeholder="Incolla qui il link Amazon del prodotto" />
+          <textarea name="amazon_input" required rows={5} placeholder="Incolla qui il link Amazon oppure il codice SiteStripe Immagine / Testo + immagine" />
           <input type="file" name="image" accept="image/jpeg,image/png,image/webp" />
           <button type="submit">Aggiungi prodotto</button>
         </form>
 
         <p className="adminHint">
-          Il sistema prova a risolvere il link, individua l'ASIN, rimuove eventuali parametri di tracking e crea il link con il tag affiliato eiapromo-21. Se vuoi, puoi anche caricare una foto del prodotto dal PC; il link resta l'unico campo obbligatorio.
+          Se incolli un normale link Amazon, il sistema pulisce il link e applica il tag affiliato eiapromo-21. Se incolli il codice SiteStripe “Immagine” o “Testo + immagine”, estrae anche l'immagine automaticamente. Il caricamento da PC resta facoltativo.
         </p>
       </section>
 
