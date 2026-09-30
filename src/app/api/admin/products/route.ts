@@ -28,6 +28,16 @@ function validAmazonUrl(value: string) {
   }
 }
 
+function validImageUrl(value: string) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const session = request.cookies.get(adminCookie.name)?.value;
   if (!verifyAdminSessionValue(session)) {
@@ -37,8 +47,9 @@ export async function POST(request: NextRequest) {
   const form = await request.formData();
   const title = String(form.get("title") ?? "").trim().slice(0, 300);
   const affiliateUrl = String(form.get("affiliate_url") ?? "").trim();
+  const imageUrl = String(form.get("image_url") ?? "").trim();
 
-  if (!title || !validAmazonUrl(affiliateUrl)) {
+  if (!title || !validAmazonUrl(affiliateUrl) || !validImageUrl(imageUrl)) {
     return redirect303("/admin?manual=invalid");
   }
 
@@ -53,7 +64,7 @@ export async function POST(request: NextRequest) {
         asin,
         title,
         category_id: null,
-        image_url: null,
+        image_url: imageUrl || null,
         amazon_url: affiliateUrl,
         affiliate_url: affiliateUrl,
         current_price: null,
