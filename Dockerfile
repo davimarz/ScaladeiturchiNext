@@ -1,6 +1,6 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN npm install --global pnpm@11.25.0 && pnpm install --frozen-lockfile
 
 FROM node:24-alpine AS builder
