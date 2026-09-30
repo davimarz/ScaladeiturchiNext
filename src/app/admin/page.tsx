@@ -90,7 +90,8 @@ export default async function AdminPage({
           Nel frattempo puoi pubblicare prodotti usando i link generati da SiteStripe/Product Links.
         </p>
 
-        {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}\n        {params.manual === "updated" ? <p className="adminNotice">Prodotto aggiornato nel catalogo.</p> : null}
+        {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
+        {params.manual === "updated" ? <p className="adminNotice">Prodotto aggiornato nel catalogo.</p> : null}
         {params.manual === "invalid" ? (
           <p className="adminError">
             Inserisci un titolo, un link Amazon valido (amazon.it, amzn.to o link.amazon) e, se presente, un URL immagine https valido.
