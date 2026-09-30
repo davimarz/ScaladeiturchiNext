@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
+import { uploadProductImage } from "../../../../lib/supabase/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PARTNER_TAG = "eiapromo-21";
 const AMAZON_HOSTS = new Set(["amazon.it", "www.amazon.it", "amzn.to", "link.amazon"]);
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 function redirect303(path: string) {
   return new Response(null, {
@@ -96,6 +99,7 @@ function buildAffiliateUrl(asin: string) {
 
 type ExistingProduct = {
   id: string;
+  image_url: string | null;
 };
 
 export async function POST(request: NextRequest) {
@@ -106,9 +110,16 @@ export async function POST(request: NextRequest) {
 
   const form = await request.formData();
   const submittedUrl = String(form.get("amazon_url") ?? "").trim();
+  const image = form.get("image");
 
   if (!isAllowedAmazonUrl(submittedUrl)) {
     return redirect303("/admin?manual=invalid");
+  }
+
+  if (image instanceof File && image.size > 0) {
+    if (!IMAGE_TYPES.has(image.type) || image.size > MAX_IMAGE_BYTES) {
+      return redirect303("/admin?manual=image-invalid");
+    }
   }
 
   try {
@@ -129,13 +140,19 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
 
     const existing = await supabaseAdminFetch<ExistingProduct[]>(
-      `products?asin=eq.${encodeURIComponent(asin)}&select=id&limit=1`,
+      `products?asin=eq.${encodeURIComponent(asin)}&select=id,image_url&limit=1`,
     );
+
+    let imageUrl = existing[0]?.image_url ?? null;
+    if (image instanceof File && image.size > 0) {
+      imageUrl = await uploadProductImage(image, asin);
+    }
 
     const payload = {
       title,
       amazon_url: `https://www.amazon.it/dp/${asin}`,
       affiliate_url: affiliateUrl,
+      image_url: imageUrl,
       source: "manual-amazon-link",
       active: true,
       updated_at: now,
@@ -160,7 +177,6 @@ export async function POST(request: NextRequest) {
         asin,
         ...payload,
         category_id: null,
-        image_url: null,
         current_price: null,
         list_price: null,
         currency: "EUR",
