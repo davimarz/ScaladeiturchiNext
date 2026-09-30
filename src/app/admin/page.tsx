@@ -92,25 +92,21 @@ export default async function AdminPage({
 
         {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
         {params.manual === "updated" ? <p className="adminNotice">Prodotto aggiornato nel catalogo.</p> : null}
-        {params.manual === "invalid" ? (
-          <p className="adminError">
-            Inserisci un titolo, un link Amazon valido (amazon.it, amzn.to o link.amazon) e, se presente, un URL immagine https valido.
-          </p>
-        ) : null}
+        {params.manual === "invalid" ? <p className="adminError">Inserisci un link Amazon valido (amazon.it, amzn.to o link.amazon).</p> : null}
+        {params.manual === "unresolved" ? <p className="adminError">Non sono riuscito a risolvere il link corto Amazon. Prova con il link completo del prodotto.</p> : null}
+        {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l'ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
         {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
         {params.delete === "success" ? <p className="adminNotice">Prodotto eliminato dal catalogo.</p> : null}
         {params.delete === "invalid" ? <p className="adminError">Prodotto non valido.</p> : null}
         {params.delete === "error" ? <p className="adminError">Errore durante l'eliminazione del prodotto.</p> : null}
 
         <form action="/api/admin/products" method="post" className="adminForm">
-          <input type="text" name="title" required maxLength={300} placeholder="Titolo del prodotto" />
-          <input type="url" name="affiliate_url" required placeholder="Link SiteStripe / Product Link Amazon" />
-          <input type="url" name="image_url" placeholder="URL immagine prodotto (opzionale)" />
+          <input type="url" name="amazon_url" required placeholder="Incolla qui il link Amazon del prodotto" />
           <button type="submit">Aggiungi prodotto</button>
         </form>
 
         <p className="adminHint">
-          In modalità manuale non mostriamo prezzi copiati a mano: il visitatore vede il prezzo aggiornato direttamente su Amazon.
+          Il sistema prova a risolvere il link, individua l'ASIN, rimuove eventuali parametri di tracking e crea il link con il tag affiliato eiapromo-21. Prezzo e immagine automatici resteranno disattivati finché Creators API non sarà disponibile.
         </p>
       </section>
 
