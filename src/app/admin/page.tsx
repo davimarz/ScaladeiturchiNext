@@ -62,16 +62,14 @@ export default async function AdminPage({
       <section className="adminHeader">
         <div><p className="eyebrow">SCALA DEI TURCHI</p><h1>Dashboard</h1></div>
         <div className="adminActions">
-          <form action="/api/sync" method="post">
-            <button type="submit">Sincronizza Amazon</button>
-          </form>
+          <form action="/api/admin/sync" method="post"><button type="submit">Aggiorna catalogo</button></form>
           <a href="/">Apri il sito</a>
           <form action="/api/admin/logout" method="post"><button type="submit">Esci</button></form>
         </div>
       </section>
 
-      {params.sync === "success" ? <p className="adminNotice">Sincronizzazione completata.</p> : null}
-      {params.sync === "error" ? <p className="adminError">Sincronizzazione non riuscita. Controlla l'ultima riga nella tabella.</p> : null}
+      {params.sync === "success" ? <p className="adminNotice">Catalogo aggiornato con successo.</p> : null}
+      {params.sync === "error" ? <p className="adminError">Aggiornamento non riuscito. Controlla l'ultima sincronizzazione qui sotto.</p> : null}
 
       <section className="adminPanel">
         <h2>Ultime sincronizzazioni</h2>
