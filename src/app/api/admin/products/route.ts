@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
     );
 
     let imageUrl = parsed.imageUrl || existing[0]?.image_url || null;
+    let imageError = "not-found";
 
     if (image instanceof File && image.size > 0) {
       imageUrl = await uploadProductImage(image, asin);
@@ -95,7 +96,10 @@ export async function POST(request: NextRequest) {
       try {
         imageUrl = await fetchAmazonProductImage(asin);
       } catch (error) {
-        console.warn("amazon-product-image", error instanceof Error ? error.message : "unavailable");
+        const message = error instanceof Error ? error.message : "unavailable";
+        const status = message.match(/^Amazon HTTP (\d{3})$/)?.[1];
+        imageError = status ? "http-" + status : /blocked/.test(message) ? "blocked" : /too large/.test(message) ? "large" : /timeout|abort/i.test(message) ? "timeout" : "unavailable";
+        console.warn("amazon-product-image", message);
       }
     }
 
@@ -119,7 +123,7 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify(payload),
         },
       );
-      return redirect303(imageUrl ? "/admin?manual=updated-image" : "/admin?manual=updated-no-image");
+      return redirect303(imageUrl ? "/admin?manual=updated-image" : "/admin?manual=updated-no-image&image_error=" + imageError);
     }
 
     await supabaseAdminFetch("products", {
@@ -138,7 +142,7 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    return redirect303(imageUrl ? "/admin?manual=success-image" : "/admin?manual=success-no-image");
+    return redirect303(imageUrl ? "/admin?manual=success-image" : "/admin?manual=success-no-image&image_error=" + imageError);
   } catch (error) {
     const message = error instanceof Error ? error.message : "manual-save-error";
     console.error("manual-product-save", message);
