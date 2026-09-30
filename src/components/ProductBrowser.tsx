@@ -28,6 +28,12 @@ function formatPrice(value: number | null, currency: string) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(value);
 }
 
+function hasFreshPrice(product: Product) {
+  if (product.current_price == null || !product.price_verified_at) return false;
+  const age = Date.now() - new Date(product.price_verified_at).getTime();
+  return Number.isFinite(age) && age >= 0 && age <= 60 * 60 * 1000;
+}
+
 export default function ProductBrowser() {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("tutte");
@@ -87,23 +93,26 @@ export default function ProductBrowser() {
       {!loading && !error && products.length === 0 && <p className="catalogState">Nessun prodotto disponibile al momento.</p>}
 
       <div className="productGrid">
-        {products.map((product) => (
-          <article className="productCard" key={product.id}>
-            <a className="productImage" href={product.affiliate_url} target="_blank" rel="sponsored noopener noreferrer">
-              {product.image_url ? <img src={product.image_url} alt="" /> : <span>Immagine non disponibile</span>}
-            </a>
-            <div className="productBody">
-              {product.discount_percent ? <span className="discount">-{product.discount_percent}%</span> : null}
-              <h3>{product.title}</h3>
-              <div className="priceRow">
-                {product.current_price != null ? <strong>{formatPrice(product.current_price, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
-                {product.list_price != null && product.list_price !== product.current_price ? <del>{formatPrice(product.list_price, product.currency)}</del> : null}
+        {products.map((product) => {
+          const fresh = hasFreshPrice(product);
+          return (
+            <article className="productCard" key={product.id}>
+              <a className="productImage" href={product.affiliate_url} target="_blank" rel="sponsored noopener noreferrer">
+                {product.image_url ? <img src={product.image_url} alt="" /> : <span>Immagine non disponibile</span>}
+              </a>
+              <div className="productBody">
+                {fresh && product.discount_percent ? <span className="discount">-{product.discount_percent}%</span> : null}
+                <h3>{product.title}</h3>
+                <div className="priceRow">
+                  {fresh ? <strong>{formatPrice(product.current_price, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
+                  {fresh && product.list_price != null && product.list_price !== product.current_price ? <del>{formatPrice(product.list_price, product.currency)}</del> : null}
+                </div>
+                {fresh && product.price_verified_at ? <small>Prezzo verificato: {new Date(product.price_verified_at).toLocaleString("it-IT")}</small> : <small>Prezzo aggiornato disponibile su Amazon</small>}
+                <a className="buyButton" href={`/api/click/${product.id}`} target="_blank" rel="sponsored noopener noreferrer">Vedi su Amazon</a>
               </div>
-              {product.price_verified_at ? <small>Prezzo verificato: {new Date(product.price_verified_at).toLocaleString("it-IT")}</small> : null}
-              <a className="buyButton" href={`/api/click/${product.id}`} target="_blank" rel="sponsored noopener noreferrer">Vedi su Amazon</a>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
