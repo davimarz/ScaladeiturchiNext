@@ -75,7 +75,7 @@ export default async function AdminPage({
           Nel frattempo puoi pubblicare prodotti usando i link generati da SiteStripe/Product Links.
         </p>
         {params.manual === "success" ? <p className="adminNotice">Prodotto aggiunto al catalogo.</p> : null}
-        {params.manual === "invalid" ? <p className="adminError">Inserisci un titolo e un link Amazon valido (amazon.it o amzn.to).</p> : null}
+        {params.manual === "invalid" ? <p className="adminError">Inserisci un titolo e un link Amazon valido (amazon.it, amzn.to o link.amazon).</p> : null}\n        {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
         <form action="/api/admin/products" method="post" className="adminForm">
           <input type="text" name="title" required maxLength={300} placeholder="Titolo del prodotto" />
           <input type="url" name="affiliate_url" required placeholder="Link SiteStripe / Product Link Amazon" />
