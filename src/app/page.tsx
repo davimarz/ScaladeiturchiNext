@@ -1,7 +1,7 @@
 import ProductBrowser from "../components/ProductBrowser";
 
 const demoCards = [
-  ["HAUL", "Occasioni recenti", "Prodotti selezionati e aggiornati dal catalogo."],
+  ["HAUL", "Occasioni recenti", "Prodotti selezionati e aggiunti al catalogo."],
   ["VETRINA", "In evidenza", "Una selezione ordinata delle proposte più interessanti."],
   ["CERCA", "Trova subito", "Ricerca per nome e categoria con risultati immediati."]
 ];
@@ -26,11 +26,15 @@ export default function Home() {
           <p className="lead">Consulta prodotti Amazon selezionati in una vetrina semplice, rapida e pensata anche per smartphone.</p>
           <div className="heroActions"><a className="cta" href="#cerca">Cerca un prodotto</a><a className="secondary" href="#vetrina">Apri la vetrina</a></div>
         </div>
-        <aside className="heroPanel"><span>CATALOGO</span><strong>Amazon Italia</strong><p>Prezzi e disponibilità vengono verificati tramite Amazon Creators API prima della pubblicazione.</p></aside>
+        <aside className="heroPanel">
+          <span>CATALOGO</span>
+          <strong>Amazon Italia</strong>
+          <p>I prodotti possono essere inseriti tramite link affiliati ufficiali Amazon. Prezzi e disponibilità aggiornati sono consultabili direttamente su Amazon.</p>
+        </aside>
       </section>
 
       <section className="showcase" id="vetrina">
-        <div className="sectionHead"><div><p className="eyebrow">ESPLORA</p><h2>Tre modi per trovare ciò che ti serve</h2></div><p>Il catalogo viene alimentato dal database e aggiornato automaticamente.</p></div>
+        <div className="sectionHead"><div><p className="eyebrow">ESPLORA</p><h2>Tre modi per trovare ciò che ti serve</h2></div><p>Il catalogo viene letto dal database e resta disponibile anche quando Creators API non è accessibile.</p></div>
         <div className="cards">
           {demoCards.map(([tag,title,text],index) => <article id={index === 0 ? "haul" : undefined} key={tag}><span className="cardTag">{tag}</span><div className="cardNumber">0{index+1}</div><h3>{title}</h3><p>{text}</p><a href="#cerca">Esplora <span aria-hidden="true">→</span></a></article>)}
         </div>
