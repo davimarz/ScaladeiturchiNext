@@ -1,3 +1,4 @@
+import { isSameOrigin } from "../../../../lib/admin-request";
 import { NextRequest, NextResponse } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
 import { syncAmazonCatalog } from "../../../../lib/catalog-sync";
@@ -7,6 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) return new Response("Forbidden", { status: 403 });
   const session = request.cookies.get(adminCookie.name)?.value;
   if (!verifyAdminSessionValue(session)) {
     return NextResponse.redirect(new URL("/admin?error=session", request.url), 303);

@@ -56,3 +56,15 @@ docker run --env-file .env.local -p 3000:3000 scaladeiturchi-next
 ## Deploy
 
 Il repository è pronto per essere importato in Vercel. Dopo il primo deploy vanno configurate le variabili ambiente server-side e verificata la sincronizzazione reale con Amazon Creators API.
+
+## Correzioni admin e sicurezza
+- Installazione riproducibile: `pnpm install --frozen-lockfile`; verifiche: `pnpm lint`, `pnpm test`, `pnpm build`.
+- Applicare la migration in `supabase/migrations` prima di pubblicare questa versione. Il login fallisce in modo sicuro se la funzione di limitazione non è disponibile.
+- Il login consente 10 tentativi per indirizzo ogni 15 minuti e 200 complessivi. L'indirizzo è usato soltanto tramite hash HMAC; fuori da Vercel vale un limite condiviso di 10.
+- La funzione RPC è eseguibile solo da service_role e usa SECURITY INVOKER. Le tabelle dei tentativi restano nello schema privato, con RLS.
+- Le operazioni admin richiedono stessa origine e sessione firmata.
+- "Nascondi" disattiva il prodotto senza cancellarlo. Per ripubblicarlo, incollare nuovamente il link.
+- Titolo e categoria dei prodotti manuali sono modificabili. Reincollare un link conserva foto, titolo e categoria già presenti se non sostituiti.
+- Si estraggono immagini HTTPS sui domini Amazon consentiti, ignorando pixel 1x1. Si salva l'URL esterno; le foto caricate da PC sono salvate su Storage.
+- Il catalogo manuale richiede solo le credenziali Supabase. Le credenziali Amazon sono necessarie soltanto per la sincronizzazione API.
+- AssociateNotEligible richiede l'idoneità dell'account Amazon e non viene aggirato dal codice.

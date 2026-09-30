@@ -1,4 +1,7 @@
 import { NextRequest } from "next/server";
+import { allowedAmazonUrl, parseAmazonInput, resolveAmazonUrl, extractAsin, deriveTitle } from "../../../../lib/amazon-input";
+import { isSameOrigin } from "../../../../lib/admin-request";
+import { isUuid } from "../../../../lib/product-validation";
 import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
 import { uploadProductImage } from "../../../../lib/supabase/storage";
@@ -7,7 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PARTNER_TAG = "eiapromo-21";
-const AMAZON_HOSTS = new Set(["amazon.it", "www.amazon.it", "amzn.to", "link.amazon"]);
+
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -18,127 +21,22 @@ function redirect303(path: string) {
   });
 }
 
-function firstMatch(value: string, regex: RegExp) {
-  return value.match(regex)?.[1]?.trim() ?? null;
-}
-
-function parseAmazonInput(value: string) {
-  const trimmed = value.trim();
-
-  if (!trimmed.includes("<")) {
-    return { amazonUrl: trimmed, imageUrl: null as string | null };
-  }
-
-  const href =
-    firstMatch(trimmed, /href\s*=\s*["']([^"']+)["']/i) ??
-    firstMatch(trimmed, /(https:\/\/(?:www\.)?amazon\.it\/[^\s"'<>]+)/i) ??
-    firstMatch(trimmed, /(https:\/\/(?:amzn\.to|link\.amazon)\/[^\s"'<>]+)/i);
-
-  const imageUrl =
-    firstMatch(trimmed, /<img[^>]+src\s*=\s*["']([^"']+)["']/i) ??
-    firstMatch(trimmed, /data-src\s*=\s*["']([^"']+)["']/i);
-
-  return {
-    amazonUrl: href ?? "",
-    imageUrl,
-  };
-}
-
-function isAllowedAmazonUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && AMAZON_HOSTS.has(url.hostname.toLowerCase());
-  } catch {
-    return false;
-  }
-}
-
-function isAllowedImageUrl(value: string | null) {
-  if (!value) return true;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-async function resolveAmazonUrl(input: string) {
-  let current = input;
-
-  for (let i = 0; i < 5; i += 1) {
-    const url = new URL(current);
-    const host = url.hostname.toLowerCase();
-
-    if (host === "amazon.it" || host === "www.amazon.it") {
-      return url;
-    }
-
-    const response = await fetch(url, {
-      method: "HEAD",
-      redirect: "manual",
-      cache: "no-store",
-      headers: {
-        "user-agent": "Mozilla/5.0 ScalaDeiTurchiCatalog/1.0",
-      },
-    });
-
-    const location = response.headers.get("location");
-    if (!location) break;
-
-    current = new URL(location, url).toString();
-  }
-
-  return new URL(current);
-}
-
-function extractAsin(url: URL) {
-  const patterns = [
-    /\/dp\/([A-Z0-9]{10})(?:[/?]|$)/i,
-    /\/gp\/product\/([A-Z0-9]{10})(?:[/?]|$)/i,
-    /\/gp\/aw\/d\/([A-Z0-9]{10})(?:[/?]|$)/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = url.pathname.match(pattern);
-    if (match?.[1]) return match[1].toUpperCase();
-  }
-
-  return null;
-}
-
-function deriveTitle(url: URL, asin: string) {
-  const parts = url.pathname.split("/").filter(Boolean);
-  const dpIndex = parts.findIndex((part) => part.toLowerCase() === "dp");
-  const productIndex = parts.findIndex((part) => part.toLowerCase() === "product");
-  const marker = dpIndex >= 0 ? dpIndex : productIndex;
-
-  if (marker > 0) {
-    const raw = decodeURIComponent(parts[marker - 1])
-      .replace(/[-_]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (raw && !/^[A-Z0-9]{10}$/i.test(raw)) {
-      return raw.slice(0, 300);
-    }
-  }
-
-  return `Prodotto Amazon ${asin}`;
-}
-
 function buildAffiliateUrl(asin: string) {
   const url = new URL(`https://www.amazon.it/dp/${asin}`);
-  url.searchParams.set("tag", PARTNER_TAG);
+  url.searchParams.set("tag", process.env.AMAZON_PARTNER_TAG || PARTNER_TAG);
   return url.toString();
 }
 
 type ExistingProduct = {
   id: string;
   image_url: string | null;
+  title: string;
+  category_id: string | null;
+  source: string | null;
 };
 
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) return new Response("Forbidden", { status: 403 });
   const session = request.cookies.get(adminCookie.name)?.value;
   if (!verifyAdminSessionValue(session)) {
     return redirect303("/admin?error=session");
@@ -146,11 +44,16 @@ export async function POST(request: NextRequest) {
 
   const form = await request.formData();
   const rawInput = String(form.get("amazon_input") ?? "").trim();
+  if (rawInput.length > 100_000) return redirect303("/admin?manual=invalid");
+  const submittedTitle = String(form.get("title") ?? "").trim();
+  const categoryId = String(form.get("category_id") ?? "").trim();
+  if (submittedTitle.length > 300 || (categoryId && !isUuid(categoryId))) return redirect303("/admin?manual=invalid");
   const image = form.get("image");
+  const hasUpload = image instanceof File && image.size > 0;
   const parsed = parseAmazonInput(rawInput);
   const submittedUrl = parsed.amazonUrl;
 
-  if (!isAllowedAmazonUrl(submittedUrl) || !isAllowedImageUrl(parsed.imageUrl)) {
+  if (!allowedAmazonUrl(submittedUrl)) {
     return redirect303("/admin?manual=invalid");
   }
 
@@ -161,6 +64,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (categoryId) {
+      const categories = await supabaseAdminFetch<Array<{id:string}>>(`categories?id=eq.${categoryId}&active=eq.true&select=id&limit=1`);
+      if (!categories.length) return redirect303("/admin?manual=invalid");
+    }
     const resolved = await resolveAmazonUrl(submittedUrl);
     const host = resolved.hostname.toLowerCase();
 
@@ -174,11 +81,11 @@ export async function POST(request: NextRequest) {
     }
 
     const affiliateUrl = buildAffiliateUrl(asin);
-    const title = deriveTitle(resolved, asin);
+    const derivedTitle = deriveTitle(resolved, asin);
     const now = new Date().toISOString();
 
     const existing = await supabaseAdminFetch<ExistingProduct[]>(
-      `products?asin=eq.${encodeURIComponent(asin)}&select=id,image_url&limit=1`,
+      `products?asin=eq.${encodeURIComponent(asin)}&select=id,image_url,title,category_id,source&limit=1`,
     );
 
     let imageUrl = parsed.imageUrl || existing[0]?.image_url || null;
@@ -188,11 +95,12 @@ export async function POST(request: NextRequest) {
     }
 
     const payload = {
-      title,
+      title: submittedTitle || existing[0]?.title || derivedTitle,
+      category_id: categoryId || existing[0]?.category_id || null,
       amazon_url: `https://www.amazon.it/dp/${asin}`,
       affiliate_url: affiliateUrl,
       image_url: imageUrl,
-      source: parsed.imageUrl ? "manual-sitestripe-image" : "manual-amazon-link",
+      source: parsed.imageUrl ? "manual-sitestripe-image" : existing[0]?.source || "manual-amazon-link",
       active: true,
       updated_at: now,
     };
@@ -206,7 +114,7 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify(payload),
         },
       );
-      return redirect303(parsed.imageUrl || image instanceof File ? "/admin?manual=updated-image" : "/admin?manual=updated");
+      return redirect303(parsed.imageUrl || hasUpload ? "/admin?manual=updated-image" : "/admin?manual=updated");
     }
 
     await supabaseAdminFetch("products", {
@@ -215,7 +123,6 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         asin,
         ...payload,
-        category_id: null,
         current_price: null,
         list_price: null,
         currency: "EUR",
@@ -226,7 +133,7 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    return redirect303(parsed.imageUrl || image instanceof File ? "/admin?manual=success-image" : "/admin?manual=success");
+    return redirect303(parsed.imageUrl || hasUpload ? "/admin?manual=success-image" : "/admin?manual=success");
   } catch (error) {
     const message = error instanceof Error ? error.message : "manual-save-error";
     console.error("manual-product-save", message);

@@ -25,6 +25,7 @@ export async function getAmazonAccessToken() {
       scope: "creatorsapi::default",
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {

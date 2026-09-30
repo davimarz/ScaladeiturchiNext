@@ -1,8 +1,8 @@
 import "server-only";
-import { getServerEnv } from "@/lib/env";
+import { getAmazonEnv } from "@/lib/env";
 
 export function getAmazonConfig() {
-  const env = getServerEnv();
+  const env = getAmazonEnv();
   return {
     partnerTag: env.AMAZON_PARTNER_TAG,
     applicationId: env.AMAZON_APPLICATION_ID,

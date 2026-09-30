@@ -1,3 +1,4 @@
+import { isSameOrigin } from "../../../lib/admin-request";
 import { NextRequest, NextResponse } from "next/server";
 import { syncAmazonCatalog } from "../../../lib/catalog-sync";
 import { supabaseAdminFetch } from "../../../lib/supabase/admin";
@@ -16,7 +17,7 @@ function isAdminAuthorized(request: NextRequest) {
 }
 
 function isAuthorized(request: NextRequest) {
-  return isCronAuthorized(request) || (request.method === "POST" && isAdminAuthorized(request));
+  return isCronAuthorized(request) || (request.method === "POST" && isSameOrigin(request) && isAdminAuthorized(request));
 }
 
 function adminRedirect(request: NextRequest, status: "success" | "error") {

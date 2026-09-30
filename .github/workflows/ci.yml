@@ -16,9 +16,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
+      - name: Install pnpm
+        run: npm install --global pnpm@11.25.0
       - name: Install dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
+      - name: Tests
+        run: pnpm test
       - name: Build
-        run: npm run build
+        run: pnpm run build
