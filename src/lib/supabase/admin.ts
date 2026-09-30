@@ -10,9 +10,6 @@ function headers(extra?: HeadersInit) {
     "content-type": "application/json",
   };
 
-  // New Supabase secret keys (sb_secret_...) are opaque API keys, not JWTs.
-  // Sending them as Authorization: Bearer causes PostgREST to reject the request.
-  // Legacy service_role JWTs still require the Authorization header.
   if (!apiKey.startsWith("sb_secret_")) {
     baseHeaders.authorization = `Bearer ${apiKey}`;
   }
@@ -40,5 +37,9 @@ export async function supabaseAdminFetch<T>(
   }
 
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+
+  const text = await response.text();
+  if (!text.trim()) return undefined as T;
+
+  return JSON.parse(text) as T;
 }
