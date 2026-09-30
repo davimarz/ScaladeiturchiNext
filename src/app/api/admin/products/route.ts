@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
 
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function redirect303(path: string) {
-  return new NextResponse(null, {
+  return new Response(null, {
     status: 303,
     headers: { location: path },
   });
@@ -38,6 +38,11 @@ function validImageUrl(value: string) {
   }
 }
 
+type ExistingProduct = {
+  id: string;
+  image_url: string | null;
+};
+
 export async function POST(request: NextRequest) {
   const session = request.cookies.get(adminCookie.name)?.value;
   if (!verifyAdminSessionValue(session)) {
@@ -57,31 +62,53 @@ export async function POST(request: NextRequest) {
   const now = new Date().toISOString();
 
   try {
-    await supabaseAdminFetch("products?on_conflict=asin", {
+    const existing = await supabaseAdminFetch<ExistingProduct[]>(
+      `products?affiliate_url=eq.${encodeURIComponent(affiliateUrl)}&select=id,image_url&limit=1`,
+    );
+
+    const payload = {
+      title,
+      image_url: imageUrl || existing[0]?.image_url || null,
+      amazon_url: affiliateUrl,
+      affiliate_url: affiliateUrl,
+      source: "manual-amazon-link",
+      active: true,
+      updated_at: now,
+    };
+
+    if (existing[0]?.id) {
+      await supabaseAdminFetch(
+        `products?id=eq.${encodeURIComponent(existing[0].id)}`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(payload),
+        },
+      );
+      return redirect303("/admin?manual=updated");
+    }
+
+    await supabaseAdminFetch("products", {
       method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      headers: { Prefer: "return=minimal" },
       body: JSON.stringify({
         asin,
-        title,
+        ...payload,
         category_id: null,
-        image_url: imageUrl || null,
-        amazon_url: affiliateUrl,
-        affiliate_url: affiliateUrl,
         current_price: null,
         list_price: null,
         currency: "EUR",
         discount_percent: null,
         prime: null,
-        source: "manual-amazon-link",
         price_verified_at: null,
-        active: true,
         featured: false,
-        updated_at: now,
       }),
     });
 
     return redirect303("/admin?manual=success");
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "manual-save-error";
+    console.error("manual-product-save", message);
     return redirect303("/admin?manual=error");
   }
 }
