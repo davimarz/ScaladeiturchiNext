@@ -76,7 +76,7 @@ test("falls back to canonical dp links when data-asin is absent", () => {
 
 
 test("recognizes the configured Amazon.it OUTLET page", () => {
-  assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9"), true);
+  assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9&ref_=cct_cg_OutletIT_1b1&pf_rd_p=944e3502-a5e7-48c3-a5d6-330210c1b635&pf_rd_r=8VJYFFY6AFE33ERXY91J"), true);
   assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?node=21955579031"), true);
   assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?node=123456"), false);
   assert.equal(isAmazonOutletUrl("https://example.com/b?node=21955579031"), false);
