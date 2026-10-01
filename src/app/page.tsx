@@ -15,7 +15,7 @@ export default function Home() {
           <span><strong>Scala dei Turchi</strong><small>Offerte Amazon</small></span>
         </a>
         <nav aria-label="Navigazione principale">
-          <a href="#haul">HAUL</a><a href="#vetrina">Vetrina</a><a href="#cerca">Cerca</a>
+          <a href="/haul">HAUL</a><a href="#vetrina">Vetrina</a><a href="#cerca">Cerca</a>
         </nav>
       </header>
 
@@ -36,7 +36,7 @@ export default function Home() {
       <section className="showcase" id="vetrina">
         <div className="sectionHead"><div><p className="eyebrow">ESPLORA</p><h2>Tre modi per trovare ciò che ti serve</h2></div><p>Il catalogo viene letto dal database e resta disponibile anche quando Creators API non è accessibile.</p></div>
         <div className="cards">
-          {demoCards.map(([tag,title,text],index) => <article id={index === 0 ? "haul" : undefined} key={tag}><span className="cardTag">{tag}</span><div className="cardNumber">0{index+1}</div><h3>{title}</h3><p>{text}</p><a href="#cerca">Esplora <span aria-hidden="true">→</span></a></article>)}
+          {demoCards.map(([tag,title,text],index) => <article id={index === 0 ? "haul" : undefined} key={tag}><span className="cardTag">{tag}</span><div className="cardNumber">0{index+1}</div><h3>{title}</h3><p>{text}</p><a href={tag === "HAUL" ? "/haul" : "#cerca"}>Esplora <span aria-hidden="true">→</span></a></article>)}
         </div>
       </section>
 
