@@ -13,7 +13,7 @@ const MAX_HTML_BYTES = 15 * 1024 * 1024;
 
 function redirect(status: string, count?: number) {
   const suffix = count == null ? "" : `&outlet_count=${count}`;
-  return new Response(null, { status: 303, headers: { location: `/admin?outlet_import=${status}${suffix}` } });
+  return new Response(null, { status: 303, headers: { location: `/admin/outlet?outlet_import=${status}${suffix}` } });
 }
 
 function affiliateUrl(asin: string) {
