@@ -164,7 +164,7 @@ export default async function AdminPage({
           <input id="haul-html" name="html_file" type="file" accept=".html,.htm,text/html" />
           <button type="submit">Importa / aggiorna HAUL</button>
         </form>
-        <p className="adminHint">Se non selezioni un file, il sistema tenta di leggere direttamente l'URL. Se Amazon risponde 403/429/503, salva la pagina HAUL dal browser e carica il file HTML mantenendo lo stesso URL o sostituendolo con un altro link HAUL.</p>
+        <p className="adminHint">Se non selezioni un file, il sistema tenta di leggere direttamente l&apos;URL. Se Amazon risponde 403/429/503, salva la pagina HAUL dal browser e carica il file HTML mantenendo lo stesso URL o sostituendolo con un altro link HAUL.</p>
         <div className="adminActions"><Link href="/haul">Apri pagina HAUL</Link></div>
       </section>
 
