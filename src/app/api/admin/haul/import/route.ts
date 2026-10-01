@@ -91,7 +91,10 @@ export async function POST(request: NextRequest) {
         list_price: number | null;
         discount_percent: number | null;
         price_verified_at: string | null;
-      }>>(`products?asin=in.(${ids.join(",")})&select=asin,title,image_url,current_price,list_price,discount_percent,price_verified_at`);
+        category_id: string | null;
+        in_haul: boolean;
+        in_outlet: boolean;
+      }>>(`products?asin=in.(${ids.join(",")})&select=asin,title,image_url,current_price,list_price,discount_percent,price_verified_at,category_id,in_haul,in_outlet`);
       existing.forEach((product) => existingByAsin.set(product.asin, product));
     }
 
