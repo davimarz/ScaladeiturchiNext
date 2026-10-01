@@ -92,7 +92,7 @@ export default async function AdminPage({
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.outlet_source_url&select=key,value&limit=1"),
   ]);
   const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
-  const savedOutletUrl = typeof outletSettings[0]?.value === "string" ? outletSettings[0].value : "https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9&ref_=cct_cg_OutletIT_1b1&pf_rd_p=944e3502-a5e7-48c3-a5d6-330210c1b635&pf_rd_r=9NKSNBK7C46YRANF0C89";
+  const savedOutletUrl = typeof outletSettings[0]?.value === "string" ? outletSettings[0].value : "https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9&ref_=cct_cg_OutletIT_1b1&pf_rd_p=944e3502-a5e7-48c3-a5d6-330210c1b635&pf_rd_r=8VJYFFY6AFE33ERXY91J";
 
   return (
     <main className="adminShell">
@@ -103,6 +103,8 @@ export default async function AdminPage({
         </div>
         <div className="adminActions">
           <Link href="/">Apri il sito</Link>
+          <Link href="/admin/haul">HAUL</Link>
+          <Link href="/admin/outlet">OUTLET</Link>
           <form action="/api/admin/logout" method="post">
             <button type="submit">Esci</button>
           </form>
