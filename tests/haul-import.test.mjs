@@ -32,7 +32,7 @@ function loadModule() {
   return exports;
 }
 
-const { parseHaulHtml, isAmazonHaulUrl } = loadModule();
+const { parseHaulHtml, isAmazonHaulUrl, isAmazonOutletUrl } = loadModule();
 
 test("recognizes Amazon.it HAUL URLs only", () => {
   assert.equal(isAmazonHaulUrl("https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb"), true);
@@ -72,4 +72,12 @@ test("falls back to canonical dp links when data-asin is absent", () => {
   const products = parseHaulHtml(html);
   assert.equal(products.length, 1);
   assert.equal(products[0].asin, "B012345678");
+});
+
+
+test("recognizes the configured Amazon.it OUTLET page", () => {
+  assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9"), true);
+  assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?node=21955579031"), true);
+  assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?node=123456"), false);
+  assert.equal(isAmazonOutletUrl("https://example.com/b?node=21955579031"), false);
 });
