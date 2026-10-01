@@ -12,7 +12,7 @@ export default async function AdminHaulPage({ searchParams }: { searchParams: Pr
   const params = await searchParams;
   const [settings, count] = await Promise.all([
     supabaseAdminFetch<Array<{ value: unknown }>>("site_settings?key=eq.haul_source_url&select=value&limit=1"),
-    supabaseAdminFetch<Array<{ count: number }>>("products?in_haul=eq.true&active=eq.true&select=count"),
+    supabaseAdminFetch<Array<{ id: string }>>("products?in_haul=eq.true&active=eq.true&select=id"),
   ]);
   const sourceUrl = typeof settings[0]?.value === "string" ? settings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
 
@@ -23,7 +23,7 @@ export default async function AdminHaulPage({ searchParams }: { searchParams: Pr
     </section>
     <section className="adminPanel">
       <h2>Importazione prodotti HAUL</h2>
-      <p>Prodotti HAUL attivi: {count[0]?.count ?? 0}. Questa raccolta è indipendente da OUTLET.</p>
+      <p>Prodotti HAUL attivi: {count.length}. Questa raccolta è indipendente da OUTLET.</p>
       {params.haul_import === "success" ? <p className="adminNotice">Importazione completata: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
       {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto. Salva la pagina HAUL dal browser e carica il file HTML.</p> : null}
       {params.haul_import && !["success","blocked"].includes(params.haul_import) ? <p className="adminError">Importazione non completata ({params.haul_import}). Puoi riprovare con il file HTML.</p> : null}
