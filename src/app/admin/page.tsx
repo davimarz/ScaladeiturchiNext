@@ -46,6 +46,8 @@ export default async function AdminPage({
     bulk?: string;
     clear?: string;
     page?: string;
+    haul_import?: string;
+    haul_count?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -76,7 +78,7 @@ export default async function AdminPage({
   const imageFailure = returnedPageTitle ? "Amazon ha restituito la pagina «" + returnedPageTitle + "» senza foto del prodotto." : imageHttpStatus ? "Amazon ha risposto con un errore (" + imageHttpStatus + ")." : params.image_error === "blocked" ? "Amazon ha bloccato la lettura automatica della pagina." : params.image_error === "large" ? "La pagina Amazon supera il limite di lettura." : params.image_error === "timeout" ? "Amazon non ha risposto in tempo." : "La foto non è stata trovata nella pagina Amazon.";
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
-  const [runs, products, categories] = await Promise.all([
+  const [runs, products, categories, haulSettings] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -84,7 +86,9 @@ export default async function AdminPage({
       `products?active=eq.true&select=id,asin,title,current_price,list_price,discount_percent,currency,updated_at,active,source,category_id,image_url&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
+    supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.haul_source_url&select=key,value&limit=1"),
   ]);
+  const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
 
   return (
     <main className="adminShell">
@@ -142,6 +146,26 @@ export default async function AdminPage({
         <p className="adminHint">
           Incolla il link e premi “Aggiungi prodotto”: la foto viene cercata automaticamente sulla pagina Amazon. Le immagini già presenti vengono conservate. Il caricamento da PC è soltanto un&apos;alternativa facoltativa.
         </p>
+      </section>
+
+      <section className="adminPanel">
+        <h2>Amazon HAUL</h2>
+        <p>Importa i prodotti nella pagina pubblica HAUL. Il sistema prova prima il link Amazon; se Amazon blocca la richiesta puoi caricare la pagina salvata dal browser in formato HTML.</p>
+        {params.haul_import === "success" ? <p className="adminNotice">Importazione HAUL completata: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
+        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto della pagina HAUL. Salva la pagina dal browser e carica qui il file HTML.</p> : null}
+        {params.haul_import === "empty" ? <p className="adminError">Nel contenuto HAUL non sono stati trovati prodotti riconoscibili.</p> : null}
+        {params.haul_import === "invalid-url" ? <p className="adminError">Inserisci un URL HAUL valido di Amazon.it.</p> : null}
+        {params.haul_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 15 MB.</p> : null}
+        {params.haul_import === "fetch-error" || params.haul_import === "save-error" ? <p className="adminError">Importazione HAUL non completata. Riprova con un file HTML salvato dal browser.</p> : null}
+        <form action="/api/admin/haul/import" method="post" encType="multipart/form-data" className="adminForm">
+          <label htmlFor="haul-url">URL HAUL</label>
+          <input id="haul-url" name="haul_url" type="url" defaultValue={savedHaulUrl} required />
+          <label htmlFor="haul-html">Pagina HAUL salvata (.html) — facoltativa</label>
+          <input id="haul-html" name="html_file" type="file" accept=".html,.htm,text/html" />
+          <button type="submit">Importa / aggiorna HAUL</button>
+        </form>
+        <p className="adminHint">Se non selezioni un file, il sistema tenta di leggere direttamente l&apos;URL. Se Amazon risponde 403/429/503, salva la pagina HAUL dal browser e carica il file HTML mantenendo lo stesso URL o sostituendolo con un altro link HAUL.</p>
+        <div className="adminActions"><Link href="/haul">Apri pagina HAUL</Link></div>
       </section>
 
       <section className="adminPanel">
