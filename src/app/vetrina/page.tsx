@@ -12,7 +12,6 @@ export default function VetrinaPage() {
         <nav aria-label="Navigazione principale">
           <Link href="/vetrina">Vetrina</Link>
           <Link href="/haul">HAUL</Link>
-          <Link href="/outlet">OUTLET</Link>
           <Link href="/">Home</Link>
         </nav>
       </header>
@@ -21,7 +20,7 @@ export default function VetrinaPage() {
         <div>
           <p className="eyebrow">VETRINA</p>
           <h1>Prodotti selezionati</h1>
-          <p className="lead">La vetrina generale contiene solo i prodotti del catalogo standard. I prodotti HAUL e OUTLET restano nelle rispettive pagine dedicate.</p>
+          <p className="lead">La vetrina generale contiene solo i prodotti del catalogo standard. I prodotti HAUL restano nella pagina dedicata.</p>
           <div className="heroActions"><Link className="cta" href="#vetrina-products">Vedi i prodotti</Link><Link className="secondary" href="/">Torna alla home</Link></div>
         </div>
       </section>
