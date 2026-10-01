@@ -1,0 +1,159 @@
+import { allowedAmazonImage } from "./amazon-input";
+
+const ASIN_RE = /^[A-Z0-9]{10}$/;
+
+function decodeEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#8364;|&#x20ac;|&euro;/gi, "€")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+}
+
+function attribute(tag: string, name: string) {
+  return decodeEntities(
+    tag.match(new RegExp("\\s" + name + "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", "i"))
+      ?.slice(1)
+      .find((value) => value !== undefined) ?? "",
+  );
+}
+
+function cleanText(value: string) {
+  return decodeEntities(value.replace(/<script\b[\s\S]*?<\/script>/gi, " ").replace(/<style\b[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function euro(value: string | undefined) {
+  if (!value) return null;
+  const normalized = decodeEntities(value).replace(/\s/g, "").replace(/€/g, "");
+  const number = Number(normalized.includes(",") ? normalized.replace(/\./g, "").replace(",", ".") : normalized);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function findCurrentPrice(fragment: string) {
+  const aPrice = fragment.match(/class=["'][^"']*a-price(?![^"']*a-text-price)[^"']*["'][\s\S]{0,700}?class=["'][^"']*a-offscreen[^"']*["'][^>]*>([^<]+)</i)?.[1];
+  if (aPrice) return euro(aPrice);
+  const whole = fragment.match(/class=["'][^"']*a-price-whole[^"']*["'][^>]*>([^<]+)</i)?.[1];
+  const fraction = fragment.match(/class=["'][^"']*a-price-fraction[^"']*["'][^>]*>([^<]+)</i)?.[1];
+  return whole ? euro(cleanText(whole) + "," + cleanText(fraction ?? "00")) : null;
+}
+
+function findListPrice(fragment: string) {
+  const value = fragment.match(/class=["'][^"']*a-text-price[^"']*["'][\s\S]{0,500}?class=["'][^"']*a-offscreen[^"']*["'][^>]*>([^<]+)</i)?.[1];
+  return euro(value);
+}
+
+function findDiscount(fragment: string) {
+  const explicit =
+    fragment.match(/(?:savingsPercentage|percentage-off|badge)[^>]*>[\s\S]{0,100}?-?\s*([0-9]{1,2})\s*%/i)?.[1] ??
+    cleanText(fragment).match(/-\s*([0-9]{1,2})\s*%/)?.[1];
+  const value = explicit ? Number(explicit) : null;
+  return value && value > 0 && value < 100 ? value : null;
+}
+
+function findTitle(fragment: string, asin: string) {
+  const candidates = [
+    fragment.match(/<h2\b[^>]*>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1],
+    fragment.match(/<span\b[^>]*class=["'][^"']*(?:a-size-base-plus|a-text-normal)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
+    fragment.match(/<a\b[^>]*title=["']([^"']+)["']/i)?.[1],
+  ];
+  for (const candidate of candidates) {
+    const title = cleanText(candidate ?? "").slice(0, 300);
+    if (title && title.length > 3) return title;
+  }
+  for (const [tag] of fragment.matchAll(/<img\b[^>]*>/gi)) {
+    const alt = cleanText(attribute(tag, "alt")).slice(0, 300);
+    if (alt && alt.length > 3) return alt;
+  }
+  return "Prodotto Amazon " + asin;
+}
+
+function findImage(fragment: string) {
+  for (const [tag] of fragment.matchAll(/<img\b[^>]*>/gi)) {
+    for (const name of ["src", "data-src", "data-image-latency"]) {
+      const image = allowedAmazonImage(attribute(tag, name));
+      if (image) return image;
+    }
+  }
+  return null;
+}
+
+export type HaulProduct = {
+  asin: string;
+  title: string;
+  imageUrl: string | null;
+  currentPrice: number | null;
+  listPrice: number | null;
+  discountPercent: number | null;
+};
+
+export function parseHaulHtml(html: string): HaulProduct[] {
+  const markers = [...html.matchAll(/data-asin=["']([A-Z0-9]{10})["']/gi)]
+    .map((match) => ({ asin: match[1].toUpperCase(), index: match.index ?? 0 }))
+    .filter((entry) => ASIN_RE.test(entry.asin));
+
+  const unique = new Map<string, HaulProduct>();
+
+  for (let i = 0; i < markers.length; i++) {
+    const marker = markers[i];
+    if (unique.has(marker.asin)) continue;
+    const end = markers[i + 1]?.index ?? Math.min(html.length, marker.index + 30000);
+    const fragment = html.slice(marker.index, Math.min(end, marker.index + 30000));
+    const currentPrice = findCurrentPrice(fragment);
+    let listPrice = findListPrice(fragment);
+    if (listPrice != null && currentPrice != null && listPrice <= currentPrice) listPrice = null;
+    let discountPercent = findDiscount(fragment);
+    if (discountPercent == null && currentPrice != null && listPrice != null) {
+      discountPercent = Math.round(((listPrice - currentPrice) / listPrice) * 100);
+    }
+
+    unique.set(marker.asin, {
+      asin: marker.asin,
+      title: findTitle(fragment, marker.asin),
+      imageUrl: findImage(fragment),
+      currentPrice,
+      listPrice,
+      discountPercent,
+    });
+  }
+
+  // Some saved Amazon layouts omit data-asin on outer cards. Recover canonical /dp/ links as a fallback.
+  for (const match of html.matchAll(/href=["'][^"']*\/dp\/([A-Z0-9]{10})(?:[/?#"'&]|$)[^"']*["']/gi)) {
+    const asin = match[1].toUpperCase();
+    if (unique.has(asin)) continue;
+    const index = match.index ?? 0;
+    const fragment = html.slice(Math.max(0, index - 4000), Math.min(html.length, index + 12000));
+    const currentPrice = findCurrentPrice(fragment);
+    let listPrice = findListPrice(fragment);
+    if (listPrice != null && currentPrice != null && listPrice <= currentPrice) listPrice = null;
+    let discountPercent = findDiscount(fragment);
+    if (discountPercent == null && currentPrice != null && listPrice != null) {
+      discountPercent = Math.round(((listPrice - currentPrice) / listPrice) * 100);
+    }
+    unique.set(asin, {
+      asin,
+      title: findTitle(fragment, asin),
+      imageUrl: findImage(fragment),
+      currentPrice,
+      listPrice,
+      discountPercent,
+    });
+  }
+
+  return [...unique.values()];
+}
+
+export function isAmazonHaulUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && ["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) && url.pathname.startsWith("/haul");
+  } catch {
+    return false;
+  }
+}
