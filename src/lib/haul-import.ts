@@ -157,3 +157,15 @@ export function isAmazonHaulUrl(value: string) {
     return false;
   }
 }
+
+
+export function isAmazonOutletUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase())) return false;
+    const node = url.searchParams.get("node");
+    return url.pathname === "/b" && node === "21955579031";
+  } catch {
+    return false;
+  }
+}
