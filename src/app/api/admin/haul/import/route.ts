@@ -13,7 +13,7 @@ const MAX_HTML_BYTES = 15 * 1024 * 1024;
 
 function redirect(status: string, count?: number) {
   const suffix = count == null ? "" : `&haul_count=${count}`;
-  return new Response(null, { status: 303, headers: { location: `/admin?haul_import=${status}${suffix}` } });
+  return new Response(null, { status: 303, headers: { location: `/admin/haul?haul_import=${status}${suffix}` } });
 }
 
 function affiliateUrl(asin: string) {
@@ -69,14 +69,6 @@ export async function POST(request: NextRequest) {
   if (!parsed.length) return redirect("empty");
 
   try {
-    const categories = await supabaseAdminFetch<Array<{ id: string }>>("categories?on_conflict=slug", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify([{ slug: "haul", name: "HAUL", sort_order: 0, active: true }]),
-    });
-    const categoryId = categories[0]?.id;
-    if (!categoryId) throw new Error("HAUL category not available");
-
     const existingByAsin = new Map<string, {
       title: string;
       image_url: string | null;
@@ -84,6 +76,9 @@ export async function POST(request: NextRequest) {
       list_price: number | null;
       discount_percent: number | null;
       price_verified_at: string | null;
+      category_id: string | null;
+      in_haul: boolean;
+      in_outlet: boolean;
     }>();
 
     for (let offset = 0; offset < parsed.length; offset += 40) {
@@ -96,7 +91,10 @@ export async function POST(request: NextRequest) {
         list_price: number | null;
         discount_percent: number | null;
         price_verified_at: string | null;
-      }>>(`products?asin=in.(${ids.join(",")})&select=asin,title,image_url,current_price,list_price,discount_percent,price_verified_at`);
+        category_id: string | null;
+        in_haul: boolean;
+        in_outlet: boolean;
+      }>>(`products?asin=in.(${ids.join(",")})&select=asin,title,image_url,current_price,list_price,discount_percent,price_verified_at,category_id,in_haul,in_outlet`);
       existing.forEach((product) => existingByAsin.set(product.asin, product));
     }
 
@@ -107,7 +105,7 @@ export async function POST(request: NextRequest) {
       return {
         asin: product.asin,
         title: product.title.startsWith("Prodotto Amazon ") && existing?.title ? existing.title : product.title,
-        category_id: categoryId,
+        category_id: existing?.category_id ?? null,
         image_url: product.imageUrl ?? existing?.image_url ?? null,
         amazon_url: `https://www.amazon.it/dp/${product.asin}`,
         affiliate_url: affiliateUrl(product.asin),
@@ -117,6 +115,8 @@ export async function POST(request: NextRequest) {
         discount_percent: product.discountPercent ?? existing?.discount_percent ?? null,
         prime: null,
         source: "amazon-haul-html",
+        in_haul: true,
+        in_outlet: existing?.in_outlet ?? false,
         price_verified_at: hasCurrent ? now : existing?.price_verified_at ?? null,
         active: true,
         featured: false,

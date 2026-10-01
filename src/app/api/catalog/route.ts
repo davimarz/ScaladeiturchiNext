@@ -27,25 +27,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const q = safeSearch(searchParams.get("q") ?? "");
   const category = safeSearch(searchParams.get("category") ?? "");
-  const excludedSlugs = (searchParams.get("exclude") ?? "").split(",").map(safeSearch).filter(Boolean).slice(0, 10);
+  const excludeSpecial = (searchParams.get("exclude") ?? "").split(",").map(safeSearch).filter(Boolean);
   const limit = catalogLimit(searchParams.get("limit"));
-
-  let categoryId: string | null = null;
-  let excludedCategoryIds: string[] = [];
-  if (category && category !== "tutte") {
-    const categories = await supabaseAdminFetch<Array<{ id: string }>>(
-      `categories?slug=eq.${encodeURIComponent(category)}&active=eq.true&select=id&limit=1`,
-    );
-    categoryId = categories[0]?.id ?? null;
-    if (!categoryId) return NextResponse.json({ products: [] });
-  }
-
-  if (!categoryId && excludedSlugs.length) {
-    const excluded = await supabaseAdminFetch<Array<{ id: string }>>(
-      `categories?slug=in.(${excludedSlugs.map((slug) => encodeURIComponent(slug)).join(",")})&active=eq.true&select=id`,
-    );
-    excludedCategoryIds = excluded.map((item) => item.id);
-  }
 
   const filters = [
     "active=eq.true",
@@ -55,8 +38,23 @@ export async function GET(request: NextRequest) {
   ];
 
   if (q) filters.push(`title=ilike.*${encodeURIComponent(q)}*`);
-  if (categoryId) filters.push(`category_id=eq.${categoryId}`);
-  else if (excludedCategoryIds.length) filters.push(`or=(category_id.is.null,category_id.not.in.(${excludedCategoryIds.join(",")}))`);
+
+  if (category === "haul") {
+    filters.push("in_haul=eq.true");
+  } else if (category === "outlet") {
+    filters.push("in_outlet=eq.true");
+  } else {
+    if (category && category !== "tutte") {
+      const categories = await supabaseAdminFetch<Array<{ id: string }>>(
+        `categories?slug=eq.${encodeURIComponent(category)}&active=eq.true&select=id&limit=1`,
+      );
+      const categoryId = categories[0]?.id ?? null;
+      if (!categoryId) return NextResponse.json({ products: [] });
+      filters.push(`category_id=eq.${categoryId}`);
+    }
+    if (excludeSpecial.includes("haul")) filters.push("in_haul=eq.false");
+    if (excludeSpecial.includes("outlet")) filters.push("in_outlet=eq.false");
+  }
 
   const products = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
   return NextResponse.json({ products });
