@@ -83,7 +83,7 @@ export default function ProductBrowser() {
   return (
     <section className="catalogSection" id="cerca">
       <div className="catalogHead">
-        <div><p className="eyebrow">CATALOGO</p><h2>Cerca tra i prodotti</h2></div>
+        <div><p className="eyebrow">CATALOGO</p><h2>Cerca tra i prodotti</h2><p className="catalogOrder">Ordinati dal prezzo più basso.</p></div>
         <form className="searchBox" onSubmit={submit}>
           <label className="srOnly" htmlFor="catalog-search">Cerca prodotti</label>
           <input id="catalog-search" type="search" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Es. cuffie, cucina, sport..." />
@@ -110,7 +110,7 @@ export default function ProductBrowser() {
                 {product.image_url ? <Image src={product.image_url} alt={product.title} width={400} height={300} unoptimized /> : <span>Immagine non disponibile</span>}
               </a>
               <div className="productBody">
-                {price?.discount != null ? <span className="discount">{price.fresh ? "" : "Sconto rilevato "}−{price.discount}%</span> : null}
+                {price?.discount != null ? <span className="discount">RISPARMIA {price.discount}%</span> : null}
                 <h3>{product.title}</h3>
                 <div className="priceRow">
                   {price ? <strong>{formatPrice(price.current, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
