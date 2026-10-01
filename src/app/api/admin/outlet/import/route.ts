@@ -7,7 +7,7 @@ import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const DEFAULT_OUTLET_URL = "https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9&ref_=cct_cg_OutletIT_1b1&pf_rd_p=944e3502-a5e7-48c3-a5d6-330210c1b635&pf_rd_r=9NKSNBK7C46YRANF0C89";
+const DEFAULT_OUTLET_URL = "https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9&ref_=cct_cg_OutletIT_1b1&pf_rd_p=944e3502-a5e7-48c3-a5d6-330210c1b635&pf_rd_r=8VJYFFY6AFE33ERXY91J";
 const PARTNER_TAG = "eiapromo-21";
 const MAX_HTML_BYTES = 15 * 1024 * 1024;
 
@@ -69,14 +69,6 @@ export async function POST(request: NextRequest) {
   if (!parsed.length) return redirect("empty");
 
   try {
-    const categories = await supabaseAdminFetch<Array<{ id: string }>>("categories?on_conflict=slug", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify([{ slug: "outlet", name: "OUTLET", sort_order: 1, active: true }]),
-    });
-    const categoryId = categories[0]?.id;
-    if (!categoryId) throw new Error("OUTLET category not available");
-
     const existingByAsin = new Map<string, {
       title: string;
       image_url: string | null;
@@ -84,6 +76,9 @@ export async function POST(request: NextRequest) {
       list_price: number | null;
       discount_percent: number | null;
       price_verified_at: string | null;
+      category_id: string | null;
+      in_haul: boolean;
+      in_outlet: boolean;
     }>();
 
     for (let offset = 0; offset < parsed.length; offset += 40) {
@@ -107,7 +102,7 @@ export async function POST(request: NextRequest) {
       return {
         asin: product.asin,
         title: product.title.startsWith("Prodotto Amazon ") && existing?.title ? existing.title : product.title,
-        category_id: categoryId,
+        category_id: existing?.category_id ?? null,
         image_url: product.imageUrl ?? existing?.image_url ?? null,
         amazon_url: `https://www.amazon.it/dp/${product.asin}`,
         affiliate_url: affiliateUrl(product.asin),
@@ -117,6 +112,8 @@ export async function POST(request: NextRequest) {
         discount_percent: product.discountPercent ?? existing?.discount_percent ?? null,
         prime: null,
         source: "amazon-outlet-html",
+        in_haul: existing?.in_haul ?? false,
+        in_outlet: true,
         price_verified_at: hasCurrent ? now : existing?.price_verified_at ?? null,
         active: true,
         featured: false,
