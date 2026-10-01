@@ -81,3 +81,27 @@ test("recognizes the configured Amazon.it OUTLET page", () => {
   assert.equal(isAmazonOutletUrl("https://www.amazon.it/b?node=123456"), false);
   assert.equal(isAmazonOutletUrl("https://example.com/b?node=21955579031"), false);
 });
+
+
+test("assigns the nearest HAUL section category to each product", () => {
+  const html = `
+    <section><h2>Bestseller</h2>
+      <div data-asin="B012345678"><h2><span>Prodotto bestseller</span></h2></div>
+    </section>
+    <section><h2>Marchi top</h2>
+      <div data-asin="B087654321"><h2><span>Prodotto marchio top</span></h2></div>
+    </section>
+    <section><h2>Offerta top</h2>
+      <div data-asin="B011111111"><h2><span>Prodotto offerta top</span></h2></div>
+    </section>
+    <section><h2>Prezzi da urlo</h2>
+      <div data-asin="B022222222"><h2><span>Prodotto prezzo da urlo</span></h2></div>
+    </section>
+  `;
+  const products = parseHaulHtml(html);
+  const categories = Object.fromEntries(products.map((product) => [product.asin, product.haulCategory]));
+  assert.equal(categories.B012345678, "Bestseller");
+  assert.equal(categories.B087654321, "Marchi top");
+  assert.equal(categories.B011111111, "Offerta top");
+  assert.equal(categories.B022222222, "Prezzi da urlo");
+});
