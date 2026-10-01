@@ -30,7 +30,7 @@ function formatPrice(value: number | null, currency: string) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(value);
 }
 
-export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i prodotti", eyebrow = "CATALOGO", showCategoryChips = true }: { fixedCategory?: string; heading?: string; eyebrow?: string; showCategoryChips?: boolean }) {
+export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i prodotti", eyebrow = "CATALOGO", showCategoryChips = true, excludeCategories = "" }: { fixedCategory?: string; heading?: string; eyebrow?: string; showCategoryChips?: boolean; excludeCategories?: string }) {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState(fixedCategory ?? "tutte");
   const [products, setProducts] = useState<Product[]>([]);
@@ -52,6 +52,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
     const params = new URLSearchParams({ limit: "30" });
     if (selection.q.trim()) params.set("q", selection.q.trim());
     if (selection.category !== "tutte") params.set("category", selection.category);
+    if (!fixedCategory && excludeCategories) params.set("exclude", excludeCategories);
     fetch("/api/catalog?" + params.toString(), { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Impossibile caricare il catalogo.");
@@ -63,7 +64,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
       })
       .finally(() => { if (!controller.signal.aborted && latestRequest.current === requestId) setLoading(false); });
     return () => controller.abort();
-  }, [selection]);
+  }, [selection, fixedCategory, excludeCategories]);
 
   function startSearch(search: string, selectedCategory: string) {
     setLoading(true);

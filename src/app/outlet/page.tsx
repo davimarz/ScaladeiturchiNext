@@ -1,7 +1,7 @@
 import Link from "next/link";
 import ProductBrowser from "../../components/ProductBrowser";
 
-export default function HaulPage() {
+export default function OutletPage() {
   return (
     <main>
       <header className="topbar">
@@ -17,26 +17,26 @@ export default function HaulPage() {
         </nav>
       </header>
 
-      <section className="hero haulHero">
+      <section className="hero">
         <div>
-          <p className="eyebrow">AMAZON HAUL</p>
-          <h1>Prodotti HAUL</h1>
-          <p className="lead">Una pagina dedicata ai prodotti importati dalla sezione HAUL di Amazon Italia. Il catalogo viene aggiornato dall&apos;area amministratore.</p>
-          <div className="heroActions"><Link className="cta" href="#haul-products">Vedi i prodotti</Link><Link className="secondary" href="/">Torna alla home</Link></div>
+          <p className="eyebrow">AMAZON OUTLET</p>
+          <h1>Prodotti OUTLET</h1>
+          <p className="lead">Una pagina dedicata ai prodotti importati dalla sezione Outlet di Amazon Italia, separata dalla Vetrina e da HAUL.</p>
+          <div className="heroActions"><Link className="cta" href="#outlet-products">Vedi i prodotti</Link><Link className="secondary" href="/">Torna alla home</Link></div>
         </div>
         <aside className="heroPanel">
           <span>SEZIONE DEDICATA</span>
-          <strong>HAUL</strong>
-          <p>I link prodotto includono il tag affiliato del sito. Prezzi e sconti vengono mostrati quando disponibili nei dati importati o verificati.</p>
+          <strong>OUTLET</strong>
+          <p>Le schede mostrano prezzo e sconto quando presenti nei dati importati o verificati e usano i link affiliati del sito.</p>
         </aside>
       </section>
 
-      <div id="haul-products">
-        <ProductBrowser fixedCategory="haul" heading="Catalogo HAUL" eyebrow="HAUL" showCategoryChips={false} />
+      <div id="outlet-products">
+        <ProductBrowser fixedCategory="outlet" heading="Catalogo OUTLET" eyebrow="OUTLET" showCategoryChips={false} />
       </div>
 
       <section className="notice"><strong>Trasparenza</strong><p>Scala dei Turchi partecipa al Programma Affiliazione Amazon. Alcuni link ai prodotti possono generare una commissione senza costi aggiuntivi per chi acquista.</p></section>
-      <footer><strong>Scala dei Turchi</strong><span>HAUL · Amazon Italia</span></footer>
+      <footer><strong>Scala dei Turchi</strong><span>OUTLET · Amazon Italia</span></footer>
     </main>
   );
 }
