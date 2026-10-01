@@ -117,7 +117,7 @@ export default function ProductBrowser() {
                   {price?.reference != null ? <del aria-label="Prezzo di riferimento">{formatPrice(price.reference, product.currency)}</del> : null}
                 </div>
                 {price?.reference != null ? <small>Prezzo di riferimento: {formatPrice(price.reference, product.currency)}</small> : null}
-                {price ? <small>{price.fresh ? "Prezzo rilevato" : "Ultimo prezzo rilevato"}: {new Date(price.verifiedAt).toLocaleString("it-IT")}. Prezzo e sconto possono cambiare su Amazon.</small> : <small>Prezzo aggiornato disponibile su Amazon</small>}
+                {price ? <small>{price.fresh ? "Prezzo rilevato" : "Ultimo prezzo rilevato"}: {new Date(price.verifiedAt).toLocaleString("it-IT")}.</small> : <small>Prezzo aggiornato disponibile su Amazon</small>}
                 <a className="buyButton" href={`/api/click/${product.id}`} target="_blank" rel="sponsored noopener noreferrer">Vedi su Amazon</a>
               </div>
             </article>
