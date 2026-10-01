@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       category_id: string | null;
       in_haul: boolean;
       in_outlet: boolean;
+      haul_category: string | null;
     }>();
 
     for (let offset = 0; offset < parsed.length; offset += 40) {
@@ -80,7 +81,8 @@ export async function POST(request: NextRequest) {
         category_id: string | null;
         in_haul: boolean;
         in_outlet: boolean;
-      }>>(`products?asin=in.(${ids.join(",")})&select=asin,title,image_url,current_price,list_price,discount_percent,price_verified_at,category_id,in_haul,in_outlet`);
+        haul_category: string | null;
+      }>>(`products?asin=in.(${ids.join(",")})&select=asin,title,image_url,current_price,list_price,discount_percent,price_verified_at,category_id,in_haul,in_outlet,haul_category`);
       existing.forEach((product) => existingByAsin.set(product.asin, product));
     }
 
@@ -103,6 +105,7 @@ export async function POST(request: NextRequest) {
         source: "amazon-haul-html",
         in_haul: true,
         in_outlet: existing?.in_outlet ?? false,
+        haul_category: product.haulCategory ?? existing?.haul_category ?? null,
         price_verified_at: hasCurrent ? now : existing?.price_verified_at ?? null,
         active: true,
         featured: false,
