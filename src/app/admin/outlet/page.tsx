@@ -14,7 +14,7 @@ export default async function AdminOutletPage({ searchParams }: { searchParams: 
   const params = await searchParams;
   const [settings, count] = await Promise.all([
     supabaseAdminFetch<Array<{ value: unknown }>>("site_settings?key=eq.outlet_source_url&select=value&limit=1"),
-    supabaseAdminFetch<Array<{ count: number }>>("products?in_outlet=eq.true&active=eq.true&select=count"),
+    supabaseAdminFetch<Array<{ id: string }>>("products?in_outlet=eq.true&active=eq.true&select=id"),
   ]);
   const sourceUrl = typeof settings[0]?.value === "string" ? settings[0].value : DEFAULT_OUTLET_URL;
 
@@ -25,7 +25,7 @@ export default async function AdminOutletPage({ searchParams }: { searchParams: 
     </section>
     <section className="adminPanel">
       <h2>Importazione prodotti OUTLET</h2>
-      <p>Prodotti OUTLET attivi: {count[0]?.count ?? 0}. Questa raccolta è indipendente da HAUL.</p>
+      <p>Prodotti OUTLET attivi: {count.length}. Questa raccolta è indipendente da HAUL.</p>
       {params.outlet_import === "success" ? <p className="adminNotice">Importazione completata: {params.outlet_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
       {params.outlet_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto. Salva la pagina OUTLET dal browser e carica il file HTML.</p> : null}
       {params.outlet_import && !["success","blocked"].includes(params.outlet_import) ? <p className="adminError">Importazione non completata ({params.outlet_import}). Puoi riprovare con il file HTML.</p> : null}
