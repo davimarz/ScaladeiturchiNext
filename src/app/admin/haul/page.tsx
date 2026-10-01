@@ -26,15 +26,15 @@ export default async function AdminHaulPage({ searchParams }: { searchParams: Pr
       <p>Prodotti HAUL attivi: {count.length}. Questa raccolta è indipendente da OUTLET.</p>
       {params.haul_import === "success" ? <p className="adminNotice">Importazione completata: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
       {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto. Salva la pagina HAUL dal browser e carica il file HTML.</p> : null}
-      {params.haul_import && !["success","blocked"].includes(params.haul_import) ? <p className="adminError">Importazione non completata ({params.haul_import}). Puoi riprovare con il file HTML.</p> : null}
+      {params.haul_import && !["success","blocked"].includes(params.haul_import) ? <p className="adminError">Importazione non completata ({params.haul_import}). Se il browser automatico è stato bloccato, puoi riprovare con il file HTML della pagina HAUL dopo averla scorsa fino in fondo.</p> : null}
       <form action="/api/admin/haul/import" method="post" encType="multipart/form-data" className="adminForm">
         <label htmlFor="haul-url">Link HAUL Amazon</label>
         <input id="haul-url" name="haul_url" type="url" defaultValue={sourceUrl} required />
         <label htmlFor="haul-html">File HTML salvato dal browser (facoltativo)</label>
         <input id="haul-html" name="html_file" type="file" accept=".html,.htm,text/html" />
-        <button type="submit">Importa automaticamente prodotti HAUL</button>
+        <button type="submit">Scansiona tutta la pagina e importa HAUL</button>
       </form>
-      <p className="adminHint">Puoi sostituire il link predefinito con un altro URL HAUL Amazon.it. Se non carichi un file, il sistema tenta l&apos;importazione direttamente dal link.</p>
+      <p className="adminHint">Puoi sostituire il link predefinito con un altro URL HAUL Amazon.it. Se non carichi un file, il sistema apre automaticamente HAUL con un browser, scorre la pagina fino a quando non trova più nuovi prodotti e poi importa tutti gli ASIN rilevati.</p>
     </section>
   </main>;
 }
