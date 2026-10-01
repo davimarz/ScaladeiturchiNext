@@ -84,6 +84,26 @@ function findImage(fragment: string) {
   return null;
 }
 
+const HAUL_CATEGORY_LABELS = [
+  ["bestseller", "Bestseller"],
+  ["best seller", "Bestseller"],
+  ["marchi top", "Marchi top"],
+  ["top brands", "Marchi top"],
+  ["offerta top", "Offerta top"],
+  ["offerte top", "Offerta top"],
+  ["prezzi da urlo", "Prezzi da urlo"],
+] as const;
+
+function findHaulCategory(context: string) {
+  const text = cleanText(context).toLowerCase();
+  let best: { index: number; label: string } | null = null;
+  for (const [needle, label] of HAUL_CATEGORY_LABELS) {
+    const index = text.lastIndexOf(needle);
+    if (index >= 0 && (!best || index > best.index)) best = { index, label };
+  }
+  return best?.label ?? null;
+}
+
 export type HaulProduct = {
   asin: string;
   title: string;
@@ -91,6 +111,7 @@ export type HaulProduct = {
   currentPrice: number | null;
   listPrice: number | null;
   discountPercent: number | null;
+  haulCategory: string | null;
 };
 
 export function parseHaulHtml(html: string): HaulProduct[] {
@@ -105,6 +126,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
     if (unique.has(marker.asin)) continue;
     const end = markers[i + 1]?.index ?? Math.min(html.length, marker.index + 30000);
     const fragment = html.slice(marker.index, Math.min(end, marker.index + 30000));
+    const categoryContext = html.slice(Math.max(0, marker.index - 16000), Math.min(end, marker.index + 2500));
     const currentPrice = findCurrentPrice(fragment);
     let listPrice = findListPrice(fragment);
     if (listPrice != null && currentPrice != null && listPrice <= currentPrice) listPrice = null;
@@ -120,6 +142,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
       currentPrice,
       listPrice,
       discountPercent,
+      haulCategory: findHaulCategory(categoryContext),
     });
   }
 
@@ -129,6 +152,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
     if (unique.has(asin)) continue;
     const index = match.index ?? 0;
     const fragment = html.slice(Math.max(0, index - 4000), Math.min(html.length, index + 12000));
+    const categoryContext = html.slice(Math.max(0, index - 16000), Math.min(html.length, index + 2500));
     const currentPrice = findCurrentPrice(fragment);
     let listPrice = findListPrice(fragment);
     if (listPrice != null && currentPrice != null && listPrice <= currentPrice) listPrice = null;
@@ -143,6 +167,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
       currentPrice,
       listPrice,
       discountPercent,
+      haulCategory: findHaulCategory(categoryContext),
     });
   }
 
