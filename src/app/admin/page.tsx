@@ -3,6 +3,7 @@ import Image from "next/image";
 import { MANUAL_SOURCES } from "../../lib/product-validation";
 import { cookies } from "next/headers";
 import DeleteProductButton from "../../components/DeleteProductButton";
+import AdminCatalogActions from "../../components/AdminCatalogActions";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
 
@@ -173,17 +174,7 @@ export default async function AdminPage({
 
       <section className="adminPanel">
         <h2>Prodotti nel catalogo</h2>
-        <form action="/api/admin/products/clear" method="post" className="adminDangerZone">
-          <strong>Gestione catalogo</strong>
-          <p>Svuota elimina tutti i prodotti, senza toccare categorie, configurazione Amazon o impostazioni.</p>
-          <input name="confirm" placeholder='Scrivi "SVUOTA CATALOGO"' aria-label="Conferma svuota catalogo" required />
-          <button type="submit" className="dangerButton">Svuota catalogo</button>
-        </form>
-        <form id="bulk-products-form" action="/api/admin/products/bulk-delete" method="post">
-          <div className="adminActions">
-            <label><input type="checkbox" id="select-all-products" /> Seleziona tutti in questa pagina</label>
-            <button type="submit" className="dangerButton">Elimina selezionati</button>
-          </div>
+        <AdminCatalogActions />
         <nav className="adminActions" aria-label="Pagine del catalogo">
           {page > 1 ? <Link href={"/admin?page=" + (page - 1)}>← Precedenti</Link> : null}
           <span>Pagina {page}</span>
@@ -209,7 +200,7 @@ export default async function AdminPage({
             <tbody>
               {products.map((product) => (
                 <tr key={product.id}>
-                  <td><input type="checkbox" name="ids" value={product.id} className="product-select" aria-label={"Seleziona " + product.title} /></td>
+                  <td><input type="checkbox" name="ids" value={product.id} className="product-select" form="bulk-products-form" aria-label={"Seleziona " + product.title} /></td>
                   <td>{product.image_url ? <Image src={product.image_url} alt={product.title} width={72} height={72} unoptimized style={{ objectFit: "contain" }} /> : "Foto non disponibile"}</td>
                   <td>{product.asin}</td>
                   <td>{product.title}</td>
@@ -250,8 +241,6 @@ export default async function AdminPage({
             </tbody>
           </table>
         </div>
-        </form>
-        <script dangerouslySetInnerHTML={{__html: `document.addEventListener("change",function(e){if(e.target&&e.target.id==="select-all-products"){document.querySelectorAll(".product-select").forEach(function(x){x.checked=e.target.checked})}});document.getElementById("bulk-products-form")?.addEventListener("submit",function(e){if(!document.querySelector(".product-select:checked")||!confirm("Eliminare definitivamente i prodotti selezionati?"))e.preventDefault()});document.querySelector(".adminDangerZone")?.addEventListener("submit",function(e){if(!confirm("Confermi di voler eliminare definitivamente TUTTI i prodotti dal catalogo?"))e.preventDefault()});`}} />
       </section>
     </main>
   );
