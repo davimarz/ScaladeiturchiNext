@@ -1,0 +1,75 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import ts from "typescript";
+
+function loadModule() {
+  const source = ts.transpileModule(
+    readFileSync(new URL("../src/lib/haul-import.ts", import.meta.url), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+  ).outputText;
+  const exports = {};
+  vm.runInNewContext(source, {
+    exports,
+    URL,
+    require(name) {
+      if (name.includes("amazon-input")) {
+        return {
+          allowedAmazonImage(value) {
+            try {
+              const url = new URL(value);
+              return url.hostname === "m.media-amazon.com" ? url.toString() : null;
+            } catch {
+              return null;
+            }
+          },
+        };
+      }
+      throw new Error("Unexpected import " + name);
+    },
+  });
+  return exports;
+}
+
+const { parseHaulHtml, isAmazonHaulUrl } = loadModule();
+
+test("recognizes Amazon.it HAUL URLs only", () => {
+  assert.equal(isAmazonHaulUrl("https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb"), true);
+  assert.equal(isAmazonHaulUrl("https://www.amazon.it/haul/deals"), true);
+  assert.equal(isAmazonHaulUrl("https://www.amazon.it/dp/B012345678"), false);
+  assert.equal(isAmazonHaulUrl("https://example.com/haul/store"), false);
+});
+
+test("extracts HAUL products with image, prices and discount", () => {
+  const html = `
+    <div data-asin="B012345678">
+      <h2><span>Prodotto HAUL Uno</span></h2>
+      <img src="https://m.media-amazon.com/images/I/test1.jpg" alt="Prodotto HAUL Uno">
+      <span class="a-price"><span class="a-offscreen">9,40 €</span></span>
+      <span class="a-text-price"><span class="a-offscreen">14,49 €</span></span>
+      <span class="savingsPercentage">-35%</span>
+    </div>
+    <div data-asin="B087654321">
+      <h2><span>Prodotto HAUL Due</span></h2>
+      <img src="https://m.media-amazon.com/images/I/test2.jpg">
+      <span class="a-price"><span class="a-offscreen">12,99 €</span></span>
+    </div>
+  `;
+  const products = parseHaulHtml(html);
+  assert.equal(products.length, 2);
+  assert.equal(products[0].asin, "B012345678");
+  assert.equal(products[0].title, "Prodotto HAUL Uno");
+  assert.equal(products[0].currentPrice, 9.4);
+  assert.equal(products[0].listPrice, 14.49);
+  assert.equal(products[0].discountPercent, 35);
+  assert.equal(products[1].currentPrice, 12.99);
+  assert.equal(products[1].discountPercent, null);
+});
+
+test("falls back to canonical dp links when data-asin is absent", () => {
+  const html = '<a href="https://www.amazon.it/example/dp/B012345678"><img src="https://m.media-amazon.com/images/I/test.jpg" alt="Fallback HAUL"></a>';
+  const products = parseHaulHtml(html);
+  assert.equal(products.length, 1);
+  assert.equal(products[0].asin, "B012345678");
+});
