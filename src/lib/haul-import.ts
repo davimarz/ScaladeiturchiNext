@@ -126,7 +126,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
     if (unique.has(marker.asin)) continue;
     const end = markers[i + 1]?.index ?? Math.min(html.length, marker.index + 30000);
     const fragment = html.slice(marker.index, Math.min(end, marker.index + 30000));
-    const categoryContext = html.slice(Math.max(0, marker.index - 16000), Math.min(end, marker.index + 2500));
+    const categoryContext = html.slice(Math.max(0, marker.index - 16000), marker.index);
     const currentPrice = findCurrentPrice(fragment);
     let listPrice = findListPrice(fragment);
     if (listPrice != null && currentPrice != null && listPrice <= currentPrice) listPrice = null;
@@ -152,7 +152,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
     if (unique.has(asin)) continue;
     const index = match.index ?? 0;
     const fragment = html.slice(Math.max(0, index - 4000), Math.min(html.length, index + 12000));
-    const categoryContext = html.slice(Math.max(0, index - 16000), Math.min(html.length, index + 2500));
+    const categoryContext = html.slice(Math.max(0, index - 16000), index);
     const currentPrice = findCurrentPrice(fragment);
     let listPrice = findListPrice(fragment);
     if (listPrice != null && currentPrice != null && listPrice <= currentPrice) listPrice = null;
