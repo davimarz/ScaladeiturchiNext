@@ -1,5 +1,6 @@
 import "server-only";
 import { getAmazonItems, searchAmazonItems } from "./amazon/client";
+import { fetchAmazonProductOffer } from "./amazon-page-offer";
 import { supabaseAdminFetch } from "./supabase/admin";
 
 type OfferListing = {
@@ -51,7 +52,52 @@ function mapProduct(item: AmazonCatalogItem, categoryId: string) {
   };
 }
 
-export async function syncAmazonCatalog() {
+function isCreatorsEligibilityError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /AssociateNotEligible|eligibility requirements|Amazon Creators API failed:\s*403/i.test(message);
+}
+
+async function syncExistingFromAmazonPages() {
+  const existing = await supabaseAdminFetch<Array<{ asin: string }>>(
+    "products?active=eq.true&select=asin&order=updated_at.asc&limit=500",
+  );
+  let updated = 0;
+
+  for (let offset = 0; offset < existing.length; offset += 4) {
+    const batch = existing.slice(offset, offset + 4);
+    const results = await Promise.allSettled(
+      batch.map(async ({ asin }) => {
+        const offer = await fetchAmazonProductOffer(asin);
+        if (!offer) return false;
+
+        const now = new Date().toISOString();
+        const payload: Record<string, unknown> = {
+          current_price: offer.currentPrice,
+          currency: offer.currency,
+          price_verified_at: now,
+          updated_at: now,
+        };
+
+        if (offer.listPrice != null && offer.discountPercent != null) {
+          payload.list_price = offer.listPrice;
+          payload.discount_percent = offer.discountPercent;
+        }
+
+        await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(asin)}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify(payload),
+        });
+        return true;
+      }),
+    );
+    updated += results.filter((result) => result.status === "fulfilled" && result.value).length;
+  }
+
+  return { productsSeen: existing.length, productsUpdated: updated };
+}
+
+async function syncViaCreatorsApi() {
   const categories = await supabaseAdminFetch<Array<{ id: string; slug: string }>>(
     "categories?on_conflict=slug",
     {
@@ -84,23 +130,19 @@ export async function syncAmazonCatalog() {
 
     if (!rows.length) continue;
 
-    await supabaseAdminFetch(
-      "products?on_conflict=asin",
-      {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify(rows),
-      },
-    );
+    await supabaseAdminFetch("products?on_conflict=asin", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(rows),
+    });
     updated += rows.length;
   }
 
-  // Refresh every existing catalog ASIN as well, including products imported from HTML.
-  // Creators API is authoritative for current price, saving basis and savings percentage.
   const existing = await supabaseAdminFetch<Array<{ asin: string; category_id: string | null }>>(
     "products?active=eq.true&select=asin,category_id&order=updated_at.asc&limit=500",
   );
   const categoryByAsin = new Map(existing.map((product) => [product.asin, product.category_id]));
+
   for (let offset = 0; offset < existing.length; offset += 10) {
     const ids = existing.slice(offset, offset + 10).map((product) => product.asin);
     const result = await getAmazonItems(ids);
@@ -110,6 +152,7 @@ export async function syncAmazonCatalog() {
       .map((row) => ({ ...row, category_id: row.category_id || null }));
     seen += result.items.length;
     if (!rows.length) continue;
+
     await supabaseAdminFetch("products?on_conflict=asin", {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -119,4 +162,14 @@ export async function syncAmazonCatalog() {
   }
 
   return { productsSeen: seen, productsUpdated: updated };
+}
+
+export async function syncAmazonCatalog() {
+  try {
+    return await syncViaCreatorsApi();
+  } catch (error) {
+    if (!isCreatorsEligibilityError(error)) throw error;
+    console.warn("amazon-creators-api-fallback", error instanceof Error ? error.message : String(error));
+    return syncExistingFromAmazonPages();
+  }
 }

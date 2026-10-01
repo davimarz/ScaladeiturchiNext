@@ -146,6 +146,12 @@ export default async function AdminPage({
 
       <section className="adminPanel">
         <h2>Ultime sincronizzazioni API</h2>
+        <p>Aggiorna prezzi, prezzi di riferimento e sconti. La Creators API resta prioritaria; se Amazon restituisce un errore di idoneità, viene usato il controllo diretto delle pagine prodotto.</p>
+        {params.sync === "success" ? <p className="adminNotice">Sincronizzazione completata.</p> : null}
+        {params.sync === "error" ? <p className="adminError">Sincronizzazione non completata. Controlla il dettaglio nella tabella qui sotto.</p> : null}
+        <form action="/api/admin/sync" method="post" className="adminActions">
+          <button type="submit">Aggiorna prezzi e sconti ora</button>
+        </form>
         <div className="adminTableWrap">
           <table className="adminTable">
             <thead>
