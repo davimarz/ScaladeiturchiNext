@@ -43,14 +43,15 @@ export async function GET(request: NextRequest) {
     filters.push("in_haul=eq.true");
   } else if (category === "outlet") {
     filters.push("in_outlet=eq.true");
-  } else if (category && category !== "tutte") {
-    const categories = await supabaseAdminFetch<Array<{ id: string }>>(
-      `categories?slug=eq.${encodeURIComponent(category)}&active=eq.true&select=id&limit=1`,
-    );
-    const categoryId = categories[0]?.id ?? null;
-    if (!categoryId) return NextResponse.json({ products: [] });
-    filters.push(`category_id=eq.${categoryId}`);
   } else {
+    if (category && category !== "tutte") {
+      const categories = await supabaseAdminFetch<Array<{ id: string }>>(
+        `categories?slug=eq.${encodeURIComponent(category)}&active=eq.true&select=id&limit=1`,
+      );
+      const categoryId = categories[0]?.id ?? null;
+      if (!categoryId) return NextResponse.json({ products: [] });
+      filters.push(`category_id=eq.${categoryId}`);
+    }
     if (excludeSpecial.includes("haul")) filters.push("in_haul=eq.false");
     if (excludeSpecial.includes("outlet")) filters.push("in_outlet=eq.false");
   }
