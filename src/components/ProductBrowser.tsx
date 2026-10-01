@@ -30,9 +30,9 @@ function formatPrice(value: number | null, currency: string) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(value);
 }
 
-export default function ProductBrowser() {
+export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i prodotti", eyebrow = "CATALOGO", showCategoryChips = true }: { fixedCategory?: string; heading?: string; eyebrow?: string; showCategoryChips?: boolean }) {
   const [q, setQ] = useState("");
-  const [category, setCategory] = useState("tutte");
+  const [category, setCategory] = useState(fixedCategory ?? "tutte");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -43,7 +43,7 @@ export default function ProductBrowser() {
     return () => clearInterval(timer);
   }, []);
 
-  const [selection, setSelection] = useState({ q: "", category: "tutte", revision: 0 });
+  const [selection, setSelection] = useState({ q: "", category: fixedCategory ?? "tutte", revision: 0 });
   const latestRequest = useRef(0);
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export default function ProductBrowser() {
   return (
     <section className="catalogSection" id="cerca">
       <div className="catalogHead">
-        <div><p className="eyebrow">CATALOGO</p><h2>Cerca tra i prodotti</h2><p className="catalogOrder">Ordinati dal prezzo più basso.</p></div>
+        <div><p className="eyebrow">{eyebrow}</p><h2>{heading}</h2><p className="catalogOrder">Ordinati dal prezzo più basso.</p></div>
         <form className="searchBox" onSubmit={submit}>
           <label className="srOnly" htmlFor="catalog-search">Cerca prodotti</label>
           <input id="catalog-search" type="search" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Es. cuffie, cucina, sport..." />
@@ -91,11 +91,11 @@ export default function ProductBrowser() {
         </form>
       </div>
 
-      <div className="chips" aria-label="Categorie">
+      {showCategoryChips ? <div className="chips" aria-label="Categorie">
         {categories.map(([slug, label]) => (
           <button className={category === slug ? "active" : ""} type="button" key={slug} onClick={() => selectCategory(slug)}>{label}</button>
         ))}
-      </div>
+      </div> : null}
 
       {loading && <p className="catalogState">Caricamento prodotti…</p>}
       {error && <p className="catalogState">{error}</p>}
