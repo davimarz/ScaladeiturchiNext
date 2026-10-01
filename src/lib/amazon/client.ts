@@ -76,3 +76,30 @@ export async function searchAmazonItems(keywords: string, itemCount = 10) {
     searchURL: data.searchResult?.searchURL,
   };
 }
+
+
+type GetItemsResponse = {
+  itemsResult?: { items?: AmazonItem[] };
+  errors?: Array<{ code?: string; message?: string }>;
+};
+
+export async function getAmazonItems(itemIds: string[]) {
+  const ids = [...new Set(itemIds.map((id) => id.trim().toUpperCase()).filter((id) => /^[A-Z0-9]{10}$/.test(id)))].slice(0, 10);
+  if (!ids.length) return { items: [] };
+
+  const data = await amazonRequest<GetItemsResponse>("getItems", {
+    itemIds: ids,
+    languagesOfPreference: ["it_IT"],
+    currencyOfPreference: "EUR",
+    resources: [
+      "images.primary.medium",
+      "itemInfo.title",
+      "offersV2.listings.price",
+    ],
+  });
+
+  if (data.errors?.length && !data.itemsResult?.items?.length) {
+    throw new Error(data.errors.map((error) => error.message || error.code || "Amazon error").join("; "));
+  }
+  return { items: data.itemsResult?.items ?? [] };
+}

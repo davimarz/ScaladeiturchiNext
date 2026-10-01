@@ -1,5 +1,5 @@
 import "server-only";
-import { searchAmazonItems } from "./amazon/client";
+import { getAmazonItems, searchAmazonItems } from "./amazon/client";
 import { supabaseAdminFetch } from "./supabase/admin";
 
 type OfferListing = {
@@ -92,6 +92,29 @@ export async function syncAmazonCatalog() {
         body: JSON.stringify(rows),
       },
     );
+    updated += rows.length;
+  }
+
+  // Refresh every existing catalog ASIN as well, including products imported from HTML.
+  // Creators API is authoritative for current price, saving basis and savings percentage.
+  const existing = await supabaseAdminFetch<Array<{ asin: string; category_id: string | null }>>(
+    "products?active=eq.true&select=asin,category_id&order=updated_at.asc&limit=500",
+  );
+  const categoryByAsin = new Map(existing.map((product) => [product.asin, product.category_id]));
+  for (let offset = 0; offset < existing.length; offset += 10) {
+    const ids = existing.slice(offset, offset + 10).map((product) => product.asin);
+    const result = await getAmazonItems(ids);
+    const rows = (result.items as AmazonCatalogItem[])
+      .map((item) => mapProduct(item, categoryByAsin.get(item.asin) ?? ""))
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .map((row) => ({ ...row, category_id: row.category_id || null }));
+    seen += result.items.length;
+    if (!rows.length) continue;
+    await supabaseAdminFetch("products?on_conflict=asin", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(rows),
+    });
     updated += rows.length;
   }
 
