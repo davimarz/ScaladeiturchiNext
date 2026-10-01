@@ -19,11 +19,11 @@ export default async function AdminHaulPage({ searchParams }: { searchParams: Pr
   return <main className="adminShell">
     <section className="adminHeader">
       <div><p className="eyebrow">AMMINISTRAZIONE</p><h1>HAUL</h1></div>
-      <div className="adminActions"><Link href="/admin">Dashboard</Link><Link href="/admin/outlet">OUTLET</Link><Link href="/haul">Pagina pubblica</Link></div>
+      <div className="adminActions"><Link href="/admin">Dashboard</Link><Link href="/haul">Pagina pubblica</Link></div>
     </section>
     <section className="adminPanel">
       <h2>Importazione prodotti HAUL</h2>
-      <p>Prodotti HAUL attivi: {count.length}. Questa raccolta è indipendente da OUTLET.</p>
+      <p>Prodotti HAUL attivi: {count.length}.</p>
       {params.haul_import === "success" ? <p className="adminNotice">Importazione completata: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
       {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto. Salva la pagina HAUL dal browser e carica il file HTML.</p> : null}
       {params.haul_import && !["success","blocked"].includes(params.haul_import) ? <p className="adminError">Importazione non completata ({params.haul_import}). Se il browser automatico è stato bloccato, puoi riprovare con il file HTML della pagina HAUL dopo averla scorsa fino in fondo.</p> : null}
