@@ -2,14 +2,16 @@ import { NextRequest } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../../lib/admin-auth";
 import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonHaulUrl, parseHaulHtml } from "../../../../../lib/haul-import";
+import { fetchHaulWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 180;
 
 const DEFAULT_HAUL_URL = "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
 const PARTNER_TAG = "eiapromo-21";
-const MAX_HTML_BYTES = 15 * 1024 * 1024;
+const MAX_HTML_BYTES = 40 * 1024 * 1024;
 
 function redirect(status: string, count?: number) {
   const suffix = count == null ? "" : `&haul_count=${count}`;
@@ -20,24 +22,6 @@ function affiliateUrl(asin: string) {
   const url = new URL(`https://www.amazon.it/dp/${asin}`);
   url.searchParams.set("tag", process.env.AMAZON_PARTNER_TAG || PARTNER_TAG);
   return url.toString();
-}
-
-async function fetchHaulHtml(url: string) {
-  const response = await fetch(url, {
-    cache: "no-store",
-    redirect: "follow",
-    signal: AbortSignal.timeout(15000),
-    headers: {
-      accept: "text/html",
-      "accept-language": "it-IT,it;q=0.9",
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36",
-    },
-  });
-  if (!response.ok) throw new Error("Amazon HTTP " + response.status);
-  if (!response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon response is not HTML");
-  const buffer = await response.arrayBuffer();
-  if (buffer.byteLength > MAX_HTML_BYTES) throw new Error("Amazon HAUL page too large");
-  return new TextDecoder().decode(buffer);
 }
 
 export async function POST(request: NextRequest) {
@@ -56,13 +40,15 @@ export async function POST(request: NextRequest) {
       if (htmlFile.size > MAX_HTML_BYTES || !/\.html?$/i.test(htmlFile.name)) return redirect("invalid-file");
       html = await htmlFile.text();
     } else {
-      html = await fetchHaulHtml(sourceUrl);
+      const browserResult = await fetchHaulWithFullScroll(sourceUrl);
+      html = browserResult.html;
+      console.info("haul-full-scroll", { asinCount: browserResult.asinCount, scrolls: browserResult.scrolls });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Amazon HAUL fetch failed";
-    console.warn("haul-import-fetch", message);
-    if (/HTTP 403|HTTP 429|HTTP 503|blocked/i.test(message)) return redirect("blocked");
-    return redirect("fetch-error");
+    const message = error instanceof Error ? error.message : "Amazon HAUL browser scan failed";
+    console.warn("haul-import-browser", message);
+    if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return redirect("blocked");
+    return redirect("browser-error");
   }
 
   const parsed = parseHaulHtml(html);
