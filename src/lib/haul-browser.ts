@@ -1,8 +1,5 @@
 import "server-only";
-import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
 
-const ASIN_RE = /^[A-Z0-9]{10}$/i;
 const MAX_SCROLLS = 60;
 const STABLE_ROUNDS_TO_STOP = 5;
 const WAIT_AFTER_SCROLL_MS = 1100;
@@ -13,17 +10,42 @@ export type HaulBrowserResult = {
   scrolls: number;
 };
 
+let cachedExecutablePath: string | null = null;
+let executablePathPromise: Promise<string> | null = null;
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function getChromiumExecutablePath() {
+  if (cachedExecutablePath) return cachedExecutablePath;
+  if (!executablePathPromise) {
+    executablePathPromise = (async () => {
+      const chromium = (await import("@sparticuz/chromium-min")).default;
+      const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+      if (!host) throw new Error("Vercel Chromium pack URL is unavailable");
+      const packUrl = `https://${host}/chromium-pack.tar`;
+      const executablePath = await chromium.executablePath(packUrl);
+      cachedExecutablePath = executablePath;
+      return executablePath;
+    })().catch((error) => {
+      executablePathPromise = null;
+      throw error;
+    });
+  }
+  return executablePathPromise;
+}
+
 export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserResult> {
+  const chromium = (await import("@sparticuz/chromium-min")).default;
+  const puppeteer = await import("puppeteer-core");
   chromium.setGraphicsMode = false;
+
   const browser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
-    executablePath: await chromium.executablePath(),
-    headless: "shell",
+    executablePath: await getChromiumExecutablePath(),
+    headless: true,
   });
 
   try {
@@ -61,7 +83,7 @@ export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserR
         }
         for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
           const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
-          if (match && /^[A-Z0-9]{10}$/i.test(match[1])) asins.add(match[1].toUpperCase());
+          if (match) asins.add(match[1].toUpperCase());
         }
         return asins.size;
       });
