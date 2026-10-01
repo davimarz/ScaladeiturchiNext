@@ -19,12 +19,12 @@ function loadRoute(path, stubs) {
   return exports;
 }
 function request(form={}) {return {url:"https://site.test/api/admin/login",cookies:{get:()=>({value:"session"})},formData:async()=>new Map(Object.entries(form))};}
-test("both manual sources can be hidden, without deleting database rows",async()=>{
+test("single product deletion removes the database row",async()=>{
   let called;
   const route=loadRoute("src/app/api/admin/products/delete/route.ts",{fetch:async(path,init)=>{called={path,init};return [{id:"ok"}];}});
   const response=await route.POST(request({id:"98e06f33-d699-4fae-9e7a-afbce8585000"}));
-  assert.match(called.path,/source=in\.\(manual-amazon-link,manual-sitestripe-image\)/);
-  assert.equal(called.init.method,"PATCH");assert.equal(JSON.parse(called.init.body).active,false);
+  assert.match(called.path,/products\?id=eq\.98e06f33-d699-4fae-9e7a-afbce8585000/);
+  assert.equal(called.init.method,"DELETE");
   assert.equal(response.headers.get("location"),"/admin?delete=success");
 });
 test("nonexistent products do not claim deletion succeeded",async()=>{
@@ -52,4 +52,25 @@ test("login fails closed when the shared limiter fails",async()=>{
 test("blocked attempts never check the password",async()=>{
   const route=loadRoute("src/app/api/admin/login/route.ts",{limit:async()=>false,auth:{adminPasswordMatches:()=>assert.fail("must not authenticate")}});
   assert.match((await route.POST(request({password:"anything"}))).headers.get("location"),/error=rate-limit$/);
+});
+
+test("bulk deletion deletes only valid selected product ids",async()=>{
+  let called;
+  const route=loadRoute("src/app/api/admin/products/bulk-delete/route.ts",{fetch:async(path,init)=>{called={path,init};}});
+  const formData={getAll:()=>["98e06f33-d699-4fae-9e7a-afbce8585000","invalid"]};
+  const response=await route.POST({cookies:{get:()=>({value:"session"})},formData:async()=>formData});
+  assert.match(called.path,/products\?id=in\.\(98e06f33-d699-4fae-9e7a-afbce8585000\)/);
+  assert.equal(called.init.method,"DELETE");
+  assert.equal(response.headers.get("location"),"/admin?bulk=success");
+});
+
+test("catalog clear requires the explicit confirmation phrase",async()=>{
+  let calls=0;
+  const route=loadRoute("src/app/api/admin/products/clear/route.ts",{fetch:async()=>{calls++;}});
+  const rejected=await route.POST(request({confirm:"NO"}));
+  assert.equal(calls,0);
+  assert.equal(rejected.headers.get("location"),"/admin?clear=confirm");
+  const accepted=await route.POST(request({confirm:"SVUOTA CATALOGO"}));
+  assert.equal(calls,1);
+  assert.equal(accepted.headers.get("location"),"/admin?clear=success");
 });
