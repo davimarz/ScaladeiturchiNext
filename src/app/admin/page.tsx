@@ -48,8 +48,6 @@ export default async function AdminPage({
     page?: string;
     haul_import?: string;
     haul_count?: string;
-    outlet_import?: string;
-    outlet_count?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -80,7 +78,7 @@ export default async function AdminPage({
   const imageFailure = returnedPageTitle ? "Amazon ha restituito la pagina «" + returnedPageTitle + "» senza foto del prodotto." : imageHttpStatus ? "Amazon ha risposto con un errore (" + imageHttpStatus + ")." : params.image_error === "blocked" ? "Amazon ha bloccato la lettura automatica della pagina." : params.image_error === "large" ? "La pagina Amazon supera il limite di lettura." : params.image_error === "timeout" ? "Amazon non ha risposto in tempo." : "La foto non è stata trovata nella pagina Amazon.";
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
-  const [runs, products, categories, haulSettings, outletSettings] = await Promise.all([
+  const [runs, products, categories, haulSettings] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -89,10 +87,8 @@ export default async function AdminPage({
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.haul_source_url&select=key,value&limit=1"),
-    supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.outlet_source_url&select=key,value&limit=1"),
   ]);
   const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
-  const savedOutletUrl = typeof outletSettings[0]?.value === "string" ? outletSettings[0].value : "https://www.amazon.it/b?_encoding=UTF8&node=21955579031&ref=it_outsbcd_9&ref_=cct_cg_OutletIT_1b1&pf_rd_p=944e3502-a5e7-48c3-a5d6-330210c1b635&pf_rd_r=8VJYFFY6AFE33ERXY91J";
 
   return (
     <main className="adminShell">
@@ -104,7 +100,6 @@ export default async function AdminPage({
         <div className="adminActions">
           <Link href="/">Apri il sito</Link>
           <Link href="/admin/haul">HAUL</Link>
-          <Link href="/admin/outlet">OUTLET</Link>
           <form action="/api/admin/logout" method="post">
             <button type="submit">Esci</button>
           </form>
@@ -172,26 +167,6 @@ export default async function AdminPage({
         </form>
         <p className="adminHint">Se non selezioni un file, il sistema tenta di leggere direttamente l&apos;URL. Se Amazon risponde 403/429/503, salva la pagina HAUL dal browser e carica il file HTML mantenendo lo stesso URL o sostituendolo con un altro link HAUL.</p>
         <div className="adminActions"><Link href="/haul">Apri pagina HAUL</Link></div>
-      </section>
-
-      <section className="adminPanel">
-        <h2>Amazon OUTLET</h2>
-        <p>Importa i prodotti nella pagina pubblica OUTLET. Il sistema prova prima il link Amazon; se Amazon blocca la richiesta puoi caricare la pagina salvata dal browser in formato HTML.</p>
-        {params.outlet_import === "success" ? <p className="adminNotice">Importazione OUTLET completata: {params.outlet_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
-        {params.outlet_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto della pagina OUTLET. Salva la pagina dal browser e carica qui il file HTML.</p> : null}
-        {params.outlet_import === "empty" ? <p className="adminError">Nel contenuto OUTLET non sono stati trovati prodotti riconoscibili.</p> : null}
-        {params.outlet_import === "invalid-url" ? <p className="adminError">Inserisci un URL OUTLET valido di Amazon.it.</p> : null}
-        {params.outlet_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 15 MB.</p> : null}
-        {params.outlet_import === "fetch-error" || params.outlet_import === "save-error" ? <p className="adminError">Importazione OUTLET non completata. Riprova con un file HTML salvato dal browser.</p> : null}
-        <form action="/api/admin/outlet/import" method="post" encType="multipart/form-data" className="adminForm">
-          <label htmlFor="outlet-url">URL OUTLET</label>
-          <input id="outlet-url" name="outlet_url" type="url" defaultValue={savedOutletUrl} required />
-          <label htmlFor="outlet-html">Pagina OUTLET salvata (.html) — facoltativa</label>
-          <input id="outlet-html" name="html_file" type="file" accept=".html,.htm,text/html" />
-          <button type="submit">Importa / aggiorna OUTLET</button>
-        </form>
-        <p className="adminHint">Se non selezioni un file, il sistema tenta di leggere direttamente l&apos;URL OUTLET. Se Amazon risponde 403/429/503, salva la pagina dal browser e carica il file HTML.</p>
-        <div className="adminActions"><Link href="/outlet">Apri pagina OUTLET</Link></div>
       </section>
 
       <section className="adminPanel">

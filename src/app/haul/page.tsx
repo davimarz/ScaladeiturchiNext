@@ -12,7 +12,6 @@ export default function HaulPage() {
         <nav aria-label="Navigazione principale">
           <Link href="/vetrina">Vetrina</Link>
           <Link href="/haul">HAUL</Link>
-          <Link href="/outlet">OUTLET</Link>
           <Link href="/">Home</Link>
         </nav>
       </header>
