@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../../lib/admin-auth";
 import { isSameOrigin } from "../../../../../lib/admin-request";
-import { isUuid, MANUAL_SOURCE_FILTER } from "../../../../../lib/product-validation";
+import { isUuid } from "../../../../../lib/product-validation";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,9 +14,8 @@ export async function POST(request: NextRequest) {
   const id = String(form.get("id") ?? "");
   if (!isUuid(id)) return redirect("invalid");
   try {
-    const rows = await supabaseAdminFetch<Array<{id: string}>>(`products?id=eq.${id}&${MANUAL_SOURCE_FILTER}&active=eq.true`, {
-      method: "PATCH", headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ active: false, updated_at: new Date().toISOString() }),
+    const rows = await supabaseAdminFetch<Array<{id: string}>>(`products?id=eq.${id}`, {
+      method: "DELETE", headers: { Prefer: "return=representation" },
     });
     return redirect(rows.length ? "success" : "invalid");
   } catch { return redirect("error"); }

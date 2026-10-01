@@ -3,6 +3,7 @@ import Image from "next/image";
 import { MANUAL_SOURCES } from "../../lib/product-validation";
 import { cookies } from "next/headers";
 import DeleteProductButton from "../../components/DeleteProductButton";
+import AdminCatalogActions from "../../components/AdminCatalogActions";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
 
@@ -23,6 +24,8 @@ type Product = {
   asin: string;
   title: string;
   current_price: number | null;
+  list_price: number | null;
+  discount_percent: number | null;
   currency: string;
   updated_at: string;
   active: boolean;
@@ -40,6 +43,8 @@ export default async function AdminPage({
     manual?: string;
     image_error?: string;
     delete?: string;
+    bulk?: string;
+    clear?: string;
     page?: string;
   }>;
 }) {
@@ -76,7 +81,7 @@ export default async function AdminPage({
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
     supabaseAdminFetch<Product[]>(
-      `products?active=eq.true&select=id,asin,title,current_price,currency,updated_at,active,source,category_id,image_url&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
+      `products?active=eq.true&select=id,asin,title,current_price,list_price,discount_percent,currency,updated_at,active,source,category_id,image_url&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
   ]);
@@ -113,7 +118,9 @@ export default async function AdminPage({
         {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l&apos;ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
         {params.manual === "image-invalid" ? <p className="adminError">Immagine non valida. Usa JPG, PNG o WEBP fino a 5 MB.</p> : null}
         {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
-        {params.delete === "success" ? <p className="adminNotice">Prodotto nascosto dal catalogo. I dati restano conservati.</p> : null}
+        {params.delete === "success" ? <p className="adminNotice">Prodotto eliminato dal catalogo e dal database.</p> : null}
+        {params.bulk === "success" ? <p className="adminNotice">Prodotti selezionati eliminati.</p> : null}
+        {params.clear === "success" ? <p className="adminNotice">Catalogo svuotato. Categorie e impostazioni sono rimaste intatte.</p> : null}
         {params.delete === "invalid" ? <p className="adminError">Prodotto non valido.</p> : null}
         {params.delete === "error" ? <p className="adminError">Errore durante l&apos;eliminazione del prodotto.</p> : null}
 
@@ -167,6 +174,7 @@ export default async function AdminPage({
 
       <section className="adminPanel">
         <h2>Prodotti nel catalogo</h2>
+        <AdminCatalogActions />
         <nav className="adminActions" aria-label="Pagine del catalogo">
           {page > 1 ? <Link href={"/admin?page=" + (page - 1)}>← Precedenti</Link> : null}
           <span>Pagina {page}</span>
@@ -176,11 +184,14 @@ export default async function AdminPage({
           <table className="adminTable">
             <thead>
               <tr>
+                <th>Seleziona</th>
                 <th>Immagine</th>
                 <th>Codice</th>
                 <th>Titolo</th>
                 <th>Fonte</th>
-                <th>Prezzo</th>
+                <th>Prezzo attuale</th>
+                <th>Prezzo precedente</th>
+                <th>Sconto</th>
                 <th>Aggiornato</th>
                 <th>Modifica</th>
                 <th>Azioni</th>
@@ -189,6 +200,7 @@ export default async function AdminPage({
             <tbody>
               {products.map((product) => (
                 <tr key={product.id}>
+                  <td><input type="checkbox" name="ids" value={product.id} className="product-select" form="bulk-products-form" aria-label={"Seleziona " + product.title} /></td>
                   <td>{product.image_url ? <Image src={product.image_url} alt={product.title} width={72} height={72} unoptimized style={{ objectFit: "contain" }} /> : "Foto non disponibile"}</td>
                   <td>{product.asin}</td>
                   <td>{product.title}</td>
@@ -201,6 +213,8 @@ export default async function AdminPage({
                           currency: product.currency,
                         }).format(product.current_price)}
                   </td>
+                  <td>{product.list_price == null ? "—" : new Intl.NumberFormat("it-IT", { style: "currency", currency: product.currency }).format(product.list_price)}</td>
+                  <td>{product.discount_percent == null ? "—" : "−" + Math.round(product.discount_percent) + "%"}</td>
                   <td>{new Date(product.updated_at).toLocaleString("it-IT")}</td>
                   <td>
                     {MANUAL_SOURCES.some((source) => source === product.source) ? (
