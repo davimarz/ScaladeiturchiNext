@@ -15,6 +15,7 @@ type Product = {
   currency: string;
   discount_percent: number | null;
   price_verified_at: string | null;
+  haul_category?: string | null;
 };
 
 const categories = [
@@ -34,6 +35,8 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   const [q, setQ] = useState("");
   const [category, setCategory] = useState(fixedCategory ?? "tutte");
   const [products, setProducts] = useState<Product[]>([]);
+  const [haulCategories, setHaulCategories] = useState<string[]>([]);
+  const [haulCategory, setHaulCategory] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now);
@@ -53,18 +56,19 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
     if (selection.q.trim()) params.set("q", selection.q.trim());
     if (selection.category !== "tutte") params.set("category", selection.category);
     if (!fixedCategory && excludeCategories) params.set("exclude", excludeCategories);
+    if (fixedCategory === "haul" && haulCategory) params.set("haul_category", haulCategory);
     fetch("/api/catalog?" + params.toString(), { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Impossibile caricare il catalogo.");
-        return await response.json() as { products?: Product[] };
+        return await response.json() as { products?: Product[]; haul_categories?: string[] };
       })
-      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) setProducts(data.products ?? []); })
+      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) { setProducts(data.products ?? []); if (fixedCategory === "haul") setHaulCategories(data.haul_categories ?? []); } })
       .catch((err) => {
         if (!controller.signal.aborted && latestRequest.current === requestId) setError(err instanceof Error ? err.message : "Errore durante il caricamento.");
       })
       .finally(() => { if (!controller.signal.aborted && latestRequest.current === requestId) setLoading(false); });
     return () => controller.abort();
-  }, [selection, fixedCategory, excludeCategories]);
+  }, [selection, fixedCategory, excludeCategories, haulCategory]);
 
   function startSearch(search: string, selectedCategory: string) {
     setLoading(true);
@@ -92,6 +96,11 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
         </form>
       </div>
 
+      {fixedCategory === "haul" && haulCategories.length ? <div className="chips" aria-label="Categorie HAUL">
+        <button className={haulCategory === "" ? "active" : ""} type="button" onClick={() => setHaulCategory("")}>Tutte</button>
+        {haulCategories.map((label) => <button className={haulCategory === label ? "active" : ""} type="button" key={label} onClick={() => setHaulCategory(label)}>{label}</button>)}
+      </div> : null}
+
       {showCategoryChips ? <div className="chips" aria-label="Categorie">
         {categories.map(([slug, label]) => (
           <button className={category === slug ? "active" : ""} type="button" key={slug} onClick={() => selectCategory(slug)}>{label}</button>
@@ -111,6 +120,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
                 {product.image_url ? <Image src={product.image_url} alt={product.title} width={400} height={300} unoptimized /> : <span>Immagine non disponibile</span>}
               </a>
               <div className="productBody">
+                {product.haul_category ? <span className="cardTag">{product.haul_category}</span> : null}
                 {price?.discount != null ? <span className="discount">RISPARMIA {price.discount}%</span> : null}
                 <h3>{product.title}</h3>
                 <div className="priceRow">
