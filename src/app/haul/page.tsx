@@ -10,9 +10,10 @@ export default function HaulPage() {
           <span><strong>Scala dei Turchi</strong><small>Offerte Amazon</small></span>
         </Link>
         <nav aria-label="Navigazione principale">
-          <Link href="/">Home</Link>
+          <Link href="/vetrina">Vetrina</Link>
           <Link href="/haul">HAUL</Link>
-          <Link href="/#cerca">Cerca</Link>
+          <Link href="/outlet">OUTLET</Link>
+          <Link href="/">Home</Link>
         </nav>
       </header>
 
