@@ -151,7 +151,7 @@ export default async function AdminPage({
 
       <section className="adminPanel">
         <h2>Amazon HAUL</h2>
-        <p>Importa i prodotti nella pagina pubblica HAUL. Il sistema prova prima il link Amazon; se Amazon blocca la richiesta puoi caricare la pagina salvata dal browser in formato HTML.</p>
+        <p>Importa i prodotti nella pagina pubblica HAUL. Il sistema apre il link Amazon con un browser automatico, scorre progressivamente la pagina fino a quando non compaiono più nuovi prodotti e poi importa il catalogo rilevato. Se Amazon blocca il browser automatico puoi caricare la pagina salvata dal tuo browser in formato HTML.</p>
         {params.haul_import === "success" ? <p className="adminNotice">Importazione HAUL completata: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
         {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto della pagina HAUL. Salva la pagina dal browser e carica qui il file HTML.</p> : null}
         {params.haul_import === "empty" ? <p className="adminError">Nel contenuto HAUL non sono stati trovati prodotti riconoscibili.</p> : null}
@@ -163,9 +163,9 @@ export default async function AdminPage({
           <input id="haul-url" name="haul_url" type="url" defaultValue={savedHaulUrl} required />
           <label htmlFor="haul-html">Pagina HAUL salvata (.html) — facoltativa</label>
           <input id="haul-html" name="html_file" type="file" accept=".html,.htm,text/html" />
-          <button type="submit">Importa / aggiorna HAUL</button>
+          <button type="submit">Scansiona e aggiorna HAUL</button>
         </form>
-        <p className="adminHint">Se non selezioni un file, il sistema tenta di leggere direttamente l&apos;URL. Se Amazon risponde 403/429/503, salva la pagina HAUL dal browser e carica il file HTML mantenendo lo stesso URL o sostituendolo con un altro link HAUL.</p>
+        <p className="adminHint">Senza file HTML viene avviata la scansione completa con browser e scroll automatico. Se Amazon blocca la sessione, scorri HAUL fino in fondo nel tuo browser, salva la pagina HTML e caricala qui.</p>
         <div className="adminActions"><Link href="/haul">Apri pagina HAUL</Link></div>
       </section>
 
