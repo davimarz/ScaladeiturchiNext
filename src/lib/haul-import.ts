@@ -194,3 +194,15 @@ export function isAmazonOutletUrl(value: string) {
     return false;
   }
 }
+
+
+export function isAmazonDealsUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" &&
+      ["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) &&
+      url.pathname === "/deals";
+  } catch {
+    return false;
+  }
+}

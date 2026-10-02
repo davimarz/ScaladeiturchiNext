@@ -1,0 +1,56 @@
+import Link from "next/link";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { adminCookie, verifyAdminSessionValue } from "../../../lib/admin-auth";
+import { supabaseAdminFetch } from "../../../lib/supabase/admin";
+
+export const dynamic = "force-dynamic";
+
+const DEFAULT_LAMBO_URL = "https://www.amazon.it/deals?ref_=nav_cs_gb&bubble-id=deals-collection-lightning-deals";
+
+export default async function AdminOfferteLamboPage({ searchParams }: { searchParams: Promise<{ lambo_import?: string; lambo_count?: string }> }) {
+  const session = (await cookies()).get(adminCookie.name)?.value;
+  if (!verifyAdminSessionValue(session)) redirect("/admin");
+
+  const params = await searchParams;
+  const [settings, products] = await Promise.all([
+    supabaseAdminFetch<Array<{ value: unknown }>>("site_settings?key=eq.offerte_lambo_source_url&select=value&limit=1"),
+    supabaseAdminFetch<Array<{ id: string }>>("products?in_offerte_lambo=eq.true&active=eq.true&select=id"),
+  ]);
+  const sourceUrl = typeof settings[0]?.value === "string" ? settings[0].value : DEFAULT_LAMBO_URL;
+
+  return (
+    <main className="adminShell">
+      <section className="adminHeader">
+        <div><p className="eyebrow">AMMINISTRAZIONE</p><h1>Offerte Lambo</h1></div>
+        <div className="adminActions">
+          <Link href="/admin">Dashboard</Link>
+          <Link href="/admin/haul">HAUL</Link>
+          <Link href="/offerte-lambo">Pagina pubblica</Link>
+        </div>
+      </section>
+
+      <section className="adminPanel">
+        <h2>Importazione prodotti Offerte Lambo</h2>
+        <p>Prodotti Offerte Lambo attivi: {products.length}.</p>
+
+        {params.lambo_import === "success" ? <p className="adminNotice">Importazione completata: {params.lambo_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
+        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato la scansione automatica. Puoi salvare la pagina Deals dal browser dopo averla scorsa e caricare il file HTML.</p> : null}
+        {params.lambo_import === "empty" ? <p className="adminError">Non sono stati trovati prodotti riconoscibili nella pagina.</p> : null}
+        {params.lambo_import === "invalid-url" ? <p className="adminError">Inserisci un URL Amazon Deals valido.</p> : null}
+        {params.lambo_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 40 MB.</p> : null}
+        {params.lambo_import && !["success","blocked","empty","invalid-url","invalid-file"].includes(params.lambo_import) ? <p className="adminError">Importazione non completata ({params.lambo_import}). Puoi riprovare con il file HTML della pagina Deals.</p> : null}
+
+        <form action="/api/admin/offerte-lambo/import" method="post" encType="multipart/form-data" className="adminForm">
+          <label htmlFor="lambo-url">Link Amazon Deals</label>
+          <input id="lambo-url" name="lambo_url" type="url" defaultValue={sourceUrl} required />
+          <label htmlFor="lambo-html">File HTML salvato dal browser (facoltativo)</label>
+          <input id="lambo-html" name="html_file" type="file" accept=".html,.htm,text/html" />
+          <button type="submit">Scansiona e aggiorna Offerte Lambo</button>
+        </form>
+
+        <p className="adminHint">Puoi modificare il link predefinito con un altro URL della pagina Amazon Deals. Senza file HTML il sistema apre la pagina con Chromium, scorre automaticamente e importa tutti gli ASIN rilevati.</p>
+      </section>
+    </main>
+  );
+}

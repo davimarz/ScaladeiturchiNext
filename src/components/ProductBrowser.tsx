@@ -120,7 +120,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
                 {product.image_url ? <Image src={product.image_url} alt={product.title} width={400} height={300} unoptimized /> : <span>Immagine non disponibile</span>}
               </a>
               <div className="productBody">
-                {product.haul_category ? <span className="cardTag">{product.haul_category}</span> : null}
+                {fixedCategory === "haul" && product.haul_category ? <span className="cardTag">{product.haul_category}</span> : null}
                 {price?.discount != null ? <span className="discount">RISPARMIA {price.discount}%</span> : null}
                 <h3>{product.title}</h3>
                 <div className="priceRow">
