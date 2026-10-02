@@ -19,7 +19,7 @@ export default async function AdminHaulPage({ searchParams }: { searchParams: Pr
   return <main className="adminShell">
     <section className="adminHeader">
       <div><p className="eyebrow">AMMINISTRAZIONE</p><h1>HAUL</h1></div>
-      <div className="adminActions"><Link href="/admin">Dashboard</Link><Link href="/haul">Pagina pubblica</Link></div>
+      <div className="adminActions"><Link href="/admin">Dashboard</Link><Link href="/admin/offerte-lambo">Offerte Lambo</Link><Link href="/haul">Pagina pubblica</Link></div>
     </section>
     <section className="adminPanel">
       <h2>Importazione prodotti HAUL</h2>
