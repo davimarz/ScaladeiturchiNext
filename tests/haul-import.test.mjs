@@ -32,7 +32,7 @@ function loadModule() {
   return exports;
 }
 
-const { parseHaulHtml, isAmazonHaulUrl, isAmazonOutletUrl } = loadModule();
+const { parseHaulHtml, isAmazonHaulUrl, isAmazonOutletUrl, isAmazonDealsUrl } = loadModule();
 
 test("recognizes Amazon.it HAUL URLs only", () => {
   assert.equal(isAmazonHaulUrl("https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb"), true);
@@ -104,4 +104,12 @@ test("assigns the nearest HAUL section category to each product", () => {
   assert.equal(categories.B087654321, "Marchi top");
   assert.equal(categories.B011111111, "Offerta top");
   assert.equal(categories.B022222222, "Prezzi da urlo");
+});
+
+
+test("recognizes Amazon.it Deals URLs for Offerte Lambo", () => {
+  assert.equal(isAmazonDealsUrl("https://www.amazon.it/deals?ref_=nav_cs_gb&bubble-id=deals-collection-lightning-deals"), true);
+  assert.equal(isAmazonDealsUrl("https://www.amazon.it/deals"), true);
+  assert.equal(isAmazonDealsUrl("https://www.amazon.it/haul/store"), false);
+  assert.equal(isAmazonDealsUrl("https://example.com/deals"), false);
 });
