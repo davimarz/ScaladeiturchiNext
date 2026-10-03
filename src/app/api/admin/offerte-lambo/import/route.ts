@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../../lib/admin-auth";
 import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonDealsUrl, parseHaulHtml } from "../../../../../lib/haul-import";
-import { fetchHaulWithFullScroll } from "../../../../../lib/haul-browser";
+import { fetchAmazonSearchWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -40,12 +40,12 @@ export async function POST(request: NextRequest) {
       if (htmlFile.size > MAX_HTML_BYTES || !/\.html?$/i.test(htmlFile.name)) return redirect("invalid-file");
       html = await htmlFile.text();
     } else {
-      const browserResult = await fetchHaulWithFullScroll(sourceUrl);
+      const browserResult = await fetchAmazonSearchWithFullScroll(sourceUrl);
       html = browserResult.html;
       console.info("offerte-lambo-full-scroll", { asinCount: browserResult.asinCount, scrolls: browserResult.scrolls });
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Amazon Deals browser scan failed";
+    const message = error instanceof Error ? error.message : "Amazon Offerte Lampo browser scan failed";
     console.warn("offerte-lambo-import-browser", message);
     if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return redirect("blocked");
     return redirect("browser-error");
