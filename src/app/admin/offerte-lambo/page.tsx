@@ -6,7 +6,7 @@ import { supabaseAdminFetch } from "../../../lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_LAMBO_URL = "https://www.amazon.it/deals?ref_=nav_cs_gb&bubble-id=deals-collection-lightning-deals";
+const DEFAULT_LAMBO_URL = "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
 
 export default async function AdminOfferteLamboPage({ searchParams }: { searchParams: Promise<{ lambo_import?: string; lambo_count?: string }> }) {
   const session = (await cookies()).get(adminCookie.name)?.value;
@@ -37,19 +37,19 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
         {params.lambo_import === "success" ? <p className="adminNotice">Importazione completata: {params.lambo_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
         {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato la scansione automatica. Puoi salvare la pagina Deals dal browser dopo averla scorsa e caricare il file HTML.</p> : null}
         {params.lambo_import === "empty" ? <p className="adminError">Non sono stati trovati prodotti riconoscibili nella pagina.</p> : null}
-        {params.lambo_import === "invalid-url" ? <p className="adminError">Inserisci un URL Amazon Deals valido.</p> : null}
+        {params.lambo_import === "invalid-url" ? <p className="adminError">Inserisci un URL Amazon Offerte Lampo valido.</p> : null}
         {params.lambo_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 40 MB.</p> : null}
-        {params.lambo_import && !["success","blocked","empty","invalid-url","invalid-file"].includes(params.lambo_import) ? <p className="adminError">Importazione non completata ({params.lambo_import}). Puoi riprovare con il file HTML della pagina Deals.</p> : null}
+        {params.lambo_import && !["success","blocked","empty","invalid-url","invalid-file"].includes(params.lambo_import) ? <p className="adminError">Importazione non completata ({params.lambo_import}). Puoi riprovare con il file HTML della pagina Offerte Lampo.</p> : null}
 
         <form action="/api/admin/offerte-lambo/import" method="post" encType="multipart/form-data" className="adminForm">
-          <label htmlFor="lambo-url">Link Amazon Deals</label>
+          <label htmlFor="lambo-url">Link Amazon Offerte Lampo</label>
           <input id="lambo-url" name="lambo_url" type="url" defaultValue={sourceUrl} required />
           <label htmlFor="lambo-html">File HTML salvato dal browser (facoltativo)</label>
           <input id="lambo-html" name="html_file" type="file" accept=".html,.htm,text/html" />
           <button type="submit">Scansiona e aggiorna Offerte Lambo</button>
         </form>
 
-        <p className="adminHint">Puoi modificare il link predefinito con un altro URL della pagina Amazon Deals. Senza file HTML il sistema apre la pagina con Chromium, scorre automaticamente e importa tutti gli ASIN rilevati.</p>
+        <p className="adminHint">Puoi modificare il link predefinito con un altro URL della pagina Amazon Offerte Lampo. Senza file HTML il sistema apre la pagina con Chromium, scorre automaticamente e importa tutti gli ASIN rilevati.</p>
       </section>
     </main>
   );
