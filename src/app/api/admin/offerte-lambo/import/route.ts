@@ -24,6 +24,40 @@ function affiliateUrl(asin: string) {
   return url.toString();
 }
 
+async function fetchDirectAmazonSearchHtml(sourceUrl: string) {
+  const urls = Array.from(new Set([
+    sourceUrl,
+    "https://www.amazon.it/s?k=offerte+lampo+del+giorno",
+  ]));
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, {
+        redirect: "follow",
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+        headers: {
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+          "accept-language": "it-IT,it;q=0.9,en;q=0.7",
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        },
+      });
+      if (!response.ok) continue;
+      const html = await response.text();
+      if (/robot check|captcha|\/errors\/validateCaptcha|automated access/i.test(html)) continue;
+      const products = parseHaulHtml(html);
+      if (products.length >= 3) {
+        console.info("offerte-lambo-direct-fetch", { products: products.length, url });
+        return html;
+      }
+    } catch (error) {
+      console.warn("offerte-lambo-direct-fetch", error instanceof Error ? error.message : error);
+    }
+  }
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return new Response("Forbidden", { status: 403 });
   if (!verifyAdminSessionValue(request.cookies.get(adminCookie.name)?.value)) return redirect("session");
@@ -40,9 +74,14 @@ export async function POST(request: NextRequest) {
       if (htmlFile.size > MAX_HTML_BYTES || !/\.html?$/i.test(htmlFile.name)) return redirect("invalid-file");
       html = await htmlFile.text();
     } else {
-      const browserResult = await fetchAmazonSearchWithFullScroll(sourceUrl);
-      html = browserResult.html;
-      console.info("offerte-lambo-full-scroll", { asinCount: browserResult.asinCount, scrolls: browserResult.scrolls });
+      const directHtml = await fetchDirectAmazonSearchHtml(sourceUrl);
+      if (directHtml) {
+        html = directHtml;
+      } else {
+        const browserResult = await fetchAmazonSearchWithFullScroll(sourceUrl);
+        html = browserResult.html;
+        console.info("offerte-lambo-full-scroll", { asinCount: browserResult.asinCount, scrolls: browserResult.scrolls });
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Amazon Offerte Lampo browser scan failed";
