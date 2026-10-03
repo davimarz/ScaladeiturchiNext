@@ -36,13 +36,21 @@ async function getChromiumExecutablePath() {
   return executablePathPromise;
 }
 
-export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserResult> {
+async function fetchAmazonWithFullScroll(
+  url: string,
+  mode: "haul" | "search" = "haul",
+): Promise<HaulBrowserResult> {
   const chromium = (await import("@sparticuz/chromium-min")).default;
   const puppeteer = await import("puppeteer-core");
   chromium.setGraphicsMode = false;
 
+  const args = [...chromium.args];
+  if (!args.includes("--disable-blink-features=AutomationControlled")) {
+    args.push("--disable-blink-features=AutomationControlled");
+  }
+
   const browser = await puppeteer.launch({
-    args: chromium.args,
+    args,
     defaultViewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
@@ -53,16 +61,49 @@ export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserR
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
     );
-    await page.setExtraHTTPHeaders({ "accept-language": "it-IT,it;q=0.9,en;q=0.7" });
-
-    const response = await page.goto(url, {
-      waitUntil: "domcontentloaded",
-      timeout: 45_000,
+    await page.setExtraHTTPHeaders({
+      "accept-language": "it-IT,it;q=0.9,en;q=0.7",
+      "upgrade-insecure-requests": "1",
     });
-    const status = response?.status() ?? 0;
-    if (status >= 400) throw new Error("Amazon browser HTTP " + status);
+    await page.emulateTimezone("Europe/Rome").catch(() => undefined);
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      Object.defineProperty(navigator, "languages", { get: () => ["it-IT", "it", "en-US", "en"] });
+      Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+    });
 
-    await sleep(1500);
+    const candidateUrls = mode === "search"
+      ? [
+          url,
+          "https://www.amazon.it/s?k=offerte+lampo+del+giorno",
+        ]
+      : [url];
+
+    let loaded = false;
+    let lastStatus = 0;
+    for (let attempt = 0; attempt < candidateUrls.length; attempt++) {
+      if (attempt > 0) await sleep(1800);
+      const response = await page.goto(candidateUrls[attempt], {
+        waitUntil: "domcontentloaded",
+        timeout: 45_000,
+      });
+      lastStatus = response?.status() ?? 0;
+      const title = await page.title().catch(() => "");
+      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 5000) ?? "").catch(() => "");
+      const blocked =
+        lastStatus === 403 ||
+        lastStatus === 429 ||
+        lastStatus === 503 ||
+        /robot check|captcha|inserisci i caratteri|sorry|automated access/i.test(title + "\n" + bodyText);
+      if (!blocked && lastStatus < 400) {
+        loaded = true;
+        break;
+      }
+    }
+
+    if (!loaded) throw new Error("Amazon browser HTTP " + (lastStatus || 503));
+
+    await sleep(mode === "search" ? 2600 : 1500);
 
     await page.evaluate(() => {
       const labels = ["accetta", "accetto", "accept", "continua senza accettare"];
@@ -104,7 +145,7 @@ export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserR
         window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
       });
 
-      await sleep(WAIT_AFTER_SCROLL_MS);
+      await sleep(mode === "search" ? 1400 : WAIT_AFTER_SCROLL_MS);
       const currentCount = await countAsins();
 
       if (currentCount > previousCount) {
@@ -123,11 +164,21 @@ export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserR
 
     const finalCount = await countAsins();
     if (!Number.isFinite(finalCount) || finalCount < 1) {
-      throw new Error("No HAUL products found after browser scrolling");
+      throw new Error(mode === "search"
+        ? "No Amazon search products found after browser scrolling"
+        : "No HAUL products found after browser scrolling");
     }
 
     return { html, asinCount: finalCount, scrolls };
   } finally {
     await browser.close();
   }
+}
+
+export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "haul");
+}
+
+export async function fetchAmazonSearchWithFullScroll(url: string): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "search");
 }
