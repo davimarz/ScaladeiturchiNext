@@ -41,15 +41,19 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
         {params.lambo_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 40 MB.</p> : null}
         {params.lambo_import && !["success","blocked","empty","invalid-url","invalid-file"].includes(params.lambo_import) ? <p className="adminError">Importazione non completata ({params.lambo_import}). Puoi riprovare con il file HTML della pagina Offerte Lampo.</p> : null}
 
-        <form action="/api/admin/offerte-lambo/import" method="post" encType="multipart/form-data" className="adminForm">
-          <label htmlFor="lambo-url">Link Amazon Offerte Lampo</label>
-          <input id="lambo-url" name="lambo_url" type="url" defaultValue={sourceUrl} required />
-          <label htmlFor="lambo-html">File HTML salvato dal browser (facoltativo)</label>
-          <input id="lambo-html" name="html_file" type="file" accept=".html,.htm,text/html" />
-          <button type="submit">Scansiona e aggiorna Offerte Lambo</button>
+        <form action="/api/admin/offerte-lambo/import" method="post" encType="multipart/form-data" className="compactImportForm">
+          <div className="quickImportControls">
+            <input id="lambo-url" name="lambo_url" type="url" defaultValue={sourceUrl} aria-label="Link Amazon Offerte Lampo" required />
+            <button type="submit">Aggiorna Offerte</button>
+          </div>
+          <details className="advancedImport">
+            <summary>Opzioni avanzate</summary>
+            <label htmlFor="lambo-html">File HTML salvato dal browser (facoltativo)</label>
+            <input id="lambo-html" name="html_file" type="file" accept=".html,.htm,text/html" />
+          </details>
         </form>
 
-        <p className="adminHint">Puoi modificare il link predefinito con un altro URL della pagina Amazon Offerte Lampo. Senza file HTML il sistema apre la pagina con Chromium, scorre automaticamente e importa tutti gli ASIN rilevati.</p>
+        <p className="adminHint">Cliccando “Aggiorna Offerte” il sistema apre Amazon, scorre automaticamente e importa i prodotti trovati.</p>
       </section>
     </main>
   );
