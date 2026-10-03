@@ -199,9 +199,8 @@ export function isAmazonOutletUrl(value: string) {
 export function isAmazonDealsUrl(value: string) {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" &&
-      ["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) &&
-      url.pathname === "/deals";
+    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase())) return false;
+    return url.pathname === "/deals" || url.pathname === "/offerte-lampo-del-giorno/s";
   } catch {
     return false;
   }
