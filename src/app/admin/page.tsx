@@ -48,6 +48,8 @@ export default async function AdminPage({
     page?: string;
     haul_import?: string;
     haul_count?: string;
+    lambo_import?: string;
+    lambo_count?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -78,7 +80,7 @@ export default async function AdminPage({
   const imageFailure = returnedPageTitle ? "Amazon ha restituito la pagina «" + returnedPageTitle + "» senza foto del prodotto." : imageHttpStatus ? "Amazon ha risposto con un errore (" + imageHttpStatus + ")." : params.image_error === "blocked" ? "Amazon ha bloccato la lettura automatica della pagina." : params.image_error === "large" ? "La pagina Amazon supera il limite di lettura." : params.image_error === "timeout" ? "Amazon non ha risposto in tempo." : "La foto non è stata trovata nella pagina Amazon.";
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
-  const [runs, products, categories, haulSettings] = await Promise.all([
+  const [runs, products, categories, haulSettings, lamboSettings] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -87,8 +89,10 @@ export default async function AdminPage({
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.haul_source_url&select=key,value&limit=1"),
+    supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.offerte_lambo_source_url&select=key,value&limit=1"),
   ]);
   const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
+  const savedLamboUrl = typeof lamboSettings[0]?.value === "string" ? lamboSettings[0].value : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
 
   return (
     <main className="adminShell">
@@ -150,24 +154,44 @@ export default async function AdminPage({
         </p>
       </section>
 
-      <section className="adminPanel">
-        <h2>Amazon HAUL</h2>
-        <p>Importa i prodotti nella pagina pubblica HAUL. Il sistema apre il link Amazon con un browser automatico, scorre progressivamente la pagina fino a quando non compaiono più nuovi prodotti e poi importa il catalogo rilevato. Se Amazon blocca il browser automatico puoi caricare la pagina salvata dal tuo browser in formato HTML.</p>
-        {params.haul_import === "success" ? <p className="adminNotice">Importazione HAUL completata: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
-        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto della pagina HAUL. Salva la pagina dal browser e carica qui il file HTML.</p> : null}
-        {params.haul_import === "empty" ? <p className="adminError">Nel contenuto HAUL non sono stati trovati prodotti riconoscibili.</p> : null}
-        {params.haul_import === "invalid-url" ? <p className="adminError">Inserisci un URL HAUL valido di Amazon.it.</p> : null}
-        {params.haul_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 15 MB.</p> : null}
-        {params.haul_import === "fetch-error" || params.haul_import === "save-error" ? <p className="adminError">Importazione HAUL non completata. Riprova con un file HTML salvato dal browser.</p> : null}
-        <form action="/api/admin/haul/import" method="post" encType="multipart/form-data" className="adminForm">
-          <label htmlFor="haul-url">URL HAUL</label>
-          <input id="haul-url" name="haul_url" type="url" defaultValue={savedHaulUrl} required />
-          <label htmlFor="haul-html">Pagina HAUL salvata (.html) — facoltativa</label>
-          <input id="haul-html" name="html_file" type="file" accept=".html,.htm,text/html" />
-          <button type="submit">Scansiona e aggiorna HAUL</button>
-        </form>
-        <p className="adminHint">Senza file HTML viene avviata la scansione completa con browser e scroll automatico. Se Amazon blocca la sessione, scorri HAUL fino in fondo nel tuo browser, salva la pagina HTML e caricala qui.</p>
-        <div className="adminActions"><Link href="/haul">Apri pagina HAUL</Link></div>
+      <section className="adminPanel compactImportPanel">
+        <div className="compactPanelHead">
+          <div>
+            <h2>Aggiornamento rapido Amazon</h2>
+            <p>Un solo clic avvia browser, scroll, rilevamento prodotti e importazione.</p>
+          </div>
+        </div>
+
+        {params.haul_import === "success" ? <p className="adminNotice">HAUL aggiornato: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
+        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL. Usa la pagina dedicata per il caricamento HTML.</p> : null}
+        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo aggiornate: {params.lambo_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
+        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo. Usa la pagina dedicata per il caricamento HTML.</p> : null}
+
+        <div className="quickImportGrid">
+          <form action="/api/admin/haul/import" method="post" className="quickImportCard">
+            <div className="quickImportMeta">
+              <strong>HAUL</strong>
+              <span>Scansione automatica completa</span>
+            </div>
+            <div className="quickImportControls">
+              <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required />
+              <button type="submit">Aggiorna HAUL</button>
+            </div>
+            <Link href="/admin/haul" className="quickImportLink">Opzioni avanzate</Link>
+          </form>
+
+          <form action="/api/admin/offerte-lambo/import" method="post" className="quickImportCard">
+            <div className="quickImportMeta">
+              <strong>Offerte Lambo</strong>
+              <span>Offerte del giorno / lampo</span>
+            </div>
+            <div className="quickImportControls">
+              <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lambo" required />
+              <button type="submit">Aggiorna Offerte</button>
+            </div>
+            <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
+          </form>
+        </div>
       </section>
 
       <section className="adminPanel">
