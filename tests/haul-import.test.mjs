@@ -107,9 +107,10 @@ test("assigns the nearest HAUL section category to each product", () => {
 });
 
 
-test("recognizes Amazon.it Deals URLs for Offerte Lambo", () => {
+test("recognizes Amazon.it Offerte Lambo URLs", () => {
+  assert.equal(isAmazonDealsUrl("https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno"), true);
   assert.equal(isAmazonDealsUrl("https://www.amazon.it/deals?ref_=nav_cs_gb&bubble-id=deals-collection-lightning-deals"), true);
   assert.equal(isAmazonDealsUrl("https://www.amazon.it/deals"), true);
   assert.equal(isAmazonDealsUrl("https://www.amazon.it/haul/store"), false);
-  assert.equal(isAmazonDealsUrl("https://example.com/deals"), false);
+  assert.equal(isAmazonDealsUrl("https://example.com/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno"), false);
 });
