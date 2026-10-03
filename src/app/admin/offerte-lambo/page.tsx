@@ -35,7 +35,7 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
         <p>Prodotti Offerte Lambo attivi: {products.length}.</p>
 
         {params.lambo_import === "success" ? <p className="adminNotice">Importazione completata: {params.lambo_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
-        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato la scansione automatica. Puoi salvare la pagina Deals dal browser dopo averla scorsa e caricare il file HTML.</p> : null}
+        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato la scansione automatica anche dopo il secondo tentativo. Puoi usare “Opzioni avanzate” e caricare il file HTML salvato dal browser.</p> : null}
         {params.lambo_import === "empty" ? <p className="adminError">Non sono stati trovati prodotti riconoscibili nella pagina.</p> : null}
         {params.lambo_import === "invalid-url" ? <p className="adminError">Inserisci un URL Amazon Offerte Lampo valido.</p> : null}
         {params.lambo_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 40 MB.</p> : null}
