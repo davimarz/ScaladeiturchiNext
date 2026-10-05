@@ -19,7 +19,6 @@ export default function OfferteLamboPage() {
           <p className="eyebrow">AMAZON DEALS</p>
           <h1>Offerte Lambo</h1>
           <p className="lead">Una pagina dedicata ai prodotti importati dalla sezione Offerte di Amazon Italia, separata da Vetrina e HAUL.</p>
-          <div className="heroActions"><Link className="cta" href="#lambo-products">Vedi le offerte</Link><Link className="secondary" href="/">Torna alla home</Link></div>
         </div>
         <aside className="heroPanel">
           <span>SEZIONE DEDICATA</span>
