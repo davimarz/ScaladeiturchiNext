@@ -8,7 +8,7 @@ import { syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const DEFAULT_HAUL_URL = "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
 const PARTNER_TAG = "eiapromo-21";
