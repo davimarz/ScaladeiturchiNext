@@ -65,31 +65,41 @@ function isGenericTitle(title: string) {
 }
 
 function findTitle(fragment: string, asin: string) {
-  const candidates = [
-    fragment.match(/<h2\b[^>]*>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1],
-    fragment.match(/<span\b[^>]*class=["'][^"']*(?:a-size-base-plus|a-text-normal|a-size-medium)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
-    fragment.match(/<a\b[^>]*title=["']([^"']+)["']/i)?.[1],
-  ];
-  for (const candidate of candidates) {
-    const title = cleanText(candidate ?? "").slice(0, 300);
-    if (!isGenericTitle(title)) return title;
-  }
+  const candidates: Array<{ value: string; priority: number }> = [];
+
+  const add = (value: string | undefined, priority: number) => {
+    const title = cleanText(value ?? "").slice(0, 300);
+    if (isGenericTitle(title)) return;
+    if (/^(HAUL|Amazon|Bestseller|Offerta top)$/i.test(title)) return;
+    candidates.push({ value: title, priority });
+  };
+
+  add(fragment.match(/<h2\b[^>]*>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1], 60);
+  add(fragment.match(/<span\b[^>]*class=["'][^"']*(?:a-size-base-plus|a-text-normal|a-size-medium)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1], 55);
+  add(fragment.match(/<a\b[^>]*title=["']([^"']+)["']/i)?.[1], 50);
 
   for (const [tag] of fragment.matchAll(/<(?:a|div|span|img)\b[^>]*>/gi)) {
-    for (const name of ["aria-label", "title", "alt"]) {
-      const value = cleanText(attribute(tag, name)).slice(0, 300);
-      if (!isGenericTitle(value) && !/^(HAUL|Amazon|Bestseller|Offerta top)$/i.test(value)) return value;
-    }
+    add(attribute(tag, "aria-label"), 45);
+    add(attribute(tag, "title"), 40);
+    add(attribute(tag, "alt"), 35);
   }
 
   const dpText = fragment.match(new RegExp(
-    '<a\\b[^>]*href=["\\\'][^"\\\']*/dp/' + asin + '[^"\\\']*["\\\'][^>]*>([\\s\\S]{0,1200}?)<\\/a>',
+    '<a\\b[^>]*href=["\\\'][^"\\\']*/dp/' + asin + '[^"\\\']*["\\\'][^>]*>([\\s\\S]{0,1600}?)<\\/a>',
     "i",
   ))?.[1];
-  const linkedTitle = cleanText(dpText ?? "").slice(0, 300);
-  if (!isGenericTitle(linkedTitle)) return linkedTitle;
+  add(dpText, 65);
 
-  return "Prodotto Amazon " + asin;
+  if (!candidates.length) return "Prodotto Amazon " + asin;
+
+  const score = ({ value, priority }: { value: string; priority: number }) => {
+    const words = value.split(/\s+/).filter((word) => word !== "&").length;
+    const brandOnlyPenalty = words <= 3 && value.length <= 32 && !/\d/.test(value) ? 70 : 0;
+    return priority + Math.min(value.length, 180) + Math.min(words, 20) * 6 - brandOnlyPenalty;
+  };
+
+  candidates.sort((a, b) => score(b) - score(a));
+  return candidates[0].value;
 }
 
 function imageFromSrcset(value: string) {

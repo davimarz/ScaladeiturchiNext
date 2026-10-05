@@ -65,6 +65,14 @@ function isUsefulProductTitle(value: string) {
     !/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|amazon\.it\s*$/i.test(normalized);
 }
 
+export function needsProductTitleEnrichment(value: string) {
+  const title = value.replace(/\s+/g, " ").trim();
+  if (!title) return true;
+  if (/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|^Prodotto Amazon\s+[A-Z0-9]{10}$/i.test(title)) return true;
+  const meaningfulWords = title.split(/\s+/).filter((word) => word !== "&" && word.length > 0);
+  return meaningfulWords.length <= 3 && title.length <= 32 && !/\d/.test(title);
+}
+
 export function extractAmazonProductTitle(html: string) {
   const candidates = [
     html.match(/id=["']productTitle["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
@@ -196,15 +204,17 @@ export async function fetchAmazonSearchTitle(asin: string, fetcher: typeof fetch
     });
     if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) return null;
     const html = await response.text();
-    if (/\\/errors\\/validateCaptcha|<title>\\s*Robot Check|automated access/i.test(html)) return null;
-    const marker = 'data-asin=["\\\']' + asin.toUpperCase() + '["\\\']';
-    const index = html.search(new RegExp(marker, "i"));
+    if (/\/errors\/validateCaptcha|<title>\s*Robot Check|automated access/i.test(html)) return null;
+
+    const marker = new RegExp('data-asin=["\\\']' + asin.toUpperCase() + '["\\\']', "i");
+    const index = html.search(marker);
     if (index < 0) return null;
+
     const aroundAsin = html.slice(index, index + 12000);
     const candidates = [
-      aroundAsin.match(/<h2\\b[^>]*>[\\s\\S]*?<span\\b[^>]*>([\\s\\S]*?)<\\/span>/i)?.[1],
-      aroundAsin.match(/<span\\b[^>]*class=["\'][^"\']*a-text-normal[^"\']*["\'][^>]*>([\\s\\S]*?)<\\/span>/i)?.[1],
-      aroundAsin.match(/<a\\b[^>]*title=["\']([^"\']+)["\']/i)?.[1],
+      aroundAsin.match(/<h2\b[^>]*>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1],
+      aroundAsin.match(/<span\b[^>]*class=["'][^"']*a-text-normal[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
+      aroundAsin.match(/<a\b[^>]*title=["']([^"']+)["']/i)?.[1],
     ];
     for (const candidate of candidates) {
       const title = cleanProductTitle(candidate ?? "");

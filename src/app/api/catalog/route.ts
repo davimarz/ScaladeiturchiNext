@@ -68,32 +68,63 @@ export async function GET(request: NextRequest) {
   const isGenericAmazonImage = (value: string | null) =>
     Boolean(value && /\/11\+\+B3A2NEL\._SS200_\.png(?:\?|$)/i.test(value));
 
+  const imageFingerprint = (value: string | null) => {
+    if (!value || isGenericAmazonImage(value)) return "";
+    try {
+      const url = new URL(value);
+      return url.pathname.replace(/\._[^/]+_\.(jpe?g|png|webp)$/i, ".$1").toLowerCase();
+    } catch {
+      return value.toLowerCase();
+    }
+  };
+
   const products = category === "offerte-lambo"
     ? (() => {
+        const score = (row: ProductRow) =>
+          (row.image_url && !isGenericAmazonImage(row.image_url) ? 4 : 0) +
+          (row.image_url ? 1 : 0) +
+          Math.min(row.title.length, 120) / 120 +
+          (row.price_verified_at ? 0.25 : 0);
+
         const bestBySignature = new Map<string, ProductRow>();
         for (const product of rawProducts) {
-          const signature = [
-            product.title.trim().toLowerCase(),
+          const title = product.title.trim().toLowerCase().replace(/\s+/g, " ");
+          const priceSignature = [
             product.current_price ?? "",
             product.list_price ?? "",
             product.discount_percent ?? "",
           ].join("|");
+          const signature = title + "|" + priceSignature;
 
           const current = bestBySignature.get(signature);
-          if (!current) {
-            bestBySignature.set(signature, product);
+          if (!current || score(product) > score(current)) bestBySignature.set(signature, product);
+        }
+
+        const bestByImage = new Map<string, ProductRow>();
+        const withoutImageKey: ProductRow[] = [];
+        for (const product of bestBySignature.values()) {
+          const fingerprint = imageFingerprint(product.image_url);
+          if (!fingerprint) {
+            withoutImageKey.push(product);
             continue;
           }
-
-          const score = (row: ProductRow) =>
-            (row.image_url && !isGenericAmazonImage(row.image_url) ? 4 : 0) +
-            (row.image_url ? 1 : 0) +
-            Math.min(row.title.length, 120) / 120 +
-            (row.price_verified_at ? 0.25 : 0);
-
-          if (score(product) > score(current)) bestBySignature.set(signature, product);
+          const priceSignature = [
+            product.current_price ?? "",
+            product.list_price ?? "",
+            product.discount_percent ?? "",
+          ].join("|");
+          const key = fingerprint + "|" + priceSignature;
+          const current = bestByImage.get(key);
+          if (!current || score(product) > score(current)) bestByImage.set(key, product);
         }
-        return [...bestBySignature.values()].slice(0, limit);
+
+        return [...bestByImage.values(), ...withoutImageKey]
+          .sort((a, b) => {
+            const aPrice = a.current_price ?? Number.POSITIVE_INFINITY;
+            const bPrice = b.current_price ?? Number.POSITIVE_INFINITY;
+            return aPrice - bPrice;
+          })
+          .slice(0, limit);
       })()
     : rawProducts;
 
