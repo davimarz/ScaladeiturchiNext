@@ -14,12 +14,12 @@ const DEFAULT_LAMBO_URL = "https://www.amazon.it/offerte-lampo-del-giorno/s?k=of
 const PARTNER_TAG = "eiapromo-21";
 const MAX_HTML_BYTES = 40 * 1024 * 1024;
 
-function redirect(status: string, count?: number, priceSeen?: number, priceUpdated?: number) {
+function redirect(status: string, count?: number, priceSeen?: number, priceUpdated?: number, target = "/admin/offerte-lambo") {
   const params = new URLSearchParams({ lambo_import: status });
   if (count != null) params.set("lambo_count", String(count));
   if (priceSeen != null) params.set("price_seen", String(priceSeen));
   if (priceUpdated != null) params.set("price_updated", String(priceUpdated));
-  return new Response(null, { status: 303, headers: { location: `/admin/offerte-lambo?${params.toString()}` } });
+  return new Response(null, { status: 303, headers: { location: `${target}?${params.toString()}` } });
 }
 
 function affiliateUrl(asin: string) {
@@ -67,15 +67,18 @@ export async function POST(request: NextRequest) {
   if (!verifyAdminSessionValue(request.cookies.get(adminCookie.name)?.value)) return redirect("session");
 
   const form = await request.formData();
+  const returnTo = form.get("return_to") === "/admin" ? "/admin" : "/admin/offerte-lambo";
+  const finish = (status: string, count?: number, priceSeen?: number, priceUpdated?: number) =>
+    redirect(status, count, priceSeen, priceUpdated, returnTo);
   const sourceUrl = String(form.get("lambo_url") ?? DEFAULT_LAMBO_URL).trim() || DEFAULT_LAMBO_URL;
-  if (!isAmazonDealsUrl(sourceUrl)) return redirect("invalid-url");
+  if (!isAmazonDealsUrl(sourceUrl)) return finish("invalid-url");
 
   const htmlFile = form.get("html_file");
   let html = "";
 
   try {
     if (htmlFile instanceof File && htmlFile.size > 0) {
-      if (htmlFile.size > MAX_HTML_BYTES || !/\.html?$/i.test(htmlFile.name)) return redirect("invalid-file");
+      if (htmlFile.size > MAX_HTML_BYTES || !/\.html?$/i.test(htmlFile.name)) return finish("invalid-file");
       html = await htmlFile.text();
     } else {
       const directHtml = await fetchDirectAmazonSearchHtml(sourceUrl);
@@ -92,11 +95,11 @@ export async function POST(request: NextRequest) {
     console.warn("offerte-lambo-import-browser", message);
     try {
       const prices = await syncCatalogPricesByMembership("offerte-lambo");
-      return redirect("price-only", undefined, prices.productsSeen, prices.productsUpdated);
+      return finish("price-only", undefined, prices.productsSeen, prices.productsUpdated);
     } catch (priceError) {
       console.warn("offerte-lambo-price-refresh", priceError instanceof Error ? priceError.message : priceError);
-      if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return redirect("blocked");
-      return redirect("browser-error");
+      if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return finish("blocked");
+      return finish("browser-error");
     }
   }
 
@@ -104,9 +107,9 @@ export async function POST(request: NextRequest) {
   if (!parsed.length) {
     try {
       const prices = await syncCatalogPricesByMembership("offerte-lambo");
-      return redirect("price-only", 0, prices.productsSeen, prices.productsUpdated);
+      return finish("price-only", 0, prices.productsSeen, prices.productsUpdated);
     } catch {
-      return redirect("empty");
+      return finish("empty");
     }
   }
 
@@ -181,9 +184,9 @@ export async function POST(request: NextRequest) {
     });
 
     const prices = await syncCatalogPricesByMembership("offerte-lambo");
-    return redirect("success", rows.length, prices.productsSeen, prices.productsUpdated);
+    return finish("success", rows.length, prices.productsSeen, prices.productsUpdated);
   } catch (error) {
     console.error("offerte-lambo-import-save", error instanceof Error ? error.message : error);
-    return redirect("save-error");
+    return finish("save-error");
   }
 }
