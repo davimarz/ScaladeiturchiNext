@@ -1,48 +1,43 @@
 import ProductBrowser from "../components/ProductBrowser";
 
-const demoCards = [
-  ["VETRINA", "In evidenza", "Il catalogo generale, separato dalle sezioni speciali."],
-  ["HAUL", "Amazon HAUL", "Prodotti importati dalla sezione HAUL di Amazon Italia."],
-  ["OFFERTE LAMBO", "Amazon Deals", "Prodotti importati dalla pagina Offerte di Amazon Italia."]
-];
-
 export default function Home() {
   return (
     <main>
       <header className="topbar">
-        <a className="brand" href="#" aria-label="Scala dei Turchi - home">
+        <a className="brand" href="/" aria-label="Scala dei Turchi - home">
           <span className="brandMark">ST</span>
           <span><strong>Scala dei Turchi</strong><small>Offerte Amazon</small></span>
         </a>
         <nav aria-label="Navigazione principale">
-          <a href="/vetrina">Vetrina</a><a href="/haul">HAUL</a><a href="/offerte-lambo">Offerte Lambo</a><a href="#cerca">Cerca</a>
+          <a href="/haul">HAUL</a>
+          <a href="/offerte-lambo">Offerte Lampo</a>
+          <a href="#cerca">Cerca</a>
         </nav>
       </header>
 
-      <section className="hero">
+      <section className="hero homeHero">
         <div>
           <p className="eyebrow">SCALA DEI TURCHI · SHOPPING</p>
-          <h1>Offerte utili.<br/>Ricerca veloce.</h1>
-          <p className="lead">Consulta prodotti Amazon selezionati in una vetrina semplice, rapida e pensata anche per smartphone.</p>
-          <div className="heroActions"><a className="cta" href="#cerca">Cerca un prodotto</a><a className="secondary" href="/vetrina">Apri la vetrina</a></div>
-        </div>
-        <aside className="heroPanel">
-          <span>CATALOGO</span>
-          <strong>Amazon Italia</strong>
-          <p>I prodotti possono essere inseriti tramite link affiliati ufficiali Amazon. Prezzi e disponibilità aggiornati sono consultabili direttamente su Amazon.</p>
-        </aside>
-      </section>
-
-      <section className="showcase" id="vetrina">
-        <div className="sectionHead"><div><p className="eyebrow">ESPLORA</p><h2>Tre modi per trovare ciò che ti serve</h2></div><p>Il catalogo viene letto dal database e resta disponibile anche quando Creators API non è accessibile.</p></div>
-        <div className="cards">
-          {demoCards.map(([tag,title,text],index) => <article key={tag}><span className="cardTag">{tag}</span><div className="cardNumber">0{index+1}</div><h3>{title}</h3><p>{text}</p><a href={tag === "VETRINA" ? "/vetrina" : tag === "HAUL" ? "/haul" : "/offerte-lambo"}>Esplora <span aria-hidden="true">→</span></a></article>)}
+          <h1>Trova subito ciò che cerchi.</h1>
+          <p className="lead">Vai direttamente a HAUL, alle Offerte Lampo oppure cerca tra tutti i prodotti disponibili.</p>
+          <div className="homeQuickNav" aria-label="Accessi rapidi">
+            <a className="homeNavButton" href="/haul">HAUL</a>
+            <a className="homeNavButton" href="/offerte-lambo">Offerte Lampo</a>
+            <a className="homeNavButton" href="#cerca">Cerca</a>
+          </div>
         </div>
       </section>
 
-      <ProductBrowser excludeCategories="haul,outlet,offerte-lambo" />
+      <ProductBrowser
+        heading="Cerca tra tutti i prodotti"
+        eyebrow="CERCA"
+        showCategoryChips={false}
+      />
 
-      <section className="notice"><strong>Trasparenza</strong><p>Scala dei Turchi partecipa al Programma Affiliazione Amazon. Alcuni link ai prodotti possono generare una commissione senza costi aggiuntivi per chi acquista.</p></section>
+      <section className="notice">
+        <strong>Trasparenza</strong>
+        <p>Scala dei Turchi partecipa al Programma Affiliazione Amazon. Alcuni link ai prodotti possono generare una commissione senza costi aggiuntivi per chi acquista.</p>
+      </section>
       <footer><strong>Scala dei Turchi</strong><span>Offerte Amazon · Italia</span></footer>
     </main>
   );
