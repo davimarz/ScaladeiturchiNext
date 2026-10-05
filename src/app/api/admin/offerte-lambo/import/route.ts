@@ -166,12 +166,14 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    const isBadTitle = (value: string | undefined | null) =>
+      !value || /mostra visualizzazione per acquistare rapidamente|quick view|Prodotto Amazon\s+[A-Z0-9]{10}/i.test(value);
     const rows = parsed.map((product) => {
       const existing = existingByAsin.get(product.asin);
       const hasCurrent = product.currentPrice != null;
       return {
         asin: product.asin,
-        title: product.title.startsWith("Prodotto Amazon ") && existing?.title ? existing.title : product.title,
+        title: isBadTitle(product.title) && existing?.title && !isBadTitle(existing.title) ? existing.title : product.title,
         category_id: existing?.category_id ?? null,
         image_url: product.imageUrl ?? existing?.image_url ?? null,
         amazon_url: `https://www.amazon.it/dp/${product.asin}`,
