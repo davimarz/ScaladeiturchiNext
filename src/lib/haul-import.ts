@@ -64,8 +64,30 @@ function isGenericTitle(title: string) {
     /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|immagine del prodotto|product image|sponsorizzato|sponsored/i.test(normalized);
 }
 
+function titleFromAmazonHref(fragment: string, asin: string) {
+  const patterns = [
+    new RegExp('href=["\\\'](?:https?:\\/\\/(?:www\\.)?amazon\\.it)?\\/([^"\\\']+?)\\/dp\\/' + asin + '(?:[/?#&"\\\']|$)', "i"),
+    new RegExp('href=["\\\'](?:https?:\\/\\/(?:www\\.)?amazon\\.it)?\\/dp\\/' + asin + '(?:[/?#&"\\\']|$)', "i"),
+  ];
+
+  for (const pattern of patterns) {
+    const match = fragment.match(pattern);
+    const slug = match?.[1];
+    if (!slug) continue;
+    const decoded = decodeURIComponent(slug)
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!isGenericTitle(decoded) && decoded.length >= 8) return decoded.slice(0, 300);
+  }
+  return null;
+}
+
 function findTitle(fragment: string, asin: string) {
   const candidates: Array<{ value: string; priority: number }> = [];
+
+  const hrefTitle = titleFromAmazonHref(fragment, asin);
+  if (hrefTitle) candidates.push({ value: hrefTitle, priority: 120 });
 
   const add = (value: string | undefined, priority: number) => {
     const title = cleanText(value ?? "").slice(0, 300);
