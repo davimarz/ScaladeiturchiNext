@@ -1,6 +1,6 @@
 import "server-only";
 import { getAmazonItems, searchAmazonItems } from "./amazon/client";
-import { fetchAmazonProductOffer } from "./amazon-page-offer";
+import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
 import { supabaseAdminFetch } from "./supabase/admin";
 
 type OfferListing = {
@@ -64,54 +64,70 @@ async function syncExistingFromAmazonPages(filter = "") {
     current_price: number | null;
     list_price: number | null;
     discount_percent: number | null;
+    image_url: string | null;
   }>>(
-    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent&order=updated_at.asc&limit=500",
+    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url&order=updated_at.asc&limit=500",
   );
 
   let changed = 0;
   let unchanged = 0;
   let failed = 0;
+  let imagesRecovered = 0;
+  let imagesMissing = 0;
 
   for (let offset = 0; offset < existing.length; offset += 12) {
     const batch = existing.slice(offset, offset + 12);
     const results = await Promise.allSettled(
       batch.map(async (product) => {
-        const offer = await fetchAmazonProductOffer(product.asin);
-        if (!offer) return "failed" as const;
+        const snapshot = await fetchAmazonProductSnapshot(product.asin);
+        const offer = snapshot.offer;
+        const recoveredImage = !product.image_url && snapshot.imageUrl ? snapshot.imageUrl : null;
 
-        const hasChanged =
+        if (!offer && !recoveredImage) return { status: "failed" as const, imageRecovered: false, imageMissing: !product.image_url };
+
+        const hasChanged = offer ? (
           product.current_price !== offer.currentPrice ||
           product.list_price !== offer.listPrice ||
-          product.discount_percent !== offer.discountPercent;
+          product.discount_percent !== offer.discountPercent
+        ) : false;
 
         const now = new Date().toISOString();
+        const payload: Record<string, unknown> = {};
+        if (offer) {
+          payload.current_price = offer.currentPrice;
+          payload.list_price = offer.listPrice;
+          payload.discount_percent = offer.discountPercent;
+          payload.currency = offer.currency;
+          payload.price_verified_at = now;
+        }
+        if (recoveredImage) payload.image_url = recoveredImage;
+        if (hasChanged || recoveredImage) payload.updated_at = now;
+
         await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
           method: "PATCH",
           headers: { Prefer: "return=minimal" },
-          body: JSON.stringify({
-            current_price: offer.currentPrice,
-            list_price: offer.listPrice,
-            discount_percent: offer.discountPercent,
-            currency: offer.currency,
-            price_verified_at: now,
-            updated_at: hasChanged ? now : undefined,
-          }),
+          body: JSON.stringify(payload),
         });
 
-        return hasChanged ? "changed" as const : "unchanged" as const;
+        return {
+          status: offer ? (hasChanged ? "changed" as const : "unchanged" as const) : "failed" as const,
+          imageRecovered: Boolean(recoveredImage),
+          imageMissing: !product.image_url && !snapshot.imageUrl,
+        };
       }),
     );
 
     for (const result of results) {
       if (result.status === "rejected") {
         failed++;
-      } else if (result.value === "changed") {
-        changed++;
-      } else if (result.value === "unchanged") {
-        unchanged++;
-      } else {
-        failed++;
+        continue;
       }
+      if (result.value.status === "changed") changed++;
+      else if (result.value.status === "unchanged") unchanged++;
+      else failed++;
+
+      if (result.value.imageRecovered) imagesRecovered++;
+      if (result.value.imageMissing) imagesMissing++;
     }
   }
 
@@ -121,6 +137,8 @@ async function syncExistingFromAmazonPages(filter = "") {
     productsChanged: changed,
     productsUnchanged: unchanged,
     productsFailed: failed,
+    imagesRecovered,
+    imagesMissing,
   };
 }
 
