@@ -65,8 +65,9 @@ async function syncExistingFromAmazonPages(filter = "") {
     list_price: number | null;
     discount_percent: number | null;
     image_url: string | null;
+    title: string;
   }>>(
-    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url&order=updated_at.asc&limit=500",
+    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url,title&order=updated_at.asc&limit=500",
   );
 
   let changed = 0;
@@ -82,8 +83,11 @@ async function syncExistingFromAmazonPages(filter = "") {
         const snapshot = await fetchAmazonProductSnapshot(product.asin);
         const offer = snapshot.offer;
         const recoveredImage = !product.image_url && snapshot.imageUrl ? snapshot.imageUrl : null;
+        const recoveredTitle = snapshot.title && snapshot.title !== product.title ? snapshot.title : null;
 
-        if (!offer && !recoveredImage) return { status: "failed" as const, imageRecovered: false, imageMissing: !product.image_url };
+        if (!offer && !recoveredImage && !recoveredTitle) {
+          return { status: "failed" as const, imageRecovered: false, imageMissing: !product.image_url };
+        }
 
         const hasChanged = offer ? (
           product.current_price !== offer.currentPrice ||
@@ -101,7 +105,8 @@ async function syncExistingFromAmazonPages(filter = "") {
           payload.price_verified_at = now;
         }
         if (recoveredImage) payload.image_url = recoveredImage;
-        if (hasChanged || recoveredImage) payload.updated_at = now;
+        if (recoveredTitle) payload.title = recoveredTitle;
+        if (hasChanged || recoveredImage || recoveredTitle) payload.updated_at = now;
 
         await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
           method: "PATCH",
