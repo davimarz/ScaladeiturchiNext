@@ -1,6 +1,6 @@
 import "server-only";
 import { getAmazonItems, searchAmazonItems } from "./amazon/client";
-import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle } from "./amazon-page-offer";
+import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle, needsProductTitleEnrichment } from "./amazon-page-offer";
 import { supabaseAdminFetch } from "./supabase/admin";
 
 type OfferListing = {
@@ -89,10 +89,10 @@ async function syncExistingFromAmazonPages(filter = "") {
         const offer = snapshot?.offer ?? null;
         const recoveredImage = !product.image_url && snapshot?.imageUrl ? snapshot.imageUrl : null;
         let recoveredTitle = snapshot?.title && snapshot.title !== product.title ? snapshot.title : null;
-        const genericExistingTitle = /mostra visualizzazione per acquistare rapidamente|quick view|Prodotto Amazon\s+[A-Z0-9]{10}/i.test(product.title);
+        const genericExistingTitle = needsProductTitleEnrichment(product.title);
         if (!recoveredTitle && genericExistingTitle) {
           const searchTitle = await fetchAmazonSearchTitle(product.asin);
-          if (searchTitle && searchTitle !== product.title) recoveredTitle = searchTitle;
+          if (searchTitle && searchTitle !== product.title && searchTitle.length > product.title.length) recoveredTitle = searchTitle;
         }
 
         if (!offer && !recoveredImage && !recoveredTitle) {
