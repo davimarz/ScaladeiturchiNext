@@ -113,7 +113,7 @@ export default async function AdminPage({
           <h1>Dashboard</h1>
         </div>
         <div className="adminActions">
-          <Link href="/">Apri il sito</Link>
+          <Link href="/" target="_blank" rel="noopener noreferrer">Apri il sito</Link>
           <Link href="/admin/haul">HAUL</Link>
           <Link href="/admin/offerte-lambo">Offerte Lambo</Link>
           <form action="/api/admin/logout" method="post">
