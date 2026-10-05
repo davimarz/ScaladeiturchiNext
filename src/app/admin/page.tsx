@@ -4,6 +4,7 @@ import { MANUAL_SOURCES } from "../../lib/product-validation";
 import { cookies } from "next/headers";
 import DeleteProductButton from "../../components/DeleteProductButton";
 import AdminCatalogActions from "../../components/AdminCatalogActions";
+import AdminUpdateButton from "../../components/AdminUpdateButton";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
 
@@ -52,6 +53,8 @@ export default async function AdminPage({
     lambo_count?: string;
     price_seen?: string;
     price_updated?: string;
+    price_unchanged?: string;
+    price_failed?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -82,7 +85,7 @@ export default async function AdminPage({
   const imageFailure = returnedPageTitle ? "Amazon ha restituito la pagina «" + returnedPageTitle + "» senza foto del prodotto." : imageHttpStatus ? "Amazon ha risposto con un errore (" + imageHttpStatus + ")." : params.image_error === "blocked" ? "Amazon ha bloccato la lettura automatica della pagina." : params.image_error === "large" ? "La pagina Amazon supera il limite di lettura." : params.image_error === "timeout" ? "Amazon non ha risposto in tempo." : "La foto non è stata trovata nella pagina Amazon.";
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
-  const [runs, products, categories, haulSettings, lamboSettings] = await Promise.all([
+  const [runs, products, categories, haulSettings, lamboSettings, haulLastPrice, lamboLastPrice] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -92,9 +95,13 @@ export default async function AdminPage({
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.haul_source_url&select=key,value&limit=1"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.offerte_lambo_source_url&select=key,value&limit=1"),
+    supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_haul=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
+    supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_offerte_lambo=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
   ]);
   const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
   const savedLamboUrl = typeof lamboSettings[0]?.value === "string" ? lamboSettings[0].value : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
+  const formatLastCheck = (value: string | null | undefined) =>
+    value ? new Date(value).toLocaleString("it-IT") : "Mai";
 
   return (
     <main className="adminShell">
@@ -164,11 +171,11 @@ export default async function AdminPage({
           </div>
         </div>
 
-        {params.haul_import === "success" ? <p className="adminNotice">HAUL aggiornato: {params.haul_count ?? "0"} prodotti importati o aggiornati; prezzi controllati per {params.price_seen ?? "0"} prodotti e aggiornati per {params.price_updated ?? "0"}.</p> : null}
-        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile, ma prezzi e sconti dei prodotti già presenti sono stati controllati. Aggiornati {params.price_updated ?? "0"} su {params.price_seen ?? "0"}.</p> : null}
+        {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
         {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l'aggiornamento automatico.</p> : null}
-        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo aggiornate: {params.lambo_count ?? "0"} prodotti importati o aggiornati; prezzi controllati per {params.price_seen ?? "0"} prodotti e aggiornati per {params.price_updated ?? "0"}.</p> : null}
-        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lambo: Amazon ha bloccato la scansione del catalogo, ma prezzi e sconti dei prodotti già presenti sono stati controllati. Aggiornati {params.price_updated ?? "0"} su {params.price_seen ?? "0"}.</p> : null}
+        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lambo: scansione catalogo bloccata; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
         {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l'aggiornamento automatico.</p> : null}
 
         <div className="quickImportGrid">
@@ -176,11 +183,11 @@ export default async function AdminPage({
             <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
               <strong>HAUL</strong>
-              <span>Scansione automatica completa</span>
+              <span>Ultimo controllo: {formatLastCheck(haulLastPrice[0]?.price_verified_at)}</span>
             </div>
             <div className="quickImportControls">
               <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required />
-              <button type="submit">Aggiorna HAUL</button>
+              <AdminUpdateButton idleLabel="Aggiorna HAUL" />
             </div>
             <Link href="/admin/haul" className="quickImportLink">Opzioni avanzate</Link>
           </form>
@@ -189,11 +196,11 @@ export default async function AdminPage({
             <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
               <strong>Offerte Lambo</strong>
-              <span>Offerte del giorno / lampo</span>
+              <span>Ultimo controllo: {formatLastCheck(lamboLastPrice[0]?.price_verified_at)}</span>
             </div>
             <div className="quickImportControls">
               <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lambo" required />
-              <button type="submit">Aggiorna Offerte</button>
+              <AdminUpdateButton idleLabel="Aggiorna Offerte" />
             </div>
             <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
           </form>
@@ -201,37 +208,39 @@ export default async function AdminPage({
       </section>
 
       <section className="adminPanel">
-        <h2>Ultime sincronizzazioni API</h2>
-        <p>Aggiorna prezzi, prezzi di riferimento e sconti. La Creators API resta prioritaria; se Amazon restituisce un errore di idoneità, viene usato il controllo diretto delle pagine prodotto.</p>
-        {params.sync === "success" ? <p className="adminNotice">Sincronizzazione completata.</p> : null}
-        {params.sync === "error" ? <p className="adminError">Sincronizzazione non completata. Controlla il dettaglio nella tabella qui sotto.</p> : null}
-        <form action="/api/admin/sync" method="post" className="adminActions">
-          <button type="submit">Aggiorna prezzi e sconti ora</button>
-        </form>
-        <div className="adminTableWrap">
-          <table className="adminTable">
-            <thead>
-              <tr>
-                <th>Stato</th>
-                <th>Prodotti</th>
-                <th>Aggiornati</th>
-                <th>Avvio</th>
-                <th>Errore</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr key={run.id}>
-                  <td>{run.status}</td>
-                  <td>{run.products_seen}</td>
-                  <td>{run.products_updated}</td>
-                  <td>{new Date(run.started_at).toLocaleString("it-IT")}</td>
-                  <td>{run.error_message ?? "—"}</td>
+        <details className="adminAdvancedPanel">
+          <summary>Sincronizzazione tecnica e cronologia API</summary>
+          <p>Funzione avanzata: aggiorna l'intero catalogo indipendentemente dai due aggiornamenti rapidi sopra.</p>
+          {params.sync === "success" ? <p className="adminNotice">Sincronizzazione tecnica completata.</p> : null}
+          {params.sync === "error" ? <p className="adminError">Sincronizzazione tecnica non completata. Controlla il dettaglio qui sotto.</p> : null}
+          <form action="/api/admin/sync" method="post" className="adminActions">
+            <AdminUpdateButton idleLabel="Aggiorna intero catalogo" />
+          </form>
+          <div className="adminTableWrap">
+            <table className="adminTable">
+              <thead>
+                <tr>
+                  <th>Stato</th>
+                  <th>Prodotti</th>
+                  <th>Aggiornati</th>
+                  <th>Avvio</th>
+                  <th>Errore</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {runs.map((run) => (
+                  <tr key={run.id}>
+                    <td>{run.status}</td>
+                    <td>{run.products_seen}</td>
+                    <td>{run.products_updated}</td>
+                    <td>{new Date(run.started_at).toLocaleString("it-IT")}</td>
+                    <td>{run.error_message ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </section>
 
       <section className="adminPanel">
