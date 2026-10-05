@@ -50,6 +50,37 @@ export type AmazonPageOffer = {
   currency: "EUR";
 };
 
+function cleanProductTitle(value: string) {
+  return decodeEntities(value)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\s*:\s*Amazon\.it.*$/i, "")
+    .slice(0, 300);
+}
+
+function isUsefulProductTitle(value: string) {
+  const normalized = value.toLowerCase();
+  return value.length > 3 &&
+    !/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|amazon\.it\s*$/i.test(normalized);
+}
+
+export function extractAmazonProductTitle(html: string) {
+  const candidates = [
+    html.match(/id=["']productTitle["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
+    html.match(/<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1],
+    html.match(/<meta\b[^>]*name=["']title["'][^>]*content=["']([^"']+)["']/i)?.[1],
+    html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1],
+  ];
+
+  for (const candidate of candidates) {
+    const title = cleanProductTitle(candidate ?? "");
+    if (isUsefulProductTitle(title)) return title;
+  }
+
+  return null;
+}
+
 export function extractAmazonProductOffer(html: string): AmazonPageOffer | null {
   const current =
     matchPriceNear(html, /class=["'][^"']*(?:priceToPay|apexPriceToPay)[^"']*["']/i) ??
@@ -135,10 +166,11 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
     return {
       offer: extractAmazonProductOffer(html),
       imageUrl: extractAmazonProductImage(html, normalizedAsin),
+      title: extractAmazonProductTitle(html),
     };
   }
 
-  return { offer: null, imageUrl: null };
+  return { offer: null, imageUrl: null, title: null };
 }
 
 export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetch = fetch) {

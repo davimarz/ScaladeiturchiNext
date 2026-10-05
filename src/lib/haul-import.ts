@@ -57,6 +57,13 @@ function findDiscount(fragment: string) {
   return value && value > 0 && value < 100 ? value : null;
 }
 
+function isGenericTitle(title: string) {
+  const normalized = title.toLowerCase().replace(/\s+/g, " ").trim();
+  return !normalized ||
+    normalized.length < 4 ||
+    /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|immagine del prodotto|product image|sponsorizzato|sponsored/i.test(normalized);
+}
+
 function findTitle(fragment: string, asin: string) {
   const candidates = [
     fragment.match(/<h2\b[^>]*>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1],
@@ -65,11 +72,11 @@ function findTitle(fragment: string, asin: string) {
   ];
   for (const candidate of candidates) {
     const title = cleanText(candidate ?? "").slice(0, 300);
-    if (title && title.length > 3) return title;
+    if (!isGenericTitle(title)) return title;
   }
   for (const [tag] of fragment.matchAll(/<img\b[^>]*>/gi)) {
     const alt = cleanText(attribute(tag, "alt")).slice(0, 300);
-    if (alt && alt.length > 3) return alt;
+    if (!isGenericTitle(alt)) return alt;
   }
   return "Prodotto Amazon " + asin;
 }
