@@ -5,6 +5,7 @@ import { isAmazonDealsUrl, parseHaulHtml } from "../../../../../lib/haul-import"
 import { fetchAmazonSearchWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
 import { syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
+import { needsProductTitleEnrichment } from "../../../../../lib/amazon-page-offer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString();
     const isBadTitle = (value: string | undefined | null) =>
-      !value || /mostra visualizzazione per acquistare rapidamente|quick view|Prodotto Amazon\s+[A-Z0-9]{10}/i.test(value);
+      !value || needsProductTitleEnrichment(value);
     const rows = parsed.map((product) => {
       const existing = existingByAsin.get(product.asin);
       const hasCurrent = product.currentPrice != null;
