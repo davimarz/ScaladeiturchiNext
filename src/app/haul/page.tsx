@@ -19,7 +19,6 @@ export default function HaulPage() {
           <p className="eyebrow">AMAZON HAUL</p>
           <h1>Prodotti HAUL</h1>
           <p className="lead">Una pagina dedicata ai prodotti importati dalla sezione HAUL di Amazon Italia. Il catalogo viene aggiornato dall&apos;area amministratore.</p>
-          <div className="heroActions"><Link className="cta" href="#haul-products">Vedi i prodotti</Link><Link className="secondary" href="/">Torna alla home</Link></div>
         </div>
         <aside className="heroPanel">
           <span>SEZIONE DEDICATA</span>
