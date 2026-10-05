@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ProductBrowser from "../../components/ProductBrowser";
+import PublicTabs from "../../components/PublicTabs";
 
 export default function HaulPage() {
   return (
@@ -9,13 +10,9 @@ export default function HaulPage() {
           <span className="brandMark">ST</span>
           <span><strong>Scala dei Turchi</strong><small>Offerte Amazon</small></span>
         </Link>
-        <nav aria-label="Navigazione principale">
-          <Link href="/vetrina">Vetrina</Link>
-          <Link href="/haul">HAUL</Link>
-          <Link href="/offerte-lambo">Offerte Lambo</Link>
-          <Link href="/">Home</Link>
-        </nav>
+
       </header>
+      <PublicTabs active="haul" />
 
       <section className="hero haulHero">
         <div>
