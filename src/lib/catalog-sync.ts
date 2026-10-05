@@ -1,6 +1,6 @@
 import "server-only";
 import { getAmazonItems, searchAmazonItems } from "./amazon/client";
-import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
+import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle } from "./amazon-page-offer";
 import { supabaseAdminFetch } from "./supabase/admin";
 
 type OfferListing = {
@@ -80,10 +80,20 @@ async function syncExistingFromAmazonPages(filter = "") {
     const batch = existing.slice(offset, offset + 12);
     const results = await Promise.allSettled(
       batch.map(async (product) => {
-        const snapshot = await fetchAmazonProductSnapshot(product.asin);
-        const offer = snapshot.offer;
-        const recoveredImage = !product.image_url && snapshot.imageUrl ? snapshot.imageUrl : null;
-        const recoveredTitle = snapshot.title && snapshot.title !== product.title ? snapshot.title : null;
+        let snapshot: Awaited<ReturnType<typeof fetchAmazonProductSnapshot>> | null = null;
+        try {
+          snapshot = await fetchAmazonProductSnapshot(product.asin);
+        } catch {
+          snapshot = null;
+        }
+        const offer = snapshot?.offer ?? null;
+        const recoveredImage = !product.image_url && snapshot?.imageUrl ? snapshot.imageUrl : null;
+        let recoveredTitle = snapshot?.title && snapshot.title !== product.title ? snapshot.title : null;
+        const genericExistingTitle = /mostra visualizzazione per acquistare rapidamente|quick view|Prodotto Amazon\s+[A-Z0-9]{10}/i.test(product.title);
+        if (!recoveredTitle && genericExistingTitle) {
+          const searchTitle = await fetchAmazonSearchTitle(product.asin);
+          if (searchTitle && searchTitle !== product.title) recoveredTitle = searchTitle;
+        }
 
         if (!offer && !recoveredImage && !recoveredTitle) {
           return { status: "failed" as const, imageRecovered: false, imageMissing: !product.image_url };
