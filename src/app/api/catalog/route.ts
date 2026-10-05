@@ -32,10 +32,11 @@ export async function GET(request: NextRequest) {
   const haulCategory = safeSearch(searchParams.get("haul_category") ?? "");
   const limit = catalogLimit(searchParams.get("limit"));
 
+  const queryLimit = category === "offerte-lambo" ? Math.min(limit * 5, 200) : limit;
   const filters = [
     "active=eq.true",
     "select=id,asin,title,image_url,affiliate_url,current_price,list_price,currency,discount_percent,price_verified_at,featured,category_id,haul_category",
-    `limit=${limit}`,
+    `limit=${queryLimit}`,
     "order=current_price.asc.nullslast,updated_at.desc",
   ];
 
@@ -62,7 +63,40 @@ export async function GET(request: NextRequest) {
     if (excludeSpecial.includes("offerte-lambo")) filters.push("in_offerte_lambo=eq.false");
   }
 
-  const products = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
+  const rawProducts = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
+
+  const isGenericAmazonImage = (value: string | null) =>
+    Boolean(value && /\/11\+\+B3A2NEL\._SS200_\.png(?:\?|$)/i.test(value));
+
+  const products = category === "offerte-lambo"
+    ? (() => {
+        const bestBySignature = new Map<string, ProductRow>();
+        for (const product of rawProducts) {
+          const signature = [
+            product.title.trim().toLowerCase(),
+            product.current_price ?? "",
+            product.list_price ?? "",
+            product.discount_percent ?? "",
+          ].join("|");
+
+          const current = bestBySignature.get(signature);
+          if (!current) {
+            bestBySignature.set(signature, product);
+            continue;
+          }
+
+          const score = (row: ProductRow) =>
+            (row.image_url && !isGenericAmazonImage(row.image_url) ? 4 : 0) +
+            (row.image_url ? 1 : 0) +
+            Math.min(row.title.length, 120) / 120 +
+            (row.price_verified_at ? 0.25 : 0);
+
+          if (score(product) > score(current)) bestBySignature.set(signature, product);
+        }
+        return [...bestBySignature.values()].slice(0, limit);
+      })()
+    : rawProducts;
+
   let haulCategories: string[] = [];
   if (category === "haul") {
     const rows = await supabaseAdminFetch<Array<{ haul_category: string | null }>>(
