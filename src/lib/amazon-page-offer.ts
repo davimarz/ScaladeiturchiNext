@@ -1,4 +1,5 @@
 import "server-only";
+import { extractAmazonProductImage } from "./amazon-input";
 
 const AMAZON_HOSTS = new Set(["amazon.it", "www.amazon.it"]);
 
@@ -102,9 +103,10 @@ async function readHtml(response: Response) {
   }
 }
 
-export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetch = fetch) {
+export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof fetch = fetch) {
   if (!/^[A-Z0-9]{10}$/i.test(asin)) throw new Error("Invalid product ASIN");
-  let url = new URL("https://www.amazon.it/dp/" + asin.toUpperCase());
+  const normalizedAsin = asin.toUpperCase();
+  let url = new URL("https://www.amazon.it/dp/" + normalizedAsin);
   const signal = AbortSignal.timeout(10000);
 
   for (let redirects = 0; redirects <= 3; redirects++) {
@@ -130,7 +132,16 @@ export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetc
     if (!response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon response is not HTML");
     const html = await readHtml(response);
     if (/\/errors\/validateCaptcha|<title>\s*Robot Check/i.test(html)) throw new Error("Amazon blocked the product page");
-    return extractAmazonProductOffer(html);
+    return {
+      offer: extractAmazonProductOffer(html),
+      imageUrl: extractAmazonProductImage(html, normalizedAsin),
+    };
   }
-  return null;
+
+  return { offer: null, imageUrl: null };
+}
+
+export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetch = fetch) {
+  const snapshot = await fetchAmazonProductSnapshot(asin, fetcher);
+  return snapshot.offer;
 }
