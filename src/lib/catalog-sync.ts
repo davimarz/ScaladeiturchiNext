@@ -57,14 +57,15 @@ function isCreatorsEligibilityError(error: unknown) {
   return /AssociateNotEligible|eligibility requirements|Amazon Creators API failed:\s*403/i.test(message);
 }
 
-async function syncExistingFromAmazonPages() {
+async function syncExistingFromAmazonPages(filter = "") {
+  const suffix = filter ? "&" + filter : "";
   const existing = await supabaseAdminFetch<Array<{ asin: string }>>(
-    "products?active=eq.true&select=asin&order=updated_at.asc&limit=500",
+    "products?active=eq.true" + suffix + "&select=asin&order=updated_at.asc&limit=500",
   );
   let updated = 0;
 
-  for (let offset = 0; offset < existing.length; offset += 4) {
-    const batch = existing.slice(offset, offset + 4);
+  for (let offset = 0; offset < existing.length; offset += 12) {
+    const batch = existing.slice(offset, offset + 12);
     const results = await Promise.allSettled(
       batch.map(async ({ asin }) => {
         const offer = await fetchAmazonProductOffer(asin);
@@ -78,10 +79,8 @@ async function syncExistingFromAmazonPages() {
           updated_at: now,
         };
 
-        if (offer.listPrice != null && offer.discountPercent != null) {
-          payload.list_price = offer.listPrice;
-          payload.discount_percent = offer.discountPercent;
-        }
+        payload.list_price = offer.listPrice;
+        payload.discount_percent = offer.discountPercent;
 
         await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(asin)}`, {
           method: "PATCH",
@@ -172,4 +171,9 @@ export async function syncAmazonCatalog() {
     console.warn("amazon-creators-api-fallback", error instanceof Error ? error.message : String(error));
     return syncExistingFromAmazonPages();
   }
+}
+
+export async function syncCatalogPricesByMembership(membership: "haul" | "offerte-lambo") {
+  const filter = membership === "haul" ? "in_haul=eq.true" : "in_offerte_lambo=eq.true";
+  return syncExistingFromAmazonPages(filter);
 }

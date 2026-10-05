@@ -4,18 +4,22 @@ import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonDealsUrl, parseHaulHtml } from "../../../../../lib/haul-import";
 import { fetchAmazonSearchWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
+import { syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const DEFAULT_LAMBO_URL = "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
 const PARTNER_TAG = "eiapromo-21";
 const MAX_HTML_BYTES = 40 * 1024 * 1024;
 
-function redirect(status: string, count?: number) {
-  const suffix = count == null ? "" : `&lambo_count=${count}`;
-  return new Response(null, { status: 303, headers: { location: `/admin/offerte-lambo?lambo_import=${status}${suffix}` } });
+function redirect(status: string, count?: number, priceSeen?: number, priceUpdated?: number) {
+  const params = new URLSearchParams({ lambo_import: status });
+  if (count != null) params.set("lambo_count", String(count));
+  if (priceSeen != null) params.set("price_seen", String(priceSeen));
+  if (priceUpdated != null) params.set("price_updated", String(priceUpdated));
+  return new Response(null, { status: 303, headers: { location: `/admin/offerte-lambo?${params.toString()}` } });
 }
 
 function affiliateUrl(asin: string) {
@@ -86,12 +90,25 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Amazon Offerte Lampo browser scan failed";
     console.warn("offerte-lambo-import-browser", message);
-    if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return redirect("blocked");
-    return redirect("browser-error");
+    try {
+      const prices = await syncCatalogPricesByMembership("offerte-lambo");
+      return redirect("price-only", undefined, prices.productsSeen, prices.productsUpdated);
+    } catch (priceError) {
+      console.warn("offerte-lambo-price-refresh", priceError instanceof Error ? priceError.message : priceError);
+      if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return redirect("blocked");
+      return redirect("browser-error");
+    }
   }
 
   const parsed = parseHaulHtml(html);
-  if (!parsed.length) return redirect("empty");
+  if (!parsed.length) {
+    try {
+      const prices = await syncCatalogPricesByMembership("offerte-lambo");
+      return redirect("price-only", 0, prices.productsSeen, prices.productsUpdated);
+    } catch {
+      return redirect("empty");
+    }
+  }
 
   try {
     const existingByAsin = new Map<string, {
@@ -163,7 +180,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify([{ key: "offerte_lambo_source_url", value: sourceUrl }]),
     });
 
-    return redirect("success", rows.length);
+    const prices = await syncCatalogPricesByMembership("offerte-lambo");
+    return redirect("success", rows.length, prices.productsSeen, prices.productsUpdated);
   } catch (error) {
     console.error("offerte-lambo-import-save", error instanceof Error ? error.message : error);
     return redirect("save-error");
