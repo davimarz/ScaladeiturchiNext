@@ -59,41 +59,69 @@ function isCreatorsEligibilityError(error: unknown) {
 
 async function syncExistingFromAmazonPages(filter = "") {
   const suffix = filter ? "&" + filter : "";
-  const existing = await supabaseAdminFetch<Array<{ asin: string }>>(
-    "products?active=eq.true" + suffix + "&select=asin&order=updated_at.asc&limit=500",
+  const existing = await supabaseAdminFetch<Array<{
+    asin: string;
+    current_price: number | null;
+    list_price: number | null;
+    discount_percent: number | null;
+  }>>(
+    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent&order=updated_at.asc&limit=500",
   );
-  let updated = 0;
+
+  let changed = 0;
+  let unchanged = 0;
+  let failed = 0;
 
   for (let offset = 0; offset < existing.length; offset += 12) {
     const batch = existing.slice(offset, offset + 12);
     const results = await Promise.allSettled(
-      batch.map(async ({ asin }) => {
-        const offer = await fetchAmazonProductOffer(asin);
-        if (!offer) return false;
+      batch.map(async (product) => {
+        const offer = await fetchAmazonProductOffer(product.asin);
+        if (!offer) return "failed" as const;
+
+        const hasChanged =
+          product.current_price !== offer.currentPrice ||
+          product.list_price !== offer.listPrice ||
+          product.discount_percent !== offer.discountPercent;
 
         const now = new Date().toISOString();
-        const payload: Record<string, unknown> = {
-          current_price: offer.currentPrice,
-          currency: offer.currency,
-          price_verified_at: now,
-          updated_at: now,
-        };
-
-        payload.list_price = offer.listPrice;
-        payload.discount_percent = offer.discountPercent;
-
-        await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(asin)}`, {
+        await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
           method: "PATCH",
           headers: { Prefer: "return=minimal" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            current_price: offer.currentPrice,
+            list_price: offer.listPrice,
+            discount_percent: offer.discountPercent,
+            currency: offer.currency,
+            price_verified_at: now,
+            updated_at: hasChanged ? now : undefined,
+          }),
         });
-        return true;
+
+        return hasChanged ? "changed" as const : "unchanged" as const;
       }),
     );
-    updated += results.filter((result) => result.status === "fulfilled" && result.value).length;
+
+    for (const result of results) {
+      if (result.status === "rejected") {
+        failed++;
+      } else if (result.value === "changed") {
+        changed++;
+      } else if (result.value === "unchanged") {
+        unchanged++;
+      } else {
+        failed++;
+      }
+    }
   }
 
-  return { productsSeen: existing.length, productsUpdated: updated };
+  return {
+    productsSeen: existing.length,
+    productsUpdated: changed,
+    productsChanged: changed,
+    productsUnchanged: unchanged,
+    productsFailed: failed,
+  };
 }
 
 async function syncViaCreatorsApi() {
