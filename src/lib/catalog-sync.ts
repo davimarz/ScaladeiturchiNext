@@ -127,7 +127,7 @@ async function syncExistingFromAmazonPages(filter = "") {
         return {
           status: offer ? (hasChanged ? "changed" as const : "unchanged" as const) : "failed" as const,
           imageRecovered: Boolean(recoveredImage),
-          imageMissing: !product.image_url && !snapshot.imageUrl,
+          imageMissing: !product.image_url && !snapshot?.imageUrl,
         };
       }),
     );
