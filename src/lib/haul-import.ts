@@ -67,17 +67,28 @@ function isGenericTitle(title: string) {
 function findTitle(fragment: string, asin: string) {
   const candidates = [
     fragment.match(/<h2\b[^>]*>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>/i)?.[1],
-    fragment.match(/<span\b[^>]*class=["'][^"']*(?:a-size-base-plus|a-text-normal)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
+    fragment.match(/<span\b[^>]*class=["'][^"']*(?:a-size-base-plus|a-text-normal|a-size-medium)[^"']*["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
     fragment.match(/<a\b[^>]*title=["']([^"']+)["']/i)?.[1],
   ];
   for (const candidate of candidates) {
     const title = cleanText(candidate ?? "").slice(0, 300);
     if (!isGenericTitle(title)) return title;
   }
-  for (const [tag] of fragment.matchAll(/<img\b[^>]*>/gi)) {
-    const alt = cleanText(attribute(tag, "alt")).slice(0, 300);
-    if (!isGenericTitle(alt)) return alt;
+
+  for (const [tag] of fragment.matchAll(/<(?:a|div|span|img)\b[^>]*>/gi)) {
+    for (const name of ["aria-label", "title", "alt"]) {
+      const value = cleanText(attribute(tag, name)).slice(0, 300);
+      if (!isGenericTitle(value) && !/^(HAUL|Amazon|Bestseller|Offerta top)$/i.test(value)) return value;
+    }
   }
+
+  const dpText = fragment.match(new RegExp(
+    '<a\\b[^>]*href=["\\\'][^"\\\']*/dp/' + asin + '[^"\\\']*["\\\'][^>]*>([\\s\\S]{0,1200}?)<\\/a>',
+    "i",
+  ))?.[1];
+  const linkedTitle = cleanText(dpText ?? "").slice(0, 300);
+  if (!isGenericTitle(linkedTitle)) return linkedTitle;
+
   return "Prodotto Amazon " + asin;
 }
 
