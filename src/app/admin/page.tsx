@@ -55,6 +55,8 @@ export default async function AdminPage({
     price_updated?: string;
     price_unchanged?: string;
     price_failed?: string;
+    images_recovered?: string;
+    images_missing?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -171,11 +173,11 @@ export default async function AdminPage({
           </div>
         </div>
 
-        {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
-        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+        {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
+        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
         {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
-        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
-        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lambo: scansione catalogo bloccata; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lampo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
+        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lampo: scansione catalogo bloccata; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
         {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
 
         <div className="quickImportGrid">
