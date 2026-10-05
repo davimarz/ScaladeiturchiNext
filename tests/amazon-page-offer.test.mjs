@@ -19,6 +19,7 @@ function loadParser() {
     console,
     require(name) {
       if (name === "server-only") return {};
+      if (name === "./amazon-input") return { extractAmazonProductImage: () => null };
       throw new Error("Unexpected import " + name);
     },
   });
