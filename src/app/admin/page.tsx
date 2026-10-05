@@ -50,6 +50,8 @@ export default async function AdminPage({
     haul_count?: string;
     lambo_import?: string;
     lambo_count?: string;
+    price_seen?: string;
+    price_updated?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -162,13 +164,16 @@ export default async function AdminPage({
           </div>
         </div>
 
-        {params.haul_import === "success" ? <p className="adminNotice">HAUL aggiornato: {params.haul_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
-        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL. Usa la pagina dedicata per il caricamento HTML.</p> : null}
-        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo aggiornate: {params.lambo_count ?? "0"} prodotti inseriti o aggiornati.</p> : null}
-        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo. Usa la pagina dedicata per il caricamento HTML.</p> : null}
+        {params.haul_import === "success" ? <p className="adminNotice">HAUL aggiornato: {params.haul_count ?? "0"} prodotti importati o aggiornati; prezzi controllati per {params.price_seen ?? "0"} prodotti e aggiornati per {params.price_updated ?? "0"}.</p> : null}
+        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile, ma prezzi e sconti dei prodotti già presenti sono stati controllati. Aggiornati {params.price_updated ?? "0"} su {params.price_seen ?? "0"}.</p> : null}
+        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l'aggiornamento automatico.</p> : null}
+        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo aggiornate: {params.lambo_count ?? "0"} prodotti importati o aggiornati; prezzi controllati per {params.price_seen ?? "0"} prodotti e aggiornati per {params.price_updated ?? "0"}.</p> : null}
+        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lambo: Amazon ha bloccato la scansione del catalogo, ma prezzi e sconti dei prodotti già presenti sono stati controllati. Aggiornati {params.price_updated ?? "0"} su {params.price_seen ?? "0"}.</p> : null}
+        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l'aggiornamento automatico.</p> : null}
 
         <div className="quickImportGrid">
           <form action="/api/admin/haul/import" method="post" className="quickImportCard">
+            <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
               <strong>HAUL</strong>
               <span>Scansione automatica completa</span>
@@ -181,6 +186,7 @@ export default async function AdminPage({
           </form>
 
           <form action="/api/admin/offerte-lambo/import" method="post" className="quickImportCard">
+            <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
               <strong>Offerte Lambo</strong>
               <span>Offerte del giorno / lampo</span>
