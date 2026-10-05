@@ -8,7 +8,7 @@ import { syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const DEFAULT_LAMBO_URL = "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
 const PARTNER_TAG = "eiapromo-21";
