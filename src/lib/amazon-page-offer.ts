@@ -177,3 +177,41 @@ export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetc
   const snapshot = await fetchAmazonProductSnapshot(asin, fetcher);
   return snapshot.offer;
 }
+
+
+export async function fetchAmazonSearchTitle(asin: string, fetcher: typeof fetch = fetch) {
+  if (!/^[A-Z0-9]{10}$/i.test(asin)) return null;
+  try {
+    const url = new URL("https://www.amazon.it/s");
+    url.searchParams.set("k", asin.toUpperCase());
+    const response = await fetcher(url, {
+      redirect: "follow",
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        accept: "text/html",
+        "accept-language": "it-IT,it;q=0.9",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+      },
+    });
+    if (!response.ok || !response.headers.get("content-type")?.includes("text/html")) return null;
+    const html = await response.text();
+    if (/\\/errors\\/validateCaptcha|<title>\\s*Robot Check|automated access/i.test(html)) return null;
+    const marker = 'data-asin=["\\\']' + asin.toUpperCase() + '["\\\']';
+    const index = html.search(new RegExp(marker, "i"));
+    if (index < 0) return null;
+    const aroundAsin = html.slice(index, index + 12000);
+    const candidates = [
+      aroundAsin.match(/<h2\\b[^>]*>[\\s\\S]*?<span\\b[^>]*>([\\s\\S]*?)<\\/span>/i)?.[1],
+      aroundAsin.match(/<span\\b[^>]*class=["\'][^"\']*a-text-normal[^"\']*["\'][^>]*>([\\s\\S]*?)<\\/span>/i)?.[1],
+      aroundAsin.match(/<a\\b[^>]*title=["\']([^"\']+)["\']/i)?.[1],
+    ];
+    for (const candidate of candidates) {
+      const title = cleanProductTitle(candidate ?? "");
+      if (isUsefulProductTitle(title)) return title;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
