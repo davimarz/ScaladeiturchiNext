@@ -173,10 +173,10 @@ export default async function AdminPage({
 
         {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
         {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
-        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l'aggiornamento automatico.</p> : null}
+        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
         {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
         {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lambo: scansione catalogo bloccata; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
-        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l'aggiornamento automatico.</p> : null}
+        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
 
         <div className="quickImportGrid">
           <form action="/api/admin/haul/import" method="post" className="quickImportCard">
@@ -210,7 +210,7 @@ export default async function AdminPage({
       <section className="adminPanel">
         <details className="adminAdvancedPanel">
           <summary>Sincronizzazione tecnica e cronologia API</summary>
-          <p>Funzione avanzata: aggiorna l'intero catalogo indipendentemente dai due aggiornamenti rapidi sopra.</p>
+          <p>Funzione avanzata: aggiorna l&apos;intero catalogo indipendentemente dai due aggiornamenti rapidi sopra.</p>
           {params.sync === "success" ? <p className="adminNotice">Sincronizzazione tecnica completata.</p> : null}
           {params.sync === "error" ? <p className="adminError">Sincronizzazione tecnica non completata. Controlla il dettaglio qui sotto.</p> : null}
           <form action="/api/admin/sync" method="post" className="adminActions">
