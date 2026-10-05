@@ -74,9 +74,45 @@ function findTitle(fragment: string, asin: string) {
   return "Prodotto Amazon " + asin;
 }
 
+function imageFromSrcset(value: string) {
+  const candidates = value
+    .split(",")
+    .map((entry) => entry.trim().split(/\s+/)[0])
+    .map((entry) => allowedAmazonImage(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  return candidates.at(-1) ?? null;
+}
+
+function imageFromDynamic(value: string) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const candidates = Object.entries(parsed)
+      .flatMap(([url, dimensions]) => {
+        const image = allowedAmazonImage(url);
+        if (!image || !Array.isArray(dimensions)) return [];
+        const width = Number(dimensions[0]);
+        const height = Number(dimensions[1]);
+        return Number.isFinite(width) && Number.isFinite(height) ? [{ image, area: width * height }] : [];
+      })
+      .sort((a, b) => b.area - a.area);
+    return candidates[0]?.image ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function findImage(fragment: string) {
   for (const [tag] of fragment.matchAll(/<img\b[^>]*>/gi)) {
-    for (const name of ["src", "data-src", "data-image-latency"]) {
+    const dynamic = imageFromDynamic(attribute(tag, "data-a-dynamic-image"));
+    if (dynamic) return dynamic;
+
+    for (const name of ["srcset", "data-srcset"]) {
+      const image = imageFromSrcset(attribute(tag, name));
+      if (image) return image;
+    }
+
+    for (const name of ["src", "data-src", "data-lazy-src"]) {
       const image = allowedAmazonImage(attribute(tag, name));
       if (image) return image;
     }
