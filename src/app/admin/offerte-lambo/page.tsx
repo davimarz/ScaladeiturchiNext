@@ -3,12 +3,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminCookie, verifyAdminSessionValue } from "../../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../../lib/supabase/admin";
+import AdminUpdateButton from "../../../components/AdminUpdateButton";
 
 export const dynamic = "force-dynamic";
 
 const DEFAULT_LAMBO_URL = "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
 
-export default async function AdminOfferteLamboPage({ searchParams }: { searchParams: Promise<{ lambo_import?: string; lambo_count?: string; price_seen?: string; price_updated?: string }> }) {
+export default async function AdminOfferteLamboPage({ searchParams }: { searchParams: Promise<{ lambo_import?: string; lambo_count?: string; price_seen?: string; price_updated?: string; price_unchanged?: string; price_failed?: string }> }) {
   const session = (await cookies()).get(adminCookie.name)?.value;
   if (!verifyAdminSessionValue(session)) redirect("/admin");
 
@@ -34,8 +35,8 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
         <h2>Importazione prodotti Offerte Lambo</h2>
         <p>Prodotti Offerte Lambo attivi: {products.length}.</p>
 
-        {params.lambo_import === "success" ? <p className="adminNotice">Aggiornamento completato: {params.lambo_count ?? "0"} prodotti importati o aggiornati; prezzi controllati per {params.price_seen ?? "0"} prodotti e aggiornati per {params.price_updated ?? "0"}.</p> : null}
-        {params.lambo_import === "price-only" ? <p className="adminNotice">Amazon ha bloccato la scansione del catalogo, ma prezzi e sconti dei prodotti Offerte Lambo esistenti sono stati controllati: {params.price_updated ?? "0"} aggiornati su {params.price_seen ?? "0"}.</p> : null}
+        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lambo: {params.lambo_count ?? "0"} importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lambo: scansione catalogo bloccata · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
         {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato la scansione automatica anche dopo il secondo tentativo. Puoi usare “Opzioni avanzate” e caricare il file HTML salvato dal browser.</p> : null}
         {params.lambo_import === "empty" ? <p className="adminError">Non sono stati trovati prodotti riconoscibili nella pagina.</p> : null}
         {params.lambo_import === "invalid-url" ? <p className="adminError">Inserisci un URL Amazon Offerte Lampo valido.</p> : null}
@@ -45,7 +46,7 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
         <form action="/api/admin/offerte-lambo/import" method="post" encType="multipart/form-data" className="compactImportForm">
           <div className="quickImportControls">
             <input id="lambo-url" name="lambo_url" type="url" defaultValue={sourceUrl} aria-label="Link Amazon Offerte Lampo" required />
-            <button type="submit">Aggiorna Offerte</button>
+            <AdminUpdateButton idleLabel="Aggiorna Offerte" />
           </div>
           <details className="advancedImport">
             <summary>Opzioni avanzate</summary>

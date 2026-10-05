@@ -14,11 +14,21 @@ const DEFAULT_HAUL_URL = "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb"
 const PARTNER_TAG = "eiapromo-21";
 const MAX_HTML_BYTES = 40 * 1024 * 1024;
 
-function redirect(status: string, count?: number, priceSeen?: number, priceUpdated?: number, target = "/admin/haul") {
+function redirect(
+  status: string,
+  count?: number,
+  priceSeen?: number,
+  priceUpdated?: number,
+  priceUnchanged?: number,
+  priceFailed?: number,
+  target = "/admin/haul",
+) {
   const params = new URLSearchParams({ haul_import: status });
   if (count != null) params.set("haul_count", String(count));
   if (priceSeen != null) params.set("price_seen", String(priceSeen));
   if (priceUpdated != null) params.set("price_updated", String(priceUpdated));
+  if (priceUnchanged != null) params.set("price_unchanged", String(priceUnchanged));
+  if (priceFailed != null) params.set("price_failed", String(priceFailed));
   return new Response(null, { status: 303, headers: { location: `${target}?${params.toString()}` } });
 }
 
@@ -34,8 +44,14 @@ export async function POST(request: NextRequest) {
 
   const form = await request.formData();
   const returnTo = form.get("return_to") === "/admin" ? "/admin" : "/admin/haul";
-  const finish = (status: string, count?: number, priceSeen?: number, priceUpdated?: number) =>
-    redirect(status, count, priceSeen, priceUpdated, returnTo);
+  const finish = (
+    status: string,
+    count?: number,
+    priceSeen?: number,
+    priceUpdated?: number,
+    priceUnchanged?: number,
+    priceFailed?: number,
+  ) => redirect(status, count, priceSeen, priceUpdated, priceUnchanged, priceFailed, returnTo);
   const sourceUrl = String(form.get("haul_url") ?? DEFAULT_HAUL_URL).trim() || DEFAULT_HAUL_URL;
   if (!isAmazonHaulUrl(sourceUrl)) return finish("invalid-url");
 
@@ -56,7 +72,7 @@ export async function POST(request: NextRequest) {
     console.warn("haul-import-browser", message);
     try {
       const prices = await syncCatalogPricesByMembership("haul");
-      return finish("price-only", undefined, prices.productsSeen, prices.productsUpdated);
+      return finish("price-only", undefined, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed);
     } catch (priceError) {
       console.warn("haul-price-refresh", priceError instanceof Error ? priceError.message : priceError);
       if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return finish("blocked");
@@ -68,7 +84,7 @@ export async function POST(request: NextRequest) {
   if (!parsed.length) {
     try {
       const prices = await syncCatalogPricesByMembership("haul");
-      return finish("price-only", 0, prices.productsSeen, prices.productsUpdated);
+      return finish("price-only", 0, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed);
     } catch {
       return finish("empty");
     }
@@ -148,7 +164,7 @@ export async function POST(request: NextRequest) {
     });
 
     const prices = await syncCatalogPricesByMembership("haul");
-    return finish("success", rows.length, prices.productsSeen, prices.productsUpdated);
+    return finish("success", rows.length, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed);
   } catch (error) {
     console.error("haul-import-save", error instanceof Error ? error.message : error);
     return finish("save-error");

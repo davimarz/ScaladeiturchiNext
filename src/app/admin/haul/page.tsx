@@ -3,10 +3,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminCookie, verifyAdminSessionValue } from "../../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../../lib/supabase/admin";
+import AdminUpdateButton from "../../../components/AdminUpdateButton";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminHaulPage({ searchParams }: { searchParams: Promise<{ haul_import?: string; haul_count?: string; price_seen?: string; price_updated?: string }> }) {
+export default async function AdminHaulPage({ searchParams }: { searchParams: Promise<{ haul_import?: string; haul_count?: string; price_seen?: string; price_updated?: string; price_unchanged?: string; price_failed?: string }> }) {
   const session = (await cookies()).get(adminCookie.name)?.value;
   if (!verifyAdminSessionValue(session)) redirect("/admin");
   const params = await searchParams;
@@ -24,14 +25,14 @@ export default async function AdminHaulPage({ searchParams }: { searchParams: Pr
     <section className="adminPanel">
       <h2>Importazione prodotti HAUL</h2>
       <p>Prodotti HAUL attivi: {count.length}.</p>
-      {params.haul_import === "success" ? <p className="adminNotice">Aggiornamento completato: {params.haul_count ?? "0"} prodotti importati o aggiornati; prezzi controllati per {params.price_seen ?? "0"} prodotti e aggiornati per {params.price_updated ?? "0"}.</p> : null}
-      {params.haul_import === "price-only" ? <p className="adminNotice">Scansione catalogo non disponibile, ma prezzi e sconti dei prodotti HAUL esistenti sono stati controllati: {params.price_updated ?? "0"} aggiornati su {params.price_seen ?? "0"}.</p> : null}
+      {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+      {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
       {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato il download diretto. Salva la pagina HAUL dal browser e carica il file HTML.</p> : null}
       {params.haul_import && !["success","price-only","blocked"].includes(params.haul_import) ? <p className="adminError">Importazione non completata ({params.haul_import}). Se il browser automatico è stato bloccato, puoi riprovare con il file HTML della pagina HAUL dopo averla scorsa fino in fondo.</p> : null}
       <form action="/api/admin/haul/import" method="post" encType="multipart/form-data" className="compactImportForm">
         <div className="quickImportControls">
           <input id="haul-url" name="haul_url" type="url" defaultValue={sourceUrl} aria-label="Link HAUL Amazon" required />
-          <button type="submit">Aggiorna HAUL</button>
+          <AdminUpdateButton idleLabel="Aggiorna HAUL" />
         </div>
         <details className="advancedImport">
           <summary>Opzioni avanzate</summary>
