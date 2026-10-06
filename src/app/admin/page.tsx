@@ -168,6 +168,57 @@ export default async function AdminPage({
         </div>
       </section>
 
+      <section className="adminPanel aiUsagePanel">
+        <div className="compactPanelHead">
+          <div>
+            <h2>Utilizzo AI</h2>
+            <p>Gemini 2.5 Flash · limite interno giornaliero di sicurezza · reset alla mezzanotte Pacifico, circa le 09:00 in Italia.</p>
+          </div>
+          <span className={aiExhausted ? "aiStatus exhausted" : "aiStatus available"}>
+            {aiExhausted ? "Limite raggiunto" : "Disponibile"}
+          </span>
+        </div>
+
+        <div className="aiUsageGrid">
+          <div><span>Richieste oggi</span><strong>{aiRequests} / {DAILY_REQUEST_LIMIT}</strong><small>{aiRemainingRequests} disponibili</small></div>
+          <div><span>Token utilizzati</span><strong>{aiTokens.toLocaleString("it-IT")} / {DAILY_TOKEN_LIMIT.toLocaleString("it-IT")}</strong><small>{aiRemainingTokens.toLocaleString("it-IT")} disponibili</small></div>
+          <div><span>Input / output</span><strong>{(todayAI?.input_tokens ?? 0).toLocaleString("it-IT")} / {(todayAI?.output_tokens ?? 0).toLocaleString("it-IT")}</strong><small>token registrati</small></div>
+          <div><span>Ultima richiesta</span><strong>{formatLastCheck(todayAI?.last_request_at)}</strong><small>{todayAI?.exhausted_at ? "Quota esaurita: " + formatLastCheck(todayAI.exhausted_at) : "Quota non esaurita"}</small></div>
+        </div>
+
+        <details className="adminAdvancedPanel aiHistoryPanel">
+          <summary>Storico ultime domande dei clienti</summary>
+          <div className="adminTableWrap">
+            <table className="adminTable">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Domanda</th>
+                  <th>Stato</th>
+                  <th>Prodotti</th>
+                  <th>Token</th>
+                  <th>Modello</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aiHistory.length ? aiHistory.map((item) => (
+                  <tr key={item.id}>
+                    <td>{new Date(item.created_at).toLocaleString("it-IT")}</td>
+                    <td>{item.query}</td>
+                    <td>{item.status}</td>
+                    <td>{item.products_count}</td>
+                    <td>{item.total_tokens.toLocaleString("it-IT")}</td>
+                    <td>{item.model ?? "—"}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={6}>Nessuna domanda registrata.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
       <section className="adminPanel">
         <h2>Catalogo manuale</h2>
         <p>
