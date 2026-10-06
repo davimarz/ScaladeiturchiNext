@@ -85,7 +85,7 @@ export function extractAmazonProductImage(html: string, asin: string) {
 
   const pageLooksLikeTarget =
     Boolean(asinInput) ||
-    new RegExp('/(?:dp|gp/product|gp/aw/d)/' + normalizedAsin + '(?:[/?#"\\']|$)', "i").test(html) ||
+    new RegExp("/(?:dp|gp/product|gp/aw/d)/" + normalizedAsin + "(?:[/?#\"']|$)", "i").test(html) ||
     new RegExp('"asin"\\s*:\\s*"' + normalizedAsin + '"', "i").test(html);
 
   const accept = (value: string) => {
