@@ -4,6 +4,7 @@ import {
   mergeProducts,
   searchAmazonCreators,
   searchAmazonFallback,
+  searchAmazonWithGeminiGrounding,
   searchLocalCatalog,
 } from "../../../lib/ai-shopping";
 import {
@@ -52,6 +53,9 @@ export async function POST(request: NextRequest) {
 
     const local = await searchLocalCatalog(query, 8).catch(() => []);
     let products = local;
+    let searchInputTokens = 0;
+    let searchOutputTokens = 0;
+    let searchTotalTokens = 0;
 
     if (products.length < 4) {
       try {
@@ -71,15 +75,34 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (products.length < 4) {
+      try {
+        const grounded = await searchAmazonWithGeminiGrounding(query, 8);
+        products = mergeProducts(products, grounded.products);
+        searchInputTokens += grounded.inputTokens;
+        searchOutputTokens += grounded.outputTokens;
+        searchTotalTokens += grounded.totalTokens;
+      } catch (error) {
+        console.info("ai-shopping-gemini-search-fallback", error instanceof Error ? error.message : String(error));
+      }
+    }
+
     products = products.slice(0, 8);
 
     if (!products.length) {
-      await releaseAIUsage(usageDay);
+      if (searchTotalTokens > 0) {
+        await finalizeAIUsage(usageDay, searchInputTokens, searchOutputTokens, searchTotalTokens);
+      } else {
+        await releaseAIUsage(usageDay);
+      }
       reserved = false;
       await recordAIQuery({
         usageDay,
         query,
         status: "no_products",
+        inputTokens: searchInputTokens,
+        outputTokens: searchOutputTokens,
+        totalTokens: searchTotalTokens,
         productsCount: 0,
       }).catch(() => undefined);
 
@@ -91,7 +114,10 @@ export async function POST(request: NextRequest) {
     }
 
     const gemini = await generateShoppingAnswer(query, products);
-    await finalizeAIUsage(usageDay, gemini.inputTokens, gemini.outputTokens, gemini.totalTokens);
+    const inputTokens = searchInputTokens + gemini.inputTokens;
+    const outputTokens = searchOutputTokens + gemini.outputTokens;
+    const totalTokens = searchTotalTokens + gemini.totalTokens;
+    await finalizeAIUsage(usageDay, inputTokens, outputTokens, totalTokens);
     reserved = false;
 
     await recordAIQuery({
@@ -99,9 +125,9 @@ export async function POST(request: NextRequest) {
       query,
       status: "success",
       model: gemini.model,
-      inputTokens: gemini.inputTokens,
-      outputTokens: gemini.outputTokens,
-      totalTokens: gemini.totalTokens,
+      inputTokens,
+      outputTokens,
+      totalTokens,
       productsCount: products.length,
       productAsins: products.map((product) => product.asin),
       productSources: products.map((product) => product.source),
