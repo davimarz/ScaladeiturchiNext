@@ -56,13 +56,16 @@ export async function POST(request: NextRequest) {
     let searchInputTokens = 0;
     let searchOutputTokens = 0;
     let searchTotalTokens = 0;
+    const searchErrors: string[] = [];
 
     if (products.length < 4) {
       try {
         const creators = await searchAmazonCreators(query, 8);
         products = mergeProducts(products, creators);
       } catch (error) {
-        console.info("ai-shopping-creators-fallback", error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        searchErrors.push("Creators: " + message);
+        console.info("ai-shopping-creators-fallback", message);
       }
     }
 
@@ -71,7 +74,9 @@ export async function POST(request: NextRequest) {
         const fallback = await searchAmazonFallback(query, 8);
         products = mergeProducts(products, fallback);
       } catch (error) {
-        console.info("ai-shopping-browser-fallback", error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        searchErrors.push("Amazon browser: " + message);
+        console.info("ai-shopping-browser-fallback", message);
       }
     }
 
@@ -83,7 +88,9 @@ export async function POST(request: NextRequest) {
         searchOutputTokens += grounded.outputTokens;
         searchTotalTokens += grounded.totalTokens;
       } catch (error) {
-        console.info("ai-shopping-gemini-search-fallback", error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        searchErrors.push("Gemini URL context: " + message);
+        console.info("ai-shopping-gemini-search-fallback", message);
       }
     }
 
@@ -104,6 +111,7 @@ export async function POST(request: NextRequest) {
         outputTokens: searchOutputTokens,
         totalTokens: searchTotalTokens,
         productsCount: 0,
+        errorMessage: searchErrors.join(" | ") || null,
       }).catch(() => undefined);
 
       return NextResponse.json({
