@@ -28,7 +28,7 @@ export async function searchAmazonViaBrave(query: string, limit = 8): Promise<Ex
 
   const keywords = queryTokens(query).join(" ") || query;
   const url = new URL("https://api.search.brave.com/res/v1/web/search");
-  url.searchParams.set("q", "site:amazon.it/dp/ " + keywords);
+  url.searchParams.set("q", 'site:amazon.it "' + keywords + '"');
   url.searchParams.set("count", "20");
   url.searchParams.set("country", "IT");
   url.searchParams.set("search_lang", "it");
@@ -65,7 +65,7 @@ export async function searchAmazonViaBrave(query: string, limit = 8): Promise<Ex
 
   for (const result of data.web?.results ?? []) {
     const rawUrl = result.url || "";
-    const match = rawUrl.match(/amazon\.it\/(?:[^/?#]+\/)?dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+    const match = rawUrl.match(/amazon\.it\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
     if (!match) continue;
 
     const asin = match[1].toUpperCase();
