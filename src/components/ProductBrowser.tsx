@@ -41,8 +41,6 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   const [q, setQ] = useState("");
   const [category, setCategory] = useState(fixedCategory ?? "tutte");
   const [products, setProducts] = useState<Product[]>([]);
-  const [haulCategories, setHaulCategories] = useState<string[]>([]);
-  const [haulCategory, setHaulCategory] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now);
@@ -62,19 +60,18 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
     if (selection.q.trim()) params.set("q", selection.q.trim());
     if (selection.category !== "tutte") params.set("category", selection.category);
     if (!fixedCategory && excludeCategories) params.set("exclude", excludeCategories);
-    if (fixedCategory === "haul" && haulCategory) params.set("haul_category", haulCategory);
     fetch("/api/catalog?" + params.toString(), { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Impossibile caricare il catalogo.");
-        return await response.json() as { products?: Product[]; haul_categories?: string[] };
+        return await response.json() as { products?: Product[] };
       })
-      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) { setProducts(data.products ?? []); if (fixedCategory === "haul") setHaulCategories(data.haul_categories ?? []); } })
+      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) setProducts(data.products ?? []); })
       .catch((err) => {
         if (!controller.signal.aborted && latestRequest.current === requestId) setError(err instanceof Error ? err.message : "Errore durante il caricamento.");
       })
       .finally(() => { if (!controller.signal.aborted && latestRequest.current === requestId) setLoading(false); });
     return () => controller.abort();
-  }, [selection, fixedCategory, excludeCategories, haulCategory]);
+  }, [selection, fixedCategory, excludeCategories]);
 
   function startSearch(search: string, selectedCategory: string) {
     setLoading(true);
@@ -101,11 +98,6 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
           <button type="submit">Cerca</button>
         </form>
       </div>
-
-      {fixedCategory === "haul" && haulCategories.length ? <div className="chips" aria-label="Categorie HAUL">
-        <button className={haulCategory === "" ? "active" : ""} type="button" onClick={() => setHaulCategory("")}>Tutte</button>
-        {haulCategories.map((label) => <button className={haulCategory === label ? "active" : ""} type="button" key={label} onClick={() => setHaulCategory(label)}>{label}</button>)}
-      </div> : null}
 
       {showCategoryChips ? <div className="chips" aria-label="Categorie">
         {categories.map(([slug, label]) => (
