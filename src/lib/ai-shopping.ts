@@ -2,7 +2,7 @@ import "server-only";
 import { parseHaulHtml } from "./haul-import";
 import { fetchAmazonKeywordSearchWithFullScroll } from "./haul-browser";
 import { supabaseAdminFetch } from "./supabase/admin";
-import { isRelevantProduct, queryTokens, titleRelevance } from "./ai-relevance";
+import { isRelevantProduct, maxPriceFromQuery, queryTokens, titleRelevance } from "./ai-relevance";
 
 export type ShoppingProduct = {
   asin: string;
