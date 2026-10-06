@@ -156,6 +156,67 @@ async function fetchAmazonWithFullScroll(
       }
     }
 
+    await page.evaluate(() => {
+      const generic = /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|immagine del prodotto|product image|sponsorizzato|sponsored/i;
+      const isWeakBrandOnly = (value: string) => {
+        const text = value.replace(/\s+/g, " ").trim();
+        const words = text.split(/\s+/).filter(Boolean);
+        return words.length <= 3 && text.length <= 32 && !/\d/.test(text);
+      };
+      const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
+
+      for (const card of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+        const asin = clean(card.dataset.asin).toUpperCase();
+        if (!/^[A-Z0-9]{10}$/.test(asin)) continue;
+
+        const candidates: Array<{ text: string; score: number }> = [];
+        const add = (value: string | null | undefined, score: number) => {
+          const text = clean(value);
+          if (text.length < 5 || generic.test(text)) return;
+          if (/^(HAUL|Amazon|Bestseller|Offerta top)$/i.test(text)) return;
+          candidates.push({ text: text.slice(0, 300), score });
+        };
+
+        for (const selector of [
+          "h2 span",
+          "h2 a",
+          'a[href*="/dp/"] span.a-text-normal',
+          'a[href*="/dp/"] span',
+          ".a-size-base-plus",
+          ".a-size-medium",
+        ]) {
+          for (const element of Array.from(card.querySelectorAll<HTMLElement>(selector))) {
+            add(element.innerText || element.textContent, 90);
+          }
+        }
+
+        for (const link of Array.from(card.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
+          add(link.getAttribute("aria-label"), 95);
+          add(link.getAttribute("title"), 90);
+          add(link.innerText || link.textContent, 85);
+          try {
+            const url = new URL(link.href, location.href);
+            const match = url.pathname.match(/^\/([^/]+)\/dp\/([A-Z0-9]{10})(?:\/|$)/i);
+            if (match && match[2].toUpperCase() === asin) {
+              add(decodeURIComponent(match[1]).replace(/[-_]+/g, " "), 110);
+            }
+          } catch {}
+        }
+
+        for (const image of Array.from(card.querySelectorAll<HTMLImageElement>("img"))) {
+          add(image.alt, 80);
+        }
+
+        if (!candidates.length) continue;
+        candidates.sort((a, b) => {
+          const penaltyA = isWeakBrandOnly(a.text) ? 120 : 0;
+          const penaltyB = isWeakBrandOnly(b.text) ? 120 : 0;
+          return (b.score + Math.min(b.text.length, 180) - penaltyB) - (a.score + Math.min(a.text.length, 180) - penaltyA);
+        });
+        card.dataset.sdtTitle = candidates[0].text;
+      }
+    }).catch(() => undefined);
+
     const title = await page.title();
     const html = await page.content();
     if (/robot check|captcha/i.test(title) || /\/errors\/validateCaptcha|robot check/i.test(html)) {
