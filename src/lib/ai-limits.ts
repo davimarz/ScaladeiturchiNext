@@ -1,4 +1,4 @@
-export const DAILY_REQUEST_LIMIT = 100;
+export const DAILY_REQUEST_LIMIT = 500;
 export const DAILY_TOKEN_LIMIT = 200000;
 export const RESERVED_TOKENS_PER_REQUEST = 5000;
 
