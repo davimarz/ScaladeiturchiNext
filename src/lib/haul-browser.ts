@@ -22,9 +22,10 @@ async function getChromiumExecutablePath() {
   if (!executablePathPromise) {
     executablePathPromise = (async () => {
       const chromium = (await import("@sparticuz/chromium-min")).default;
-      const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-      if (!host) throw new Error("Vercel Chromium pack URL is unavailable");
-      const packUrl = `https://${host}/chromium-pack.tar`;
+      const architecture = process.arch === "arm64" ? "arm64" : "x64";
+      const defaultPackUrl =
+        `https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.${architecture}.tar`;
+      const packUrl = process.env.CHROMIUM_PACK_URL || defaultPackUrl;
       const executablePath = await chromium.executablePath(packUrl);
       cachedExecutablePath = executablePath;
       return executablePath;
