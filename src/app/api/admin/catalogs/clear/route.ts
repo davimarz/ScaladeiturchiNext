@@ -38,16 +38,17 @@ export async function POST(request: NextRequest) {
       in_haul: boolean;
       in_offerte_lambo: boolean;
       in_bestseller: boolean;
+      in_outlet: boolean;
     }>>(
-      `products?${config.filter}&select=id,in_haul,in_offerte_lambo,in_bestseller&limit=1000`,
+      `products?${config.filter}&select=id,in_haul,in_offerte_lambo,in_bestseller,in_outlet&limit=1000`,
     );
 
     const otherFlags = allFlags.filter((flag) => flag !== config.ownFlag);
     const sharedIds = products
-      .filter((product) => otherFlags.some((flag) => product[flag]))
+      .filter((product) => product.in_outlet || otherFlags.some((flag) => product[flag]))
       .map((product) => product.id);
     const exclusiveIds = products
-      .filter((product) => otherFlags.every((flag) => !product[flag]))
+      .filter((product) => !product.in_outlet && otherFlags.every((flag) => !product[flag]))
       .map((product) => product.id);
 
     for (let offset = 0; offset < sharedIds.length; offset += 100) {
