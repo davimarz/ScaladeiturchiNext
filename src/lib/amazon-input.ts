@@ -13,6 +13,12 @@ export function allowedAmazonImage(value: string): string | null {
     return url.protocol === "https:" && !url.username && !url.password && (!url.port || url.port === "443") && IMAGE_HOSTS.has(url.hostname.toLowerCase()) ? url.toString() : null;
   } catch { return null; }
 }
+
+export function isGenericAmazonImage(value: string | null | undefined) {
+  if (!value) return true;
+  return /\/11\+\+B3A2NEL\._SS200_\.png(?:\?|$)/i.test(value) ||
+    /\/transparent-pixel\.|\/pixel\.|\/loading\.|\/no-image/i.test(value);
+}
 function decodeEntities(value: string) {
   return value.replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[\da-f]+);/gi, (entity) => {
     const names: Record<string, string> = { "&amp;": "&", "&quot;": '"', "&apos;": "'", "&lt;": "<", "&gt;": ">" };
@@ -70,37 +76,98 @@ export function deriveTitle(url: URL, asin: string) {
 
 /** Read only the main image of the requested product, never recommendation images. */
 export function extractAmazonProductImage(html: string, asin: string) {
+  const normalizedAsin = asin.toUpperCase();
   const asinInput = [...html.matchAll(/<input\b[^>]*>/gi)].find(([tag]) => attribute(tag, "id") === "ASIN" || attribute(tag, "name") === "ASIN");
   if (asinInput) {
     const pageAsin = attribute(asinInput[0], "value").toUpperCase();
-    if (pageAsin && pageAsin !== asin.toUpperCase()) return null;
+    if (pageAsin && pageAsin !== normalizedAsin) return null;
   }
+
+  const pageLooksLikeTarget =
+    Boolean(asinInput) ||
+    new RegExp('/(?:dp|gp/product|gp/aw/d)/' + normalizedAsin + '(?:[/?#"\\']|$)', "i").test(html) ||
+    new RegExp('"asin"\\s*:\\s*"' + normalizedAsin + '"', "i").test(html);
+
+  const accept = (value: string) => {
+    const image = allowedAmazonImage(value);
+    return image && !isGenericAmazonImage(image) ? image : null;
+  };
+
   for (const [tag] of html.matchAll(/<img\b[^>]*>/gi)) {
-    if (!["landingImage", "imgBlkFront", "mainImage"].includes(attribute(tag, "id"))) continue;
-    const hires = allowedAmazonImage(attribute(tag, "data-old-hires"));
-    if (hires) return hires;
-    try {
-      const dynamic = JSON.parse(attribute(tag, "data-a-dynamic-image")) as Record<string, unknown>;
-      const candidates = Object.entries(dynamic).flatMap(([url, dimensions]) => {
-        const image = allowedAmazonImage(url);
-        if (!image || !Array.isArray(dimensions)) return [];
-        const width = Number(dimensions[0]), height = Number(dimensions[1]);
-        return Number.isFinite(width) && Number.isFinite(height) && width > 1 && height > 1 ? [{ image, area: width * height }] : [];
-      }).sort((a, b) => b.area - a.area);
-      if (candidates[0]) return candidates[0].image;
-    } catch { /* Some Amazon templates have only src. */ }
-    const src = allowedAmazonImage(attribute(tag, "src"));
-    if (src) return src;
-  }
-  // A fallback is safe only when the document explicitly identifies this ASIN.
-  if (asinInput) {
-    for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
-      if (attribute(tag, "property") === "og:image") {
-        const image = allowedAmazonImage(attribute(tag, "content"));
+    const id = attribute(tag, "id");
+    const classes = attribute(tag, "class");
+    if (
+      !["landingImage", "imgBlkFront", "mainImage", "ebooksImgBlkFront"].includes(id) &&
+      !/a-dynamic-image|imgTagWrapper|main-image/i.test(classes)
+    ) continue;
+
+    for (const name of ["data-old-hires", "data-hires", "data-src", "src"]) {
+      const image = accept(attribute(tag, name));
+      if (image) return image;
+    }
+
+    for (const name of ["data-a-dynamic-image"]) {
+      try {
+        const dynamic = JSON.parse(attribute(tag, name)) as Record<string, unknown>;
+        const candidates = Object.entries(dynamic).flatMap(([url, dimensions]) => {
+          const image = accept(url);
+          if (!image || !Array.isArray(dimensions)) return [];
+          const width = Number(dimensions[0]);
+          const height = Number(dimensions[1]);
+          return Number.isFinite(width) && Number.isFinite(height) && width > 1 && height > 1
+            ? [{ image, area: width * height }]
+            : [];
+        }).sort((a, b) => b.area - a.area);
+        if (candidates[0]) return candidates[0].image;
+      } catch {}
+    }
+
+    for (const name of ["srcset", "data-srcset"]) {
+      const parts = attribute(tag, name).split(",").map((part) => part.trim().split(/\s+/)[0]).filter(Boolean);
+      for (const part of parts.reverse()) {
+        const image = accept(part);
         if (image) return image;
       }
     }
   }
+
+  if (pageLooksLikeTarget) {
+    for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
+      const property = attribute(tag, "property").toLowerCase();
+      const name = attribute(tag, "name").toLowerCase();
+      if (property === "og:image" || name === "twitter:image") {
+        const image = accept(attribute(tag, "content"));
+        if (image) return image;
+      }
+    }
+
+    for (const script of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+      try {
+        const parsed = JSON.parse(script[1]);
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of items) {
+          if (!item || typeof item !== "object") continue;
+          const imageValue = (item as { image?: unknown }).image;
+          const candidates = Array.isArray(imageValue) ? imageValue : [imageValue];
+          for (const candidate of candidates) {
+            if (typeof candidate !== "string") continue;
+            const image = accept(candidate);
+            if (image) return image;
+          }
+        }
+      } catch {}
+    }
+
+    const jsonCandidates = [
+      ...html.matchAll(/"(?:hiRes|large|mainUrl|imageUrl|landingImage)"\s*:\s*"([^"]+)"/gi),
+    ];
+    for (const match of jsonCandidates) {
+      const decoded = decodeEntities(match[1].replace(/\\u0026/g, "&").replace(/\\\//g, "/"));
+      const image = accept(decoded);
+      if (image) return image;
+    }
+  }
+
   return null;
 }
 
