@@ -52,6 +52,8 @@ export default async function AdminPage({
     haul_count?: string;
     lambo_import?: string;
     lambo_count?: string;
+    bestseller_import?: string;
+    bestseller_count?: string;
     price_seen?: string;
     price_updated?: string;
     price_unchanged?: string;
@@ -90,7 +92,7 @@ export default async function AdminPage({
   const imageFailure = returnedPageTitle ? "Amazon ha restituito la pagina «" + returnedPageTitle + "» senza foto del prodotto." : imageHttpStatus ? "Amazon ha risposto con un errore (" + imageHttpStatus + ")." : params.image_error === "blocked" ? "Amazon ha bloccato la lettura automatica della pagina." : params.image_error === "large" ? "La pagina Amazon supera il limite di lettura." : params.image_error === "timeout" ? "Amazon non ha risposto in tempo." : "La foto non è stata trovata nella pagina Amazon.";
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
-  const [runs, products, categories, haulSettings, lamboSettings, haulLastPrice, lamboLastPrice, haulCatalog, lamboCatalog] = await Promise.all([
+  const [runs, products, categories, haulSettings, lamboSettings, bestsellerSettings, haulLastPrice, lamboLastPrice, bestsellerLastPrice, haulCatalog, lamboCatalog, bestsellerCatalog] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -100,13 +102,17 @@ export default async function AdminPage({
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.haul_source_url&select=key,value&limit=1"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.offerte_lambo_source_url&select=key,value&limit=1"),
+    supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.bestseller_source_url&select=key,value&limit=1"),
     supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_haul=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
     supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_offerte_lambo=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
+    supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_bestseller=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
     supabaseAdminFetch<Array<{id: string}>>("products?in_haul=eq.true&active=eq.true&select=id&limit=1000"),
     supabaseAdminFetch<Array<{id: string}>>("products?in_offerte_lambo=eq.true&active=eq.true&select=id&limit=1000"),
+    supabaseAdminFetch<Array<{id: string}>>("products?in_bestseller=eq.true&active=eq.true&select=id&limit=1000"),
   ]);
   const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
   const savedLamboUrl = typeof lamboSettings[0]?.value === "string" ? lamboSettings[0].value : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
+  const savedBestsellerUrl = typeof bestsellerSettings[0]?.value === "string" ? bestsellerSettings[0].value : "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers";
   const formatLastCheck = (value: string | null | undefined) =>
     value ? new Date(value).toLocaleString("it-IT") : "Mai";
 
@@ -121,6 +127,7 @@ export default async function AdminPage({
           <Link href="/" target="_blank" rel="noopener noreferrer">Apri il sito</Link>
           <Link href="/admin/haul">HAUL</Link>
           <Link href="/admin/offerte-lambo">Offerte Lambo</Link>
+          <Link href="/admin/bestseller">Bestseller</Link>
           <form action="/api/admin/logout" method="post">
             <button type="submit">Esci</button>
           </form>
@@ -184,6 +191,9 @@ export default async function AdminPage({
         {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lampo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
         {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lampo: scansione catalogo bloccata; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
         {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
+        {params.bestseller_import === "success" ? <p className="adminNotice">Bestseller: {params.bestseller_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
+        {params.bestseller_import === "price-only" ? <p className="adminNotice">Bestseller: scansione catalogo non disponibile; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+        {params.bestseller_import === "blocked" ? <p className="adminError">Amazon ha bloccato Bestseller e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
 
         <div className="quickImportGrid">
           <form action="/api/admin/haul/import" method="post" className="quickImportCard">
@@ -211,6 +221,19 @@ export default async function AdminPage({
             </div>
             <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
           </form>
+
+          <form action="/api/admin/bestseller/import" method="post" className="quickImportCard">
+            <input type="hidden" name="return_to" value="/admin" />
+            <div className="quickImportMeta">
+              <strong>Bestseller</strong>
+              <span>Ultimo controllo: {formatLastCheck(bestsellerLastPrice[0]?.price_verified_at)}</span>
+            </div>
+            <div className="quickImportControls">
+              <input name="bestseller_url" type="url" defaultValue={savedBestsellerUrl} aria-label="URL Amazon Bestseller" required />
+              <AdminUpdateButton idleLabel="Aggiorna Bestseller" />
+            </div>
+            <Link href="/admin/bestseller" className="quickImportLink">Opzioni avanzate</Link>
+          </form>
         </div>
       </section>
 
@@ -224,7 +247,7 @@ export default async function AdminPage({
 
         {params.catalog_clear === "success" ? (
           <p className="adminNotice">
-            Catalogo {params.catalog === "haul" ? "HAUL" : params.catalog === "offerte-lampo" ? "Offerte Lampo" : ""} svuotato senza modificare gli altri cataloghi.
+            Catalogo {params.catalog === "haul" ? "HAUL" : params.catalog === "offerte-lampo" ? "Offerte Lampo" : params.catalog === "bestseller" ? "Bestseller" : ""} svuotato senza modificare gli altri cataloghi.
           </p>
         ) : null}
         {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
@@ -232,13 +255,14 @@ export default async function AdminPage({
         <div className="catalogManagerGrid">
           <AdminCatalogCard catalog="haul" label="HAUL" count={haulCatalog.length} />
           <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={lamboCatalog.length} />
+          <AdminCatalogCard catalog="bestseller" label="Bestseller" count={bestsellerCatalog.length} />
         </div>
       </section>
 
       <section className="adminPanel">
         <details className="adminAdvancedPanel">
           <summary>Sincronizzazione tecnica e cronologia API</summary>
-          <p>Funzione avanzata: aggiorna l&apos;intero catalogo indipendentemente dai due aggiornamenti rapidi sopra.</p>
+          <p>Funzione avanzata: aggiorna l&apos;intero catalogo indipendentemente dai tre aggiornamenti rapidi sopra.</p>
           {params.sync === "success" ? <p className="adminNotice">Sincronizzazione tecnica completata.</p> : null}
           {params.sync === "error" ? <p className="adminError">Sincronizzazione tecnica non completata. Controlla il dettaglio qui sotto.</p> : null}
           <form action="/api/admin/sync" method="post" className="adminActions">
