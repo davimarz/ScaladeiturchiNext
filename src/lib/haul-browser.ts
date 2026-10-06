@@ -266,3 +266,107 @@ export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserR
 export async function fetchAmazonSearchWithFullScroll(url: string): Promise<HaulBrowserResult> {
   return fetchAmazonWithFullScroll(url, "search");
 }
+
+
+export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
+  const uniqueAsins = [...new Set(asins.map((asin) => asin.trim().toUpperCase()).filter((asin) => /^[A-Z0-9]{10}$/.test(asin)))];
+  if (!uniqueAsins.length) return new Map<string, string>();
+
+  const chromium = (await import("@sparticuz/chromium-min")).default;
+  const puppeteer = await import("puppeteer-core");
+  chromium.setGraphicsMode = false;
+
+  const args = [...chromium.args];
+  if (!args.includes("--disable-blink-features=AutomationControlled")) {
+    args.push("--disable-blink-features=AutomationControlled");
+  }
+
+  const browser = await puppeteer.launch({
+    args,
+    defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
+    executablePath: await getChromiumExecutablePath(),
+    headless: true,
+  });
+
+  const results = new Map<string, string>();
+  try {
+    for (let offset = 0; offset < uniqueAsins.length; offset += 4) {
+      const batch = uniqueAsins.slice(offset, offset + 4);
+      const entries = await Promise.all(batch.map(async (asin) => {
+        const page = await browser.newPage();
+        try {
+          await page.setUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+          );
+          await page.setExtraHTTPHeaders({ "accept-language": "it-IT,it;q=0.9,en;q=0.7" });
+          const response = await page.goto("https://www.amazon.it/dp/" + asin, {
+            waitUntil: "domcontentloaded",
+            timeout: 20_000,
+          });
+          if (!response || [403, 429, 503].includes(response.status())) return [asin, null] as const;
+
+          const data = await page.evaluate(() => {
+            const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
+            const generic = /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|robot check|amazon\.it\s*$/i;
+
+            const candidates: string[] = [];
+            const add = (value: string | null | undefined) => {
+              const text = clean(value).replace(/\s*:\s*Amazon\.it.*$/i, "");
+              if (text.length >= 8 && !generic.test(text)) candidates.push(text);
+            };
+
+            add(document.querySelector<HTMLElement>("#productTitle")?.innerText);
+            add(document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content);
+            add(document.querySelector<HTMLMetaElement>('meta[name="title"]')?.content);
+
+            for (const script of Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'))) {
+              try {
+                const parsed = JSON.parse(script.textContent || "null");
+                const items = Array.isArray(parsed) ? parsed : [parsed];
+                for (const item of items) {
+                  if (item && typeof item === "object" && (item["@type"] === "Product" || item["@type"]?.includes?.("Product"))) {
+                    add(item.name);
+                  }
+                }
+              } catch {}
+            }
+
+            add(document.title);
+            candidates.sort((a, b) => b.length - a.length);
+            return candidates[0] || null;
+          });
+
+          if (data) return [asin, data.slice(0, 300)] as const;
+
+          await page.goto("https://www.amazon.it/s?k=" + encodeURIComponent(asin), {
+            waitUntil: "domcontentloaded",
+            timeout: 15_000,
+          }).catch(() => null);
+
+          const fallback = await page.evaluate((targetAsin) => {
+            const card = document.querySelector<HTMLElement>('[data-asin="' + targetAsin + '"]');
+            if (!card) return null;
+            const title =
+              card.querySelector<HTMLElement>("h2 span")?.innerText ||
+              card.querySelector<HTMLElement>(".a-text-normal")?.innerText ||
+              card.querySelector<HTMLImageElement>("img")?.alt ||
+              "";
+            const clean = title.replace(/\s+/g, " ").trim();
+            return /mostra visualizzazione per acquistare rapidamente|quick view/i.test(clean) ? null : clean;
+          }, asin).catch(() => null);
+
+          return [asin, fallback ? fallback.slice(0, 300) : null] as const;
+        } finally {
+          await page.close().catch(() => undefined);
+        }
+      }));
+
+      for (const [asin, title] of entries) {
+        if (title) results.set(asin, title);
+      }
+    }
+    return results;
+  } finally {
+    await browser.close();
+  }
+}
