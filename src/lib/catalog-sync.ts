@@ -284,7 +284,11 @@ export async function syncAmazonCatalog() {
   }
 }
 
-export async function syncCatalogPricesByMembership(membership: "haul" | "offerte-lambo") {
-  const filter = membership === "haul" ? "in_haul=eq.true" : "in_offerte_lambo=eq.true";
+export async function syncCatalogPricesByMembership(membership: "haul" | "offerte-lambo" | "bestseller") {
+  const filter = membership === "haul"
+    ? "in_haul=eq.true"
+    : membership === "offerte-lambo"
+      ? "in_offerte_lambo=eq.true"
+      : "in_bestseller=eq.true";
   return syncExistingFromAmazonPages(filter);
 }
