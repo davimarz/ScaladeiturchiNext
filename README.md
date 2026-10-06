@@ -71,3 +71,8 @@ Il repository è pronto per essere importato in Vercel. Dopo il primo deploy van
 
 ## Immagini automatiche dal link Amazon
 Se non esiste una foto e non viene fornita un’immagine, l’admin legge la pagina pubblica canonica Amazon del prodotto e seleziona soltanto l’immagine principale. Le richieste hanno un timeout complessivo di 10 secondi, massimo 3 redirect verificati e un limite di 2 MB di HTML. Non vengono aggirati CAPTCHA o blocchi: se Amazon non permette la lettura, il prodotto viene salvato e l’admin segnala la foto mancante. Le foto esistenti sono conservate. Si salva il collegamento CDN Amazon, senza copiare il file.
+
+
+## Chromium su Vercel
+
+Le funzioni di importazione Amazon usano `@sparticuz/chromium-min`. Il pacchetto Chromium non viene salvato dentro `public/` e quindi non viene duplicato in ogni deployment Vercel. A runtime viene usato il pack ufficiale della release Chromium 153; opzionalmente può essere sostituito impostando `CHROMIUM_PACK_URL` su un URL HTTPS compatibile.

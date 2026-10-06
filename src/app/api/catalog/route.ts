@@ -146,5 +146,8 @@ export async function GET(request: NextRequest) {
     );
     haulCategories = [...new Set(rows.map((row) => row.haul_category).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "it"));
   }
-  return NextResponse.json({ products, haul_categories: haulCategories });
+  return NextResponse.json(
+    { products, haul_categories: haulCategories },
+    { headers: { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" } },
+  );
 }

@@ -61,6 +61,15 @@ type Product = {
   image_url: string | null;
 };
 
+type CatalogStats = {
+  haul_count: number;
+  lambo_count: number;
+  bestseller_count: number;
+  haul_last_price: string | null;
+  lambo_last_price: string | null;
+  bestseller_last_price: string | null;
+};
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -118,7 +127,7 @@ export default async function AdminPage({
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
   const usageDay = currentUsageDay();
-  const [runs, products, categories, haulSettings, lamboSettings, bestsellerSettings, haulLastPrice, lamboLastPrice, bestsellerLastPrice, haulCatalog, lamboCatalog, bestsellerCatalog, aiUsage, aiHistory] = await Promise.all([
+  const [runs, products, categories, settings, catalogStats, aiUsage, aiHistory] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -126,21 +135,21 @@ export default async function AdminPage({
       `products?active=eq.true&select=id,asin,title,current_price,list_price,discount_percent,currency,updated_at,active,source,category_id,image_url&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
-    supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.haul_source_url&select=key,value&limit=1"),
-    supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.offerte_lambo_source_url&select=key,value&limit=1"),
-    supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.bestseller_source_url&select=key,value&limit=1"),
-    supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_haul=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
-    supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_offerte_lambo=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
-    supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_bestseller=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
-    supabaseAdminFetch<Array<{id: string}>>("products?in_haul=eq.true&active=eq.true&select=id&limit=1000"),
-    supabaseAdminFetch<Array<{id: string}>>("products?in_offerte_lambo=eq.true&active=eq.true&select=id&limit=1000"),
-    supabaseAdminFetch<Array<{id: string}>>("products?in_bestseller=eq.true&active=eq.true&select=id&limit=1000"),
+    supabaseAdminFetch<Array<{key: string; value: unknown}>>(
+      "site_settings?key=in.(haul_source_url,offerte_lambo_source_url,bestseller_source_url)&select=key,value",
+    ),
+    supabaseAdminFetch<CatalogStats[]>("rpc/admin_catalog_stats", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
     supabaseAdminFetch<AIUsage[]>("ai_daily_usage?usage_day=eq." + encodeURIComponent(usageDay) + "&select=usage_day,requests_count,input_tokens,output_tokens,total_tokens,reserved_tokens,last_request_at,exhausted_at&limit=1"),
     supabaseAdminFetch<AIHistory[]>("ai_search_history?select=id,created_at,query,status,model,input_tokens,output_tokens,total_tokens,products_count,error_message&order=created_at.desc&limit=20"),
   ]);
-  const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
-  const savedLamboUrl = typeof lamboSettings[0]?.value === "string" ? lamboSettings[0].value : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
-  const savedBestsellerUrl = typeof bestsellerSettings[0]?.value === "string" ? bestsellerSettings[0].value : "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers";
+  const settingsByKey = new Map(settings.map((row) => [row.key, row.value]));
+  const stats = catalogStats[0];
+  const savedHaulUrl = typeof settingsByKey.get("haul_source_url") === "string" ? settingsByKey.get("haul_source_url") as string : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
+  const savedLamboUrl = typeof settingsByKey.get("offerte_lambo_source_url") === "string" ? settingsByKey.get("offerte_lambo_source_url") as string : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
+  const savedBestsellerUrl = typeof settingsByKey.get("bestseller_source_url") === "string" ? settingsByKey.get("bestseller_source_url") as string : "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers";
   const formatLastCheck = (value: string | null | undefined) =>
     value ? new Date(value).toLocaleString("it-IT") : "Mai";
   const todayAI = aiUsage[0];
@@ -285,7 +294,7 @@ export default async function AdminPage({
             <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
               <strong>HAUL</strong>
-              <span>Ultimo controllo: {formatLastCheck(haulLastPrice[0]?.price_verified_at)}</span>
+              <span>Ultimo controllo: {formatLastCheck(stats?.haul_last_price)}</span>
             </div>
             <div className="quickImportControls">
               <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required />
@@ -298,7 +307,7 @@ export default async function AdminPage({
             <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
               <strong>Offerte Lambo</strong>
-              <span>Ultimo controllo: {formatLastCheck(lamboLastPrice[0]?.price_verified_at)}</span>
+              <span>Ultimo controllo: {formatLastCheck(stats?.lambo_last_price)}</span>
             </div>
             <div className="quickImportControls">
               <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lambo" required />
@@ -311,7 +320,7 @@ export default async function AdminPage({
             <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
               <strong>Bestseller</strong>
-              <span>Ultimo controllo: {formatLastCheck(bestsellerLastPrice[0]?.price_verified_at)}</span>
+              <span>Ultimo controllo: {formatLastCheck(stats?.bestseller_last_price)}</span>
             </div>
             <div className="quickImportControls">
               <input name="bestseller_url" type="url" defaultValue={savedBestsellerUrl} aria-label="URL Amazon Bestseller" required />
@@ -338,9 +347,9 @@ export default async function AdminPage({
         {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
 
         <div className="catalogManagerGrid">
-          <AdminCatalogCard catalog="haul" label="HAUL" count={haulCatalog.length} />
-          <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={lamboCatalog.length} />
-          <AdminCatalogCard catalog="bestseller" label="Bestseller" count={bestsellerCatalog.length} />
+          <AdminCatalogCard catalog="haul" label="HAUL" count={Number(stats?.haul_count ?? 0)} />
+          <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={Number(stats?.lambo_count ?? 0)} />
+          <AdminCatalogCard catalog="bestseller" label="Bestseller" count={Number(stats?.bestseller_count ?? 0)} />
         </div>
       </section>
 
