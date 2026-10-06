@@ -2,6 +2,7 @@ import "server-only";
 import { getAmazonItems, searchAmazonItems } from "./amazon/client";
 import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle, needsProductTitleEnrichment } from "./amazon-page-offer";
 import { supabaseAdminFetch } from "./supabase/admin";
+import { fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
 
 type OfferListing = {
   price?: {
@@ -75,6 +76,7 @@ async function syncExistingFromAmazonPages(filter = "") {
   let failed = 0;
   let imagesRecovered = 0;
   let imagesMissing = 0;
+  const unresolvedTitleAsins = new Set<string>();
 
   for (let offset = 0; offset < existing.length; offset += 12) {
     const batch = existing.slice(offset, offset + 12);
@@ -92,7 +94,11 @@ async function syncExistingFromAmazonPages(filter = "") {
         const genericExistingTitle = needsProductTitleEnrichment(product.title);
         if (!recoveredTitle && genericExistingTitle) {
           const searchTitle = await fetchAmazonSearchTitle(product.asin);
-          if (searchTitle && searchTitle !== product.title && searchTitle.length > product.title.length) recoveredTitle = searchTitle;
+          if (searchTitle && searchTitle !== product.title && searchTitle.length > product.title.length) {
+            recoveredTitle = searchTitle;
+          } else {
+            unresolvedTitleAsins.add(product.asin);
+          }
         }
 
         if (!offer && !recoveredImage && !recoveredTitle) {
@@ -143,6 +149,21 @@ async function syncExistingFromAmazonPages(filter = "") {
 
       if (result.value.imageRecovered) imagesRecovered++;
       if (result.value.imageMissing) imagesMissing++;
+    }
+  }
+
+  if (unresolvedTitleAsins.size) {
+    try {
+      const browserTitles = await fetchAmazonProductTitlesWithBrowser([...unresolvedTitleAsins]);
+      for (const [asin, title] of browserTitles) {
+        await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(asin)}`, {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ title, updated_at: new Date().toISOString() }),
+        });
+      }
+    } catch (error) {
+      console.warn("amazon-title-browser-fallback", error instanceof Error ? error.message : String(error));
     }
   }
 
