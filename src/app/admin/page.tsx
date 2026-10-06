@@ -8,6 +8,7 @@ import AdminUpdateButton from "../../components/AdminUpdateButton";
 import AdminCatalogCard from "../../components/AdminCatalogCard";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
+import { currentUsageDay, DAILY_REQUEST_LIMIT, DAILY_TOKEN_LIMIT } from "../../lib/ai-limits";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,30 @@ type SyncRun = {
   products_updated: number;
   started_at: string;
   finished_at: string | null;
+  error_message: string | null;
+};
+
+type AIUsage = {
+  usage_day: string;
+  requests_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  reserved_tokens: number;
+  last_request_at: string | null;
+  exhausted_at: string | null;
+};
+
+type AIHistory = {
+  id: number;
+  created_at: string;
+  query: string;
+  status: string;
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  products_count: number;
   error_message: string | null;
 };
 
@@ -92,7 +117,8 @@ export default async function AdminPage({
   const imageFailure = returnedPageTitle ? "Amazon ha restituito la pagina «" + returnedPageTitle + "» senza foto del prodotto." : imageHttpStatus ? "Amazon ha risposto con un errore (" + imageHttpStatus + ")." : params.image_error === "blocked" ? "Amazon ha bloccato la lettura automatica della pagina." : params.image_error === "large" ? "La pagina Amazon supera il limite di lettura." : params.image_error === "timeout" ? "Amazon non ha risposto in tempo." : "La foto non è stata trovata nella pagina Amazon.";
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
-  const [runs, products, categories, haulSettings, lamboSettings, bestsellerSettings, haulLastPrice, lamboLastPrice, bestsellerLastPrice, haulCatalog, lamboCatalog, bestsellerCatalog] = await Promise.all([
+  const usageDay = currentUsageDay();
+  const [runs, products, categories, haulSettings, lamboSettings, bestsellerSettings, haulLastPrice, lamboLastPrice, bestsellerLastPrice, haulCatalog, lamboCatalog, bestsellerCatalog, aiUsage, aiHistory] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -109,12 +135,20 @@ export default async function AdminPage({
     supabaseAdminFetch<Array<{id: string}>>("products?in_haul=eq.true&active=eq.true&select=id&limit=1000"),
     supabaseAdminFetch<Array<{id: string}>>("products?in_offerte_lambo=eq.true&active=eq.true&select=id&limit=1000"),
     supabaseAdminFetch<Array<{id: string}>>("products?in_bestseller=eq.true&active=eq.true&select=id&limit=1000"),
+    supabaseAdminFetch<AIUsage[]>("ai_daily_usage?usage_day=eq." + encodeURIComponent(usageDay) + "&select=usage_day,requests_count,input_tokens,output_tokens,total_tokens,reserved_tokens,last_request_at,exhausted_at&limit=1"),
+    supabaseAdminFetch<AIHistory[]>("ai_search_history?select=id,created_at,query,status,model,input_tokens,output_tokens,total_tokens,products_count,error_message&order=created_at.desc&limit=20"),
   ]);
   const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
   const savedLamboUrl = typeof lamboSettings[0]?.value === "string" ? lamboSettings[0].value : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
   const savedBestsellerUrl = typeof bestsellerSettings[0]?.value === "string" ? bestsellerSettings[0].value : "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers";
   const formatLastCheck = (value: string | null | undefined) =>
     value ? new Date(value).toLocaleString("it-IT") : "Mai";
+  const todayAI = aiUsage[0];
+  const aiRequests = todayAI?.requests_count ?? 0;
+  const aiTokens = todayAI?.total_tokens ?? 0;
+  const aiRemainingRequests = Math.max(0, DAILY_REQUEST_LIMIT - aiRequests);
+  const aiRemainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - aiTokens - (todayAI?.reserved_tokens ?? 0));
+  const aiExhausted = Boolean(todayAI?.exhausted_at) || aiRemainingRequests === 0 || aiRemainingTokens === 0;
 
   return (
     <main className="adminShell">
@@ -132,6 +166,57 @@ export default async function AdminPage({
             <button type="submit">Esci</button>
           </form>
         </div>
+      </section>
+
+      <section className="adminPanel aiUsagePanel">
+        <div className="compactPanelHead">
+          <div>
+            <h2>Utilizzo AI</h2>
+            <p>Gemini 2.5 Flash · limite interno giornaliero di sicurezza · reset alla mezzanotte Pacifico, circa le 09:00 in Italia.</p>
+          </div>
+          <span className={aiExhausted ? "aiStatus exhausted" : "aiStatus available"}>
+            {aiExhausted ? "Limite raggiunto" : "Disponibile"}
+          </span>
+        </div>
+
+        <div className="aiUsageGrid">
+          <div><span>Richieste oggi</span><strong>{aiRequests} / {DAILY_REQUEST_LIMIT}</strong><small>{aiRemainingRequests} disponibili</small></div>
+          <div><span>Token utilizzati</span><strong>{aiTokens.toLocaleString("it-IT")} / {DAILY_TOKEN_LIMIT.toLocaleString("it-IT")}</strong><small>{aiRemainingTokens.toLocaleString("it-IT")} disponibili</small></div>
+          <div><span>Input / output</span><strong>{(todayAI?.input_tokens ?? 0).toLocaleString("it-IT")} / {(todayAI?.output_tokens ?? 0).toLocaleString("it-IT")}</strong><small>token registrati</small></div>
+          <div><span>Ultima richiesta</span><strong>{formatLastCheck(todayAI?.last_request_at)}</strong><small>{todayAI?.exhausted_at ? "Quota esaurita: " + formatLastCheck(todayAI.exhausted_at) : "Quota non esaurita"}</small></div>
+        </div>
+
+        <details className="adminAdvancedPanel aiHistoryPanel">
+          <summary>Storico ultime domande dei clienti</summary>
+          <div className="adminTableWrap">
+            <table className="adminTable">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Domanda</th>
+                  <th>Stato</th>
+                  <th>Prodotti</th>
+                  <th>Token</th>
+                  <th>Modello</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aiHistory.length ? aiHistory.map((item) => (
+                  <tr key={item.id}>
+                    <td>{new Date(item.created_at).toLocaleString("it-IT")}</td>
+                    <td>{item.query}</td>
+                    <td>{item.status}</td>
+                    <td>{item.products_count}</td>
+                    <td>{item.total_tokens.toLocaleString("it-IT")}</td>
+                    <td>{item.model ?? "—"}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={6}>Nessuna domanda registrata.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </section>
 
       <section className="adminPanel">
