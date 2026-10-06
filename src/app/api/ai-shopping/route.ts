@@ -5,7 +5,7 @@ import {
   searchAmazonCreators,
   searchAmazonFallback,
   searchLocalCatalog,
-} from "../../../../lib/ai-shopping";
+} from "../../../lib/ai-shopping";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
