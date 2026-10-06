@@ -38,7 +38,7 @@ async function getChromiumExecutablePath() {
 
 async function fetchAmazonWithFullScroll(
   url: string,
-  mode: "haul" | "search" = "haul",
+  mode: "haul" | "search" | "bestsellers" = "haul",
 ): Promise<HaulBrowserResult> {
   const chromium = (await import("@sparticuz/chromium-min")).default;
   const puppeteer = await import("puppeteer-core");
@@ -103,7 +103,7 @@ async function fetchAmazonWithFullScroll(
 
     if (!loaded) throw new Error("Amazon browser HTTP " + (lastStatus || 503));
 
-    await sleep(mode === "search" ? 2600 : 1500);
+    await sleep(mode === "search" || mode === "bestsellers" ? 2600 : 1500);
 
     await page.evaluate(() => {
       const labels = ["accetta", "accetto", "accept", "continua senza accettare"];
@@ -145,7 +145,7 @@ async function fetchAmazonWithFullScroll(
         window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
       });
 
-      await sleep(mode === "search" ? 1400 : WAIT_AFTER_SCROLL_MS);
+      await sleep(mode === "search" || mode === "bestsellers" ? 1400 : WAIT_AFTER_SCROLL_MS);
       const currentCount = await countAsins();
 
       if (currentCount > previousCount) {
@@ -250,7 +250,9 @@ async function fetchAmazonWithFullScroll(
     if (!Number.isFinite(finalCount) || finalCount < 1) {
       throw new Error(mode === "search"
         ? "No Amazon search products found after browser scrolling"
-        : "No HAUL products found after browser scrolling");
+        : mode === "bestsellers"
+          ? "No Amazon Bestseller products found after browser scrolling"
+          : "No HAUL products found after browser scrolling");
     }
 
     return { html, asinCount: finalCount, scrolls };
@@ -265,6 +267,10 @@ export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserR
 
 export async function fetchAmazonSearchWithFullScroll(url: string): Promise<HaulBrowserResult> {
   return fetchAmazonWithFullScroll(url, "search");
+}
+
+export async function fetchAmazonBestsellersWithFullScroll(url: string): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "bestsellers");
 }
 
 
