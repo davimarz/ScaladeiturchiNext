@@ -6,24 +6,16 @@ import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type CatalogKey = "haul" | "offerte-lampo";
+type CatalogKey = "haul" | "offerte-lampo" | "bestseller";
+type FlagKey = "in_haul" | "in_offerte_lambo" | "in_bestseller";
 
-const catalogs: Record<CatalogKey, {
-  filter: string;
-  otherFlag: "in_offerte_lambo" | "in_haul";
-  ownFlag: "in_haul" | "in_offerte_lambo";
-}> = {
-  haul: {
-    filter: "in_haul=eq.true",
-    ownFlag: "in_haul",
-    otherFlag: "in_offerte_lambo",
-  },
-  "offerte-lampo": {
-    filter: "in_offerte_lambo=eq.true",
-    ownFlag: "in_offerte_lambo",
-    otherFlag: "in_haul",
-  },
+const catalogs: Record<CatalogKey, { filter: string; ownFlag: FlagKey }> = {
+  haul: { filter: "in_haul=eq.true", ownFlag: "in_haul" },
+  "offerte-lampo": { filter: "in_offerte_lambo=eq.true", ownFlag: "in_offerte_lambo" },
+  bestseller: { filter: "in_bestseller=eq.true", ownFlag: "in_bestseller" },
 };
+
+const allFlags: FlagKey[] = ["in_haul", "in_offerte_lambo", "in_bestseller"];
 
 function redirect(status: string, catalog?: string) {
   const params = new URLSearchParams({ catalog_clear: status });
@@ -45,15 +37,17 @@ export async function POST(request: NextRequest) {
       id: string;
       in_haul: boolean;
       in_offerte_lambo: boolean;
+      in_bestseller: boolean;
     }>>(
-      `products?${config.filter}&select=id,in_haul,in_offerte_lambo&limit=1000`,
+      `products?${config.filter}&select=id,in_haul,in_offerte_lambo,in_bestseller&limit=1000`,
     );
 
+    const otherFlags = allFlags.filter((flag) => flag !== config.ownFlag);
     const sharedIds = products
-      .filter((product) => product[config.otherFlag])
+      .filter((product) => otherFlags.some((flag) => product[flag]))
       .map((product) => product.id);
     const exclusiveIds = products
-      .filter((product) => !product[config.otherFlag])
+      .filter((product) => otherFlags.every((flag) => !product[flag]))
       .map((product) => product.id);
 
     for (let offset = 0; offset < sharedIds.length; offset += 100) {
