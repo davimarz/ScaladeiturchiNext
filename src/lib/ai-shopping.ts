@@ -257,7 +257,7 @@ export async function generateShoppingAnswer(query: string, products: ShoppingPr
         input: [
           {
             role: "system",
-            content: "Sei l'assistente shopping di Scala dei Turchi. Rispondi in italiano in modo breve e utile. Usa esclusivamente i dati prodotto forniti. Non inventare caratteristiche, prezzi, disponibilità o sconti. Consiglia i prodotti più pertinenti alla richiesta. Se un dato manca, non dedurlo.",
+            content: "Sei l'assistente shopping di Scala dei Turchi. Rispondi in italiano in modo breve e utile. Usa esclusivamente i dati prodotto forniti. Non inventare caratteristiche, prezzi, disponibilità o sconti. Consiglia i prodotti più pertinenti alla richiesta e, quando disponibili, considera almeno quattro alternative. Se un dato manca, non dedurlo.",
           },
           {
             role: "user",
