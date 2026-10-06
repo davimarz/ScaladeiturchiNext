@@ -13,7 +13,7 @@ export type ShoppingProduct = {
   discountPercent: number | null;
   currency: string;
   affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search" | "gemini-search";
+  source: "catalogo" | "amazon-api" | "amazon-search" | "gemini-search" | "brave-search";
   features?: string[];
 };
 
