@@ -4,9 +4,9 @@ import {
   mergeProducts,
   searchAmazonCreators,
   searchAmazonFallback,
-  searchAmazonWithGeminiGrounding,
   searchLocalCatalog,
 } from "../../../lib/ai-shopping";
+import { searchAmazonViaBrave } from "../../../lib/brave-shopping";
 import {
   finalizeAIUsage,
   markAIExhausted,
@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
 
     const local = await searchLocalCatalog(query, 8).catch(() => []);
     let products = local;
-    let searchInputTokens = 0;
-    let searchOutputTokens = 0;
-    let searchTotalTokens = 0;
+    const searchInputTokens = 0;
+    const searchOutputTokens = 0;
+    const searchTotalTokens = 0;
     const searchErrors: string[] = [];
 
     if (products.length < 4) {
@@ -82,15 +82,12 @@ export async function POST(request: NextRequest) {
 
     if (products.length < 4) {
       try {
-        const grounded = await searchAmazonWithGeminiGrounding(query, 8);
-        products = mergeProducts(products, grounded.products);
-        searchInputTokens += grounded.inputTokens;
-        searchOutputTokens += grounded.outputTokens;
-        searchTotalTokens += grounded.totalTokens;
+        const external = await searchAmazonViaBrave(query, 8);
+        products = mergeProducts(products, external);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        searchErrors.push("Gemini URL context: " + message);
-        console.info("ai-shopping-gemini-search-fallback", message);
+        searchErrors.push("Brave Search: " + message);
+        console.info("ai-shopping-brave-search-fallback", message);
       }
     }
 
