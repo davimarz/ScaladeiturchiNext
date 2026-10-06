@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import DeleteProductButton from "../../components/DeleteProductButton";
 import AdminCatalogActions from "../../components/AdminCatalogActions";
 import AdminUpdateButton from "../../components/AdminUpdateButton";
+import AdminCatalogCard from "../../components/AdminCatalogCard";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
 
@@ -57,6 +58,8 @@ export default async function AdminPage({
     price_failed?: string;
     images_recovered?: string;
     images_missing?: string;
+    catalog_clear?: string;
+    catalog?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -87,7 +90,7 @@ export default async function AdminPage({
   const imageFailure = returnedPageTitle ? "Amazon ha restituito la pagina «" + returnedPageTitle + "» senza foto del prodotto." : imageHttpStatus ? "Amazon ha risposto con un errore (" + imageHttpStatus + ")." : params.image_error === "blocked" ? "Amazon ha bloccato la lettura automatica della pagina." : params.image_error === "large" ? "La pagina Amazon supera il limite di lettura." : params.image_error === "timeout" ? "Amazon non ha risposto in tempo." : "La foto non è stata trovata nella pagina Amazon.";
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
-  const [runs, products, categories, haulSettings, lamboSettings, haulLastPrice, lamboLastPrice] = await Promise.all([
+  const [runs, products, categories, haulSettings, lamboSettings, haulLastPrice, lamboLastPrice, haulCatalog, lamboCatalog] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -99,6 +102,8 @@ export default async function AdminPage({
     supabaseAdminFetch<Array<{key: string; value: unknown}>>("site_settings?key=eq.offerte_lambo_source_url&select=key,value&limit=1"),
     supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_haul=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
     supabaseAdminFetch<Array<{price_verified_at: string | null}>>("products?in_offerte_lambo=eq.true&active=eq.true&price_verified_at=not.is.null&select=price_verified_at&order=price_verified_at.desc&limit=1"),
+    supabaseAdminFetch<Array<{id: string}>>("products?in_haul=eq.true&active=eq.true&select=id&limit=1000"),
+    supabaseAdminFetch<Array<{id: string}>>("products?in_offerte_lambo=eq.true&active=eq.true&select=id&limit=1000"),
   ]);
   const savedHaulUrl = typeof haulSettings[0]?.value === "string" ? haulSettings[0].value : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
   const savedLamboUrl = typeof lamboSettings[0]?.value === "string" ? lamboSettings[0].value : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
@@ -206,6 +211,27 @@ export default async function AdminPage({
             </div>
             <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
           </form>
+        </div>
+      </section>
+
+      <section className="adminPanel catalogManagerPanel">
+        <div className="compactPanelHead">
+          <div>
+            <h2>Cataloghi</h2>
+            <p>Ogni scheda pubblica ha il proprio catalogo indipendente. Puoi controllare quanti prodotti contiene e svuotare solo quello che ti interessa.</p>
+          </div>
+        </div>
+
+        {params.catalog_clear === "success" ? (
+          <p className="adminNotice">
+            Catalogo {params.catalog === "haul" ? "HAUL" : params.catalog === "offerte-lampo" ? "Offerte Lampo" : ""} svuotato senza modificare gli altri cataloghi.
+          </p>
+        ) : null}
+        {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
+
+        <div className="catalogManagerGrid">
+          <AdminCatalogCard catalog="haul" label="HAUL" count={haulCatalog.length} />
+          <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={lamboCatalog.length} />
         </div>
       </section>
 
