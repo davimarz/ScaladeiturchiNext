@@ -12,7 +12,7 @@ type Product = {
   discountPercent: number | null;
   currency: string;
   affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search";
+  source: "catalogo" | "amazon-api" | "amazon-search" | "brave-search";
   features?: string[];
 };
 
