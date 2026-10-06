@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
     if (haulCategory) filters.push(`haul_category=eq.${encodeURIComponent(haulCategory)}`);
   } else if (category === "offerte-lambo") {
     filters.push("in_offerte_lambo=eq.true");
+  } else if (category === "bestseller") {
+    filters.push("in_bestseller=eq.true");
   } else if (category === "outlet") {
     filters.push("in_outlet=eq.true");
   } else {
@@ -61,6 +63,7 @@ export async function GET(request: NextRequest) {
     if (excludeSpecial.includes("haul")) filters.push("in_haul=eq.false");
     if (excludeSpecial.includes("outlet")) filters.push("in_outlet=eq.false");
     if (excludeSpecial.includes("offerte-lambo")) filters.push("in_offerte_lambo=eq.false");
+    if (excludeSpecial.includes("bestseller")) filters.push("in_bestseller=eq.false");
   }
 
   let rawProducts = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
