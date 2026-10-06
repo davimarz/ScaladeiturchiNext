@@ -3,6 +3,7 @@ import { parseHaulHtml } from "./haul-import";
 import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductImagesWithBrowser } from "./haul-browser";
 import { supabaseAdminFetch } from "./supabase/admin";
 import { isRelevantProduct, maxPriceFromQuery, queryTokens, titleRelevance } from "./ai-relevance";
+import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
 
 export type ShoppingProduct = {
   asin: string;
@@ -192,6 +193,42 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
     affiliateUrl: affiliateUrl(product.asin),
     source: "amazon-search" as const,
   }));
+}
+
+async function enrichMissingPrices(products: ShoppingProduct[]): Promise<ShoppingProduct[]> {
+  const missing = products.filter((product) => product.currentPrice == null);
+  if (!missing.length) return products;
+
+  const enrichedByAsin = new Map<string, ShoppingProduct>();
+
+  for (let offset = 0; offset < missing.length; offset += 3) {
+    const batch = missing.slice(offset, offset + 3);
+    const results = await Promise.all(batch.map(async (product) => {
+      try {
+        const snapshot = await fetchAmazonProductSnapshot(product.asin);
+        const offer = snapshot.offer;
+        if (!offer) return product;
+
+        return {
+          ...product,
+          title: snapshot.title && isRelevantProduct(snapshot.title, product.title)
+            ? snapshot.title
+            : product.title,
+          imageUrl: snapshot.imageUrl || product.imageUrl,
+          currentPrice: offer.currentPrice,
+          listPrice: offer.listPrice,
+          discountPercent: offer.discountPercent,
+          currency: offer.currency,
+        };
+      } catch {
+        return product;
+      }
+    }));
+
+    for (const product of results) enrichedByAsin.set(product.asin, product);
+  }
+
+  return products.map((product) => enrichedByAsin.get(product.asin) ?? product);
 }
 
 export type GroundedSearchResult = {
