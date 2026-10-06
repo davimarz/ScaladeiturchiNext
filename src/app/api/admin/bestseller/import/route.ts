@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const rows = parsed.map((product) => {
+    const rows = parsed.map((product, index) => {
       const existing = existingByAsin.get(product.asin);
       const badTitle = needsProductTitleEnrichment(product.title);
       const hasCurrent = product.currentPrice != null;
@@ -174,6 +174,7 @@ export async function POST(request: NextRequest) {
         in_haul: existing?.in_haul ?? false,
         in_offerte_lambo: existing?.in_offerte_lambo ?? false,
         in_bestseller: true,
+        bestseller_rank: index + 1,
         price_verified_at: hasCurrent ? now : existing?.price_verified_at ?? null,
         active: true,
         featured: false,
