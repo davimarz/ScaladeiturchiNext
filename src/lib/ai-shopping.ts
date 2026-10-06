@@ -96,7 +96,9 @@ type CreatorItem = {
   };
   offersV2?: {
     listings?: Array<{
-      price?: { money?: { amount?: number; currency?: string }; savingBasis?: { money?: { amount?: number } }; savings?: { percentage?: number } };
+      price?: { money?: { amount?: number; currency?: string } };
+      savingBasis?: { money?: { amount?: number } };
+      savings?: { percentage?: number };
     }>;
   };
 };
@@ -170,8 +172,8 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
 
     const listing = item.offersV2?.listings?.[0];
     const currentPrice = listing?.price?.money?.amount ?? null;
-    const listPrice = listing?.price?.savingBasis?.money?.amount ?? null;
-    const discountPercent = listing?.price?.savings?.percentage ?? (
+    const listPrice = listing?.savingBasis?.money?.amount ?? null;
+    const discountPercent = listing?.savings?.percentage ?? (
       currentPrice != null && listPrice != null && listPrice > currentPrice
         ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
         : null
