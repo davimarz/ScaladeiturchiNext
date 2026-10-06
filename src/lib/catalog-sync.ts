@@ -76,7 +76,28 @@ async function syncExistingFromAmazonPages(filter = "") {
   let failed = 0;
   let imagesRecovered = 0;
   let imagesMissing = 0;
-  const unresolvedTitleAsins = new Set<string>();
+
+  const weakTitleProducts = existing.filter((product) => needsProductTitleEnrichment(product.title));
+  if (weakTitleProducts.length) {
+    try {
+      const browserTitles = await fetchAmazonProductTitlesWithBrowser(weakTitleProducts.map((product) => product.asin));
+      for (let offset = 0; offset < weakTitleProducts.length; offset += 8) {
+        const batch = weakTitleProducts.slice(offset, offset + 8);
+        await Promise.all(batch.map(async (product) => {
+          const title = browserTitles.get(product.asin);
+          if (!title || needsProductTitleEnrichment(title)) return;
+          product.title = title;
+          await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+            method: "PATCH",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ title, updated_at: new Date().toISOString() }),
+          });
+        }));
+      }
+    } catch (error) {
+      console.warn("amazon-title-prerepair", error instanceof Error ? error.message : String(error));
+    }
+  }
 
   for (let offset = 0; offset < existing.length; offset += 12) {
     const batch = existing.slice(offset, offset + 12);
@@ -96,8 +117,6 @@ async function syncExistingFromAmazonPages(filter = "") {
           const searchTitle = await fetchAmazonSearchTitle(product.asin);
           if (searchTitle && searchTitle !== product.title && searchTitle.length > product.title.length) {
             recoveredTitle = searchTitle;
-          } else {
-            unresolvedTitleAsins.add(product.asin);
           }
         }
 
@@ -149,21 +168,6 @@ async function syncExistingFromAmazonPages(filter = "") {
 
       if (result.value.imageRecovered) imagesRecovered++;
       if (result.value.imageMissing) imagesMissing++;
-    }
-  }
-
-  if (unresolvedTitleAsins.size) {
-    try {
-      const browserTitles = await fetchAmazonProductTitlesWithBrowser([...unresolvedTitleAsins]);
-      for (const [asin, title] of browserTitles) {
-        await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(asin)}`, {
-          method: "PATCH",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify({ title, updated_at: new Date().toISOString() }),
-        });
-      }
-    } catch (error) {
-      console.warn("amazon-title-browser-fallback", error instanceof Error ? error.message : String(error));
     }
   }
 
