@@ -32,7 +32,7 @@ function queryTokens(query: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9€]+/g, " ")
     .split(/\s+/)
-    .filter((token) => token.length >= 3 && !["cerco","voglio","prodotto","prodotti","amazon","migliore","migliori","consigliami","vorrei"].includes(token));
+    .filter((token) => token.length >= 3 && !["cerco","voglio","prodotto","prodotti","amazon","migliore","migliori","consigliami","vorrei","serve","servono","una","uno","con","per","sotto","entro","fino","meno","euro","economico","economica","economici","economiche","conveniente","convenienti","buono","buona","buoni","buone"].includes(token));
 }
 
 function maxPriceFromQuery(query: string) {
@@ -203,14 +203,14 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
       source: "amazon-api" as const,
       features: item.itemInfo?.features?.displayValues?.slice(0, 6) ?? [],
     }];
-  }).slice(0, limit);
+  }).filter((product) => isRelevantProduct(product.title, query)).slice(0, limit);
 }
 
 export async function searchAmazonFallback(query: string, limit = 8): Promise<ShoppingProduct[]> {
   const url = new URL("https://www.amazon.it/s");
   url.searchParams.set("k", query.slice(0, 180));
   const result = await fetchAmazonKeywordSearchWithFullScroll(url.toString());
-  return parseHaulHtml(result.html).slice(0, limit).map((product) => ({
+  return parseHaulHtml(result.html).filter((product) => isRelevantProduct(product.title, query)).slice(0, limit).map((product) => ({
     asin: product.asin,
     title: product.title,
     imageUrl: product.imageUrl,
