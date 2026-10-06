@@ -157,63 +157,86 @@ async function fetchAmazonWithFullScroll(
     }
 
     await page.evaluate(() => {
-      const generic = /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|immagine del prodotto|product image|sponsorizzato|sponsored/i;
-      const isWeakBrandOnly = (value: string) => {
+      const generic = /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|immagine del prodotto|product image|sponsorizzato|sponsored|vedi su amazon|aggiungi al carrello/i;
+      const weakBrandOnly = (value: string) => {
         const text = value.replace(/\s+/g, " ").trim();
         const words = text.split(/\s+/).filter(Boolean);
-        return words.length <= 3 && text.length <= 32 && !/\d/.test(text);
+        return words.length <= 3 && text.length <= 36 && !/\d/.test(text);
       };
       const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
 
-      for (const card of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
-        const asin = clean(card.dataset.asin).toUpperCase();
-        if (!/^[A-Z0-9]{10}$/.test(asin)) continue;
+      const asins = new Set<string>();
+      for (const marker of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+        const asin = clean(marker.dataset.asin).toUpperCase();
+        if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+      }
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
+        const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+        if (match) asins.add(match[1].toUpperCase());
+      }
 
+      for (const asin of asins) {
         const candidates: Array<{ text: string; score: number }> = [];
         const add = (value: string | null | undefined, score: number) => {
           const text = clean(value);
-          if (text.length < 5 || generic.test(text)) return;
-          if (/^(HAUL|Amazon|Bestseller|Offerta top)$/i.test(text)) return;
+          if (text.length < 8 || generic.test(text)) return;
+          if (/^(HAUL|Amazon|Bestseller|Offerta top|Offerta|Nuovo)$/i.test(text)) return;
+          if (/^[-+]?\d+(?:[.,]\d+)?\s*€?$/.test(text)) return;
           candidates.push({ text: text.slice(0, 300), score });
         };
 
-        for (const selector of [
-          "h2 span",
-          "h2 a",
-          'a[href*="/dp/"] span.a-text-normal',
-          'a[href*="/dp/"] span',
-          ".a-size-base-plus",
-          ".a-size-medium",
-        ]) {
-          for (const element of Array.from(card.querySelectorAll<HTMLElement>(selector))) {
-            add(element.innerText || element.textContent, 90);
-          }
-        }
+        const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/' + asin + '"]'));
+        for (const link of links) {
+          add(link.getAttribute("aria-label"), 120);
+          add(link.getAttribute("title"), 115);
+          add(link.innerText || link.textContent, 105);
 
-        for (const link of Array.from(card.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
-          add(link.getAttribute("aria-label"), 95);
-          add(link.getAttribute("title"), 90);
-          add(link.innerText || link.textContent, 85);
+          for (const image of Array.from(link.querySelectorAll<HTMLImageElement>("img"))) add(image.alt, 145);
+
           try {
             const url = new URL(link.href, location.href);
             const match = url.pathname.match(/^\/([^/]+)\/dp\/([A-Z0-9]{10})(?:\/|$)/i);
             if (match && match[2].toUpperCase() === asin) {
-              add(decodeURIComponent(match[1]).replace(/[-_]+/g, " "), 110);
+              add(decodeURIComponent(match[1]).replace(/[-_]+/g, " "), 135);
             }
           } catch {}
-        }
 
-        for (const image of Array.from(card.querySelectorAll<HTMLImageElement>("img"))) {
-          add(image.alt, 80);
+          let ancestor: HTMLElement | null = link;
+          for (let depth = 0; ancestor && depth < 7; depth++, ancestor = ancestor.parentElement) {
+            for (const selector of [
+              "h2 span",
+              "h2 a",
+              "[data-csa-c-content-id*='title']",
+              "[data-cy='title-recipe'] span",
+              ".a-size-medium.a-color-base.a-text-normal",
+              ".a-size-base-plus.a-color-base.a-text-normal",
+              ".a-text-normal",
+            ]) {
+              for (const element of Array.from(ancestor.querySelectorAll<HTMLElement>(selector))) {
+                add(element.innerText || element.textContent, 150 - depth * 8);
+              }
+            }
+            for (const image of Array.from(ancestor.querySelectorAll<HTMLImageElement>("img"))) {
+              add(image.alt, 142 - depth * 6);
+            }
+          }
         }
 
         if (!candidates.length) continue;
         candidates.sort((a, b) => {
-          const penaltyA = isWeakBrandOnly(a.text) ? 120 : 0;
-          const penaltyB = isWeakBrandOnly(b.text) ? 120 : 0;
-          return (b.score + Math.min(b.text.length, 180) - penaltyB) - (a.score + Math.min(a.text.length, 180) - penaltyA);
+          const quality = (item: { text: string; score: number }) => {
+            const words = item.text.split(/\s+/).filter(Boolean).length;
+            const brandPenalty = weakBrandOnly(item.text) ? 180 : 0;
+            const detailBonus = Math.min(words, 24) * 10 + Math.min(item.text.length, 220);
+            return item.score + detailBonus - brandPenalty;
+          };
+          return quality(b) - quality(a);
         });
-        card.dataset.sdtTitle = candidates[0].text;
+
+        const best = candidates[0].text;
+        for (const marker of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+          if ((marker.dataset.asin || "").trim().toUpperCase() === asin) marker.dataset.sdtTitle = best;
+        }
       }
     }).catch(() => undefined);
 
