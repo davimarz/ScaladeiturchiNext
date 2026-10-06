@@ -63,7 +63,12 @@ export async function GET(request: NextRequest) {
     if (excludeSpecial.includes("offerte-lambo")) filters.push("in_offerte_lambo=eq.false");
   }
 
-  const rawProducts = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
+  let rawProducts = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
+  if (category === "haul") {
+    rawProducts = rawProducts.filter((product) =>
+      !/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida/i.test(product.title)
+    );
+  }
 
   const isGenericAmazonImage = (value: string | null) =>
     Boolean(value && /\/11\+\+B3A2NEL\._SS200_\.png(?:\?|$)/i.test(value));
