@@ -273,6 +273,10 @@ export async function fetchAmazonBestsellersWithFullScroll(url: string): Promise
   return fetchAmazonWithFullScroll(url, "bestsellers");
 }
 
+export async function fetchAmazonKeywordSearchWithFullScroll(url: string): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "bestsellers");
+}
+
 
 export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
   const uniqueAsins = [...new Set(asins.map((asin) => asin.trim().toUpperCase()).filter((asin) => /^[A-Z0-9]{10}$/.test(asin)))];
