@@ -44,7 +44,16 @@ function maxPriceFromQuery(query: string) {
 
 function scoreTitle(title: string, tokens: string[]) {
   const normalized = title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return tokens.reduce((score, token) => score + (normalized.includes(token) ? 4 : 0), 0);
+  const matches = tokens.filter((token) => normalized.includes(token)).length;
+  return { matches, score: matches * 5 };
+}
+
+export function isRelevantProduct(title: string, query: string) {
+  const tokens = queryTokens(query);
+  if (!tokens.length) return true;
+  const { matches } = scoreTitle(title, tokens);
+  const requiredMatches = tokens.length >= 2 ? 2 : 1;
+  return matches >= requiredMatches;
 }
 
 export async function searchLocalCatalog(query: string, limit = 8): Promise<ShoppingProduct[]> {
@@ -69,8 +78,11 @@ export async function searchLocalCatalog(query: string, limit = 8): Promise<Shop
 
   return rows
     .filter((row) => maxPrice == null || row.current_price == null || row.current_price <= maxPrice)
-    .map((row) => ({ row, score: scoreTitle(row.title, tokens) + (row.current_price != null ? 1 : 0) + (row.image_url ? 0.5 : 0) }))
-    .filter(({ score }) => tokens.length === 0 || score > 0)
+    .map((row) => {
+      const relevance = scoreTitle(row.title, tokens);
+      return { row, matches: relevance.matches, score: relevance.score + (row.current_price != null ? 1 : 0) + (row.image_url ? 0.5 : 0) };
+    })
+    .filter(({ matches }) => tokens.length === 0 || matches >= (tokens.length >= 2 ? 2 : 1))
     .sort((a, b) => b.score - a.score || (a.row.current_price ?? Infinity) - (b.row.current_price ?? Infinity))
     .slice(0, limit)
     .map(({ row }) => ({
@@ -224,54 +236,81 @@ export function mergeProducts(...groups: ShoppingProduct[][]) {
   return merged;
 }
 
-export async function generateShoppingAnswer(query: string, products: ShoppingProduct[]) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return products.length
-      ? "Ho trovato questi prodotti pertinenti alla tua richiesta. Confronta prezzo, sconto e caratteristiche indicate nelle schede."
-      : "Non ho trovato prodotti sufficientemente pertinenti in questo momento.";
-  }
+export type GeminiAnswer = {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  model: string;
+};
+
+export async function generateShoppingAnswer(query: string, products: ShoppingProduct[]): Promise<GeminiAnswer> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (!apiKey) throw new Error("Gemini API key unavailable");
 
   const compact = products.slice(0, 8).map((product, index) => ({
     n: index + 1,
     asin: product.asin,
-    title: product.title,
+    title: product.title.slice(0, 220),
     price: product.currentPrice,
     listPrice: product.listPrice,
     discount: product.discountPercent,
-    features: product.features ?? [],
+    features: (product.features ?? []).slice(0, 3),
   }));
 
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+  const response = await fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
+    {
       method: "POST",
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(20000),
       headers: {
-        authorization: `Bearer ${apiKey}`,
+        "x-goog-api-key": apiKey,
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-6-luna",
-        max_output_tokens: 350,
-        input: [
-          {
-            role: "system",
-            content: "Sei l'assistente shopping di Scala dei Turchi. Rispondi in italiano in modo breve e utile. Usa esclusivamente i dati prodotto forniti. Non inventare caratteristiche, prezzi, disponibilità o sconti. Consiglia i prodotti più pertinenti alla richiesta e, quando disponibili, considera almeno quattro alternative. Se un dato manca, non dedurlo.",
-          },
-          {
-            role: "user",
-            content: `Richiesta: ${query}\nProdotti disponibili: ${JSON.stringify(compact)}`,
-          },
-        ],
+        systemInstruction: {
+          parts: [{
+            text: "Sei l'assistente shopping di Scala dei Turchi. Rispondi in italiano, in modo breve e concreto. Usa solo i prodotti forniti. Non inventare prezzi, caratteristiche, disponibilità o sconti. Se i dati non permettono una conclusione, dichiaralo. Considera almeno quattro alternative quando disponibili."
+          }]
+        },
+        contents: [{
+          role: "user",
+          parts: [{
+            text: "Richiesta cliente: " + query + "\nProdotti verificati: " + JSON.stringify(compact)
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 320
+        }
       }),
-    });
-    const data = await response.json().catch(() => ({})) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
-    if (!response.ok) throw new Error("OpenAI response error " + response.status);
-    return data.output_text?.trim()
-      || data.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join(" ").trim()
-      || "Ho selezionato i prodotti più pertinenti alla tua richiesta.";
-  } catch {
-    return "Ho selezionato i prodotti più pertinenti alla tua richiesta sulla base dei dati disponibili.";
+    }
+  );
+
+  const data = await response.json().catch(() => ({})) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      thoughtsTokenCount?: number;
+      totalTokenCount?: number;
+    };
+    error?: { message?: string; status?: string; code?: number };
+  };
+
+  if (!response.ok) {
+    const error = new Error(data.error?.message || "Gemini response error " + response.status);
+    (error as Error & { statusCode?: number }).statusCode = response.status;
+    throw error;
   }
+
+  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim()
+    || "Ho selezionato i prodotti più pertinenti alla tua richiesta.";
+  const inputTokens = data.usageMetadata?.promptTokenCount || 0;
+  const outputTokens = (data.usageMetadata?.candidatesTokenCount || 0) + (data.usageMetadata?.thoughtsTokenCount || 0);
+  const totalTokens = data.usageMetadata?.totalTokenCount || inputTokens + outputTokens;
+
+  return { text, inputTokens, outputTokens, totalTokens, model };
 }
