@@ -20,3 +20,10 @@ export function isRelevantProduct(title: string, query: string) {
   const { matches } = titleRelevance(title, tokens);
   return matches >= (tokens.length >= 2 ? 2 : 1);
 }
+
+export function maxPriceFromQuery(query: string) {
+  const matches = [...query.matchAll(/(?:sotto|max(?:imo)?|entro|fino a|meno di)?\s*(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|euro)/gi)];
+  if (!matches.length) return null;
+  const value = Number(matches.at(-1)?.[1].replace(",", "."));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
