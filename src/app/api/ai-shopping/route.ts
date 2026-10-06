@@ -6,17 +6,48 @@ import {
   searchAmazonFallback,
   searchLocalCatalog,
 } from "../../../lib/ai-shopping";
+import {
+  finalizeAIUsage,
+  markAIExhausted,
+  recordAIQuery,
+  releaseAIUsage,
+  reserveAIUsage,
+} from "../../../lib/ai-usage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
+const quotaMessage = "Ciao! Al momento non possiamo elaborare la tua richiesta perché è stato raggiunto il limite di utilizzo gratuito per oggi. Il servizio tornerà disponibile domani. Grazie per la comprensione!";
+
 export async function POST(request: NextRequest) {
+  let usageDay = "";
+  let query = "";
+  let reserved = false;
+
   try {
     const body = await request.json() as { query?: string };
-    const query = String(body.query ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+    query = String(body.query ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
     if (query.length < 3) {
       return NextResponse.json({ error: "Scrivi una richiesta un po’ più precisa." }, { status: 400 });
+    }
+
+    const reservation = await reserveAIUsage();
+    usageDay = reservation.usageDay;
+    reserved = reservation.allowed;
+
+    if (!reservation.allowed) {
+      await recordAIQuery({
+        usageDay,
+        query,
+        status: "quota_exhausted",
+        errorMessage: "Limite giornaliero interno raggiunto",
+      }).catch(() => undefined);
+
+      return NextResponse.json({
+        error: quotaMessage,
+        quotaExceeded: true,
+      }, { status: 429 });
     }
 
     const local = await searchLocalCatalog(query, 8).catch(() => []);
@@ -41,15 +72,75 @@ export async function POST(request: NextRequest) {
     }
 
     products = products.slice(0, 8);
-    const answer = await generateShoppingAnswer(query, products);
+
+    if (!products.length) {
+      await releaseAIUsage(usageDay);
+      reserved = false;
+      await recordAIQuery({
+        usageDay,
+        query,
+        status: "no_products",
+        productsCount: 0,
+      }).catch(() => undefined);
+
+      return NextResponse.json({
+        answer: "Non ho trovato prodotti sufficientemente pertinenti per questa richiesta. Prova a specificare meglio cosa cerchi.",
+        products: [],
+        count: 0,
+      });
+    }
+
+    const gemini = await generateShoppingAnswer(query, products);
+    await finalizeAIUsage(usageDay, gemini.inputTokens, gemini.outputTokens, gemini.totalTokens);
+    reserved = false;
+
+    await recordAIQuery({
+      usageDay,
+      query,
+      status: "success",
+      model: gemini.model,
+      inputTokens: gemini.inputTokens,
+      outputTokens: gemini.outputTokens,
+      totalTokens: gemini.totalTokens,
+      productsCount: products.length,
+      productAsins: products.map((product) => product.asin),
+      productSources: products.map((product) => product.source),
+    }).catch(() => undefined);
 
     return NextResponse.json({
-      answer,
+      answer: gemini.text,
       products,
       count: products.length,
     });
   } catch (error) {
+    if (reserved && usageDay) {
+      await releaseAIUsage(usageDay).catch(() => undefined);
+    }
+
+    const statusCode = error instanceof Error && "statusCode" in error
+      ? Number((error as Error & { statusCode?: number }).statusCode)
+      : 0;
+    const providerLimit = statusCode === 429;
+
+    if (providerLimit && usageDay) {
+      await markAIExhausted(usageDay).catch(() => undefined);
+    }
+
+    if (usageDay && query) {
+      await recordAIQuery({
+        usageDay,
+        query,
+        status: providerLimit ? "provider_quota_exhausted" : "error",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      }).catch(() => undefined);
+    }
+
     console.error("ask-ai", error instanceof Error ? error.message : error);
+
+    if (providerLimit) {
+      return NextResponse.json({ error: quotaMessage, quotaExceeded: true }, { status: 429 });
+    }
+
     return NextResponse.json({ error: "Non sono riuscito a completare la ricerca. Riprova tra poco." }, { status: 500 });
   }
 }
