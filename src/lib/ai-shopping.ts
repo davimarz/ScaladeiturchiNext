@@ -1,6 +1,6 @@
 import "server-only";
 import { parseHaulHtml } from "./haul-import";
-import { fetchAmazonKeywordSearchWithFullScroll } from "./haul-browser";
+import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductImagesWithBrowser } from "./haul-browser";
 import { supabaseAdminFetch } from "./supabase/admin";
 import { isRelevantProduct, maxPriceFromQuery, queryTokens, titleRelevance } from "./ai-relevance";
 
@@ -13,7 +13,7 @@ export type ShoppingProduct = {
   discountPercent: number | null;
   currency: string;
   affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search";
+  source: "catalogo" | "amazon-api" | "amazon-search" | "gemini-search";
   features?: string[];
 };
 
@@ -191,6 +191,42 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
     affiliateUrl: affiliateUrl(product.asin),
     source: "amazon-search" as const,
   }));
+}
+
+export type GroundedSearchResult = {
+  products: ShoppingProduct[];
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  model: string;
+};
+
+export async function searchAmazonWithGeminiGrounding(query: string, limit = 8): Promise<GroundedSearchResult> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (!apiKey) throw new Error("Gemini API key unavailable");
+  const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent", {
+    method: "POST", cache: "no-store", signal: AbortSignal.timeout(25000),
+    headers: { "x-goog-api-key": apiKey, "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: "Cerca su Google prodotti REALMENTE presenti su amazon.it che corrispondano a questa richiesta: " + query + ". Restituisci solo righe nel formato ASIN|TITOLO, una per prodotto. L ASIN deve essere un codice Amazon valido di 10 caratteri ricavato da una pagina prodotto amazon.it /dp/ASIN. Non inventare ASIN. Restituisci da 4 a " + Math.min(8, Math.max(4, limit)) + " prodotti quando disponibili." }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 500 }
+    })
+  });
+  const data = await response.json().catch(() => ({})) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; groundingMetadata?: { groundingChunks?: Array<{ web?: { uri?: string; title?: string } }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number; totalTokenCount?: number }; error?: { message?: string; code?: number } };
+  if (!response.ok) { const error = new Error(data.error?.message || "Gemini grounded search error " + response.status); (error as Error & { statusCode?: number }).statusCode = response.status; throw error; }
+  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
+  const candidates = new Map<string, string>();
+  for (const line of text.split(/\r?\n/)) { const match = line.match(/\b([A-Z0-9]{10})\b\s*\|\s*(.+)$/i); if (!match) continue; const asin = match[1].toUpperCase(); const title = match[2].replace(/[*_`#]/g, "").trim(); if (title.length >= 4 && isRelevantProduct(title, query)) candidates.set(asin, title.slice(0, 300)); }
+  for (const chunk of data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) { const uri = chunk.web?.uri || ""; const match = uri.match(/amazon\.it\/(?:[^/?#]+\/)?dp\/([A-Z0-9]{10})(?:[/?#]|$)/i); if (!match) continue; const title = (chunk.web?.title || "").replace(/\s*[-|:]\s*Amazon.*$/i, "").trim(); if (title && isRelevantProduct(title, query)) candidates.set(match[1].toUpperCase(), title.slice(0, 300)); }
+  const entries = [...candidates.entries()].slice(0, limit);
+  const images = entries.length ? await fetchAmazonProductImagesWithBrowser(entries.map(([asin]) => asin)).catch(() => new Map<string, string>()) : new Map<string, string>();
+  const products = entries.map(([asin, title]) => ({ asin, title, imageUrl: images.get(asin) || null, currentPrice: null, listPrice: null, discountPercent: null, currency: "EUR", affiliateUrl: affiliateUrl(asin), source: "gemini-search" as const }));
+  const inputTokens = data.usageMetadata?.promptTokenCount || 0;
+  const outputTokens = (data.usageMetadata?.candidatesTokenCount || 0) + (data.usageMetadata?.thoughtsTokenCount || 0);
+  const totalTokens = data.usageMetadata?.totalTokenCount || inputTokens + outputTokens;
+  return { products, inputTokens, outputTokens, totalTokens, model };
 }
 
 export function mergeProducts(...groups: ShoppingProduct[][]) {
