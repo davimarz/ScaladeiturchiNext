@@ -1,6 +1,6 @@
 export const DAILY_REQUEST_LIMIT = 100;
 export const DAILY_TOKEN_LIMIT = 200000;
-export const RESERVED_TOKENS_PER_REQUEST = 2500;
+export const RESERVED_TOKENS_PER_REQUEST = 5000;
 
 export function currentUsageDay(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
