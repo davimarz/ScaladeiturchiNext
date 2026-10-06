@@ -172,7 +172,7 @@ export default async function AdminPage({
         <div className="compactPanelHead">
           <div>
             <h2>Utilizzo AI</h2>
-            <p>Gemini 2.5 Flash · limite interno giornaliero di sicurezza · reset alla mezzanotte Pacifico, circa le 09:00 in Italia.</p>
+            <p>Gemini 3.5 Flash-Lite · limite interno giornaliero di sicurezza · reset alla mezzanotte Pacifico, circa le 09:00 in Italia.</p>
           </div>
           <span className={aiExhausted ? "aiStatus exhausted" : "aiStatus available"}>
             {aiExhausted ? "Limite raggiunto" : "Disponibile"}
