@@ -211,9 +211,7 @@ async function enrichMissingPrices(products: ShoppingProduct[]): Promise<Shoppin
 
         return {
           ...product,
-          title: snapshot.title && isRelevantProduct(snapshot.title, product.title)
-            ? snapshot.title
-            : product.title,
+          title: product.title,
           imageUrl: snapshot.imageUrl || product.imageUrl,
           currentPrice: offer.currentPrice,
           listPrice: offer.listPrice,
