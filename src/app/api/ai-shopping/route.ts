@@ -53,9 +53,9 @@ export async function POST(request: NextRequest) {
 
     const local = await searchLocalCatalog(query, 8).catch(() => []);
     let products = local;
-    let searchInputTokens = 0;
-    let searchOutputTokens = 0;
-    let searchTotalTokens = 0;
+    const searchInputTokens = 0;
+    const searchOutputTokens = 0;
+    const searchTotalTokens = 0;
     const searchErrors: string[] = [];
 
     if (products.length < 4) {
