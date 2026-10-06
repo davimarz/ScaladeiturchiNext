@@ -31,6 +31,12 @@ function formatPrice(value: number | null, currency: string) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(value);
 }
 
+function displayProductTitle(title: string) {
+  const cleaned = title.replace(/\s+/g, " ").trim();
+  const withoutAmazonEssentials = cleaned.replace(/^Amazon Essentials\s*[-–—:]?\s+/i, "");
+  return withoutAmazonEssentials || cleaned;
+}
+
 export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i prodotti", eyebrow = "CATALOGO", showCategoryChips = true, excludeCategories = "" }: { fixedCategory?: string; heading?: string; eyebrow?: string; showCategoryChips?: boolean; excludeCategories?: string }) {
   const [q, setQ] = useState("");
   const [category, setCategory] = useState(fixedCategory ?? "tutte");
@@ -122,7 +128,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
               <div className="productBody">
                 {fixedCategory === "haul" && product.haul_category ? <span className="cardTag">{product.haul_category}</span> : null}
                 {price?.discount != null ? <span className="discount">RISPARMIA {price.discount}%</span> : null}
-                <h3>{product.title}</h3>
+                <h3>{displayProductTitle(product.title)}</h3>
                 <div className="priceRow">
                   {price ? <strong>{formatPrice(price.current, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
                   {price?.reference != null ? <del aria-label="Prezzo di riferimento">{formatPrice(price.reference, product.currency)}</del> : null}
