@@ -2,6 +2,7 @@ import "server-only";
 import { parseHaulHtml } from "./haul-import";
 import { fetchAmazonKeywordSearchWithFullScroll } from "./haul-browser";
 import { supabaseAdminFetch } from "./supabase/admin";
+import { isRelevantProduct, queryTokens, titleRelevance } from "./ai-relevance";
 
 export type ShoppingProduct = {
   asin: string;
@@ -23,37 +24,6 @@ function affiliateUrl(asin: string) {
   const url = new URL(`https://www.amazon.it/dp/${asin}`);
   url.searchParams.set("tag", PARTNER_TAG);
   return url.toString();
-}
-
-function queryTokens(query: string) {
-  return query
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9€]+/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length >= 3 && !["cerco","voglio","prodotto","prodotti","amazon","migliore","migliori","consigliami","vorrei","serve","servono","una","uno","con","per","sotto","entro","fino","meno","euro","economico","economica","economici","economiche","conveniente","convenienti","buono","buona","buoni","buone"].includes(token));
-}
-
-function maxPriceFromQuery(query: string) {
-  const matches = [...query.matchAll(/(?:sotto|max(?:imo)?|entro|fino a|meno di)?\s*(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|euro)/gi)];
-  if (!matches.length) return null;
-  const value = Number(matches.at(-1)?.[1].replace(",", "."));
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
-
-function scoreTitle(title: string, tokens: string[]) {
-  const normalized = title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const matches = tokens.filter((token) => normalized.includes(token)).length;
-  return { matches, score: matches * 5 };
-}
-
-export function isRelevantProduct(title: string, query: string) {
-  const tokens = queryTokens(query);
-  if (!tokens.length) return true;
-  const { matches } = scoreTitle(title, tokens);
-  const requiredMatches = tokens.length >= 2 ? 2 : 1;
-  return matches >= requiredMatches;
 }
 
 export async function searchLocalCatalog(query: string, limit = 8): Promise<ShoppingProduct[]> {
@@ -79,7 +49,7 @@ export async function searchLocalCatalog(query: string, limit = 8): Promise<Shop
   return rows
     .filter((row) => maxPrice == null || row.current_price == null || row.current_price <= maxPrice)
     .map((row) => {
-      const relevance = scoreTitle(row.title, tokens);
+      const relevance = titleRelevance(row.title, tokens);
       return { row, matches: relevance.matches, score: relevance.score + (row.current_price != null ? 1 : 0) + (row.image_url ? 0.5 : 0) };
     })
     .filter(({ matches }) => tokens.length === 0 || matches >= (tokens.length >= 2 ? 2 : 1))
