@@ -101,26 +101,24 @@ export function extractAmazonProductImage(html: string, asin: string) {
       !/a-dynamic-image|imgTagWrapper|main-image/i.test(classes)
     ) continue;
 
-    for (const name of ["data-old-hires", "data-hires", "data-src", "src"]) {
+    for (const name of ["data-old-hires", "data-hires"]) {
       const image = accept(attribute(tag, name));
       if (image) return image;
     }
 
-    for (const name of ["data-a-dynamic-image"]) {
-      try {
-        const dynamic = JSON.parse(attribute(tag, name)) as Record<string, unknown>;
-        const candidates = Object.entries(dynamic).flatMap(([url, dimensions]) => {
-          const image = accept(url);
-          if (!image || !Array.isArray(dimensions)) return [];
-          const width = Number(dimensions[0]);
-          const height = Number(dimensions[1]);
-          return Number.isFinite(width) && Number.isFinite(height) && width > 1 && height > 1
-            ? [{ image, area: width * height }]
-            : [];
-        }).sort((a, b) => b.area - a.area);
-        if (candidates[0]) return candidates[0].image;
-      } catch {}
-    }
+    try {
+      const dynamic = JSON.parse(attribute(tag, "data-a-dynamic-image")) as Record<string, unknown>;
+      const candidates = Object.entries(dynamic).flatMap(([url, dimensions]) => {
+        const image = accept(url);
+        if (!image || !Array.isArray(dimensions)) return [];
+        const width = Number(dimensions[0]);
+        const height = Number(dimensions[1]);
+        return Number.isFinite(width) && Number.isFinite(height) && width > 1 && height > 1
+          ? [{ image, area: width * height }]
+          : [];
+      }).sort((a, b) => b.area - a.area);
+      if (candidates[0]) return candidates[0].image;
+    } catch {}
 
     for (const name of ["srcset", "data-srcset"]) {
       const parts = attribute(tag, name).split(",").map((part) => part.trim().split(/\s+/)[0]).filter(Boolean);
@@ -128,6 +126,11 @@ export function extractAmazonProductImage(html: string, asin: string) {
         const image = accept(part);
         if (image) return image;
       }
+    }
+
+    for (const name of ["data-src", "src"]) {
+      const image = accept(attribute(tag, name));
+      if (image) return image;
     }
   }
 
