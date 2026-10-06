@@ -294,3 +294,14 @@ export function isAmazonDealsUrl(value: string) {
     return false;
   }
 }
+
+
+export function isAmazonBestsellersUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase())) return false;
+    return url.pathname === "/gp/bestsellers/" || url.pathname === "/gp/bestsellers";
+  } catch {
+    return false;
+  }
+}
