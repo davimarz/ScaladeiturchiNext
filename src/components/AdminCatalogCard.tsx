@@ -1,7 +1,7 @@
 "use client";
 
 type Props = {
-  catalog: "haul" | "offerte-lampo";
+  catalog: "haul" | "offerte-lampo" | "bestseller";
   label: string;
   count: number;
 };
