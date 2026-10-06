@@ -346,7 +346,7 @@ export async function generateShoppingAnswer(query: string, products: ShoppingPr
       body: JSON.stringify({
         systemInstruction: {
           parts: [{
-            text: "Sei l'assistente shopping di Scala dei Turchi. Rispondi in italiano, in modo breve e concreto. Usa solo i prodotti forniti. Non inventare prezzi, caratteristiche, disponibilità o sconti. Se i dati non permettono una conclusione, dichiaralo. Considera almeno quattro alternative quando disponibili."
+            text: "Sei l'assistente shopping di Scala dei Turchi. Rispondi in italiano, in modo breve e concreto, senza Markdown, asterischi o markup HTML. Usa solo i prodotti forniti. Non inventare prezzi, caratteristiche, disponibilità o sconti. Se i dati non permettono una conclusione, dichiaralo. Considera almeno quattro alternative quando disponibili."
           }]
         },
         contents: [{
