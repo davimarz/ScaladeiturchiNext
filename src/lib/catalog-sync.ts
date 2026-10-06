@@ -2,7 +2,8 @@ import "server-only";
 import { getAmazonItems, searchAmazonItems } from "./amazon/client";
 import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle, needsProductTitleEnrichment } from "./amazon-page-offer";
 import { supabaseAdminFetch } from "./supabase/admin";
-import { fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
+import { fetchAmazonProductImagesWithBrowser, fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
+import { isGenericAmazonImage } from "./amazon-input";
 
 type OfferListing = {
   price?: {
@@ -99,6 +100,29 @@ async function syncExistingFromAmazonPages(filter = "") {
     }
   }
 
+  const weakImageProducts = existing.filter((product) => isGenericAmazonImage(product.image_url));
+  if (weakImageProducts.length) {
+    try {
+      const browserImages = await fetchAmazonProductImagesWithBrowser(weakImageProducts.map((product) => product.asin));
+      for (let offset = 0; offset < weakImageProducts.length; offset += 8) {
+        const batch = weakImageProducts.slice(offset, offset + 8);
+        await Promise.all(batch.map(async (product) => {
+          const imageUrl = browserImages.get(product.asin);
+          if (!imageUrl || isGenericAmazonImage(imageUrl)) return;
+          product.image_url = imageUrl;
+          imagesRecovered++;
+          await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+            method: "PATCH",
+            headers: { Prefer: "return=minimal" },
+            body: JSON.stringify({ image_url: imageUrl, updated_at: new Date().toISOString() }),
+          });
+        }));
+      }
+    } catch (error) {
+      console.warn("amazon-image-prerepair", error instanceof Error ? error.message : String(error));
+    }
+  }
+
   for (let offset = 0; offset < existing.length; offset += 12) {
     const batch = existing.slice(offset, offset + 12);
     const results = await Promise.allSettled(
@@ -110,7 +134,8 @@ async function syncExistingFromAmazonPages(filter = "") {
           snapshot = null;
         }
         const offer = snapshot?.offer ?? null;
-        const recoveredImage = !product.image_url && snapshot?.imageUrl ? snapshot.imageUrl : null;
+        const imageNeedsRepair = isGenericAmazonImage(product.image_url);
+        const recoveredImage = imageNeedsRepair && snapshot?.imageUrl && !isGenericAmazonImage(snapshot.imageUrl) ? snapshot.imageUrl : null;
         let recoveredTitle = snapshot?.title && snapshot.title !== product.title ? snapshot.title : null;
         const genericExistingTitle = needsProductTitleEnrichment(product.title);
         if (!recoveredTitle && genericExistingTitle) {
@@ -121,7 +146,7 @@ async function syncExistingFromAmazonPages(filter = "") {
         }
 
         if (!offer && !recoveredImage && !recoveredTitle) {
-          return { status: "failed" as const, imageRecovered: false, imageMissing: !product.image_url };
+          return { status: "failed" as const, imageRecovered: false, imageMissing: isGenericAmazonImage(product.image_url) };
         }
 
         const hasChanged = offer ? (
@@ -152,7 +177,7 @@ async function syncExistingFromAmazonPages(filter = "") {
         return {
           status: offer ? (hasChanged ? "changed" as const : "unchanged" as const) : "failed" as const,
           imageRecovered: Boolean(recoveredImage),
-          imageMissing: !product.image_url && !snapshot?.imageUrl,
+          imageMissing: isGenericAmazonImage(product.image_url) && isGenericAmazonImage(snapshot?.imageUrl),
         };
       }),
     );
