@@ -26,7 +26,7 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
         <div><p className="eyebrow">AMMINISTRAZIONE</p><h1>Offerte Lambo</h1></div>
         <div className="adminActions">
           <Link href="/admin">Dashboard</Link>
-          <Link href="/admin/haul">HAUL</Link>
+          <Link href="/admin/haul">HAUL</Link>\n          <Link href="/admin/bestseller">Bestseller</Link>
           <Link href="/offerte-lambo">Pagina pubblica</Link>
         </div>
       </section>
