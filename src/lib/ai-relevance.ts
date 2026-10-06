@@ -9,8 +9,14 @@ export function queryTokens(query: string) {
 }
 
 export function titleRelevance(title: string, tokens: string[]) {
-  const normalized = title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const matches = tokens.filter((token) => normalized.includes(token)).length;
+  const words = title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const matches = tokens.filter((token) => words.includes(token)).length;
   return { matches, score: matches * 5 };
 }
 
