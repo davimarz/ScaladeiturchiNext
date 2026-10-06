@@ -18,6 +18,7 @@ type ProductRow = {
   featured: boolean;
   category_id: string | null;
   haul_category: string | null;
+  bestseller_rank: number | null;
 };
 
 function safeSearch(value: string) {
@@ -35,9 +36,11 @@ export async function GET(request: NextRequest) {
   const queryLimit = category === "offerte-lambo" ? Math.min(limit * 5, 200) : limit;
   const filters = [
     "active=eq.true",
-    "select=id,asin,title,image_url,affiliate_url,current_price,list_price,currency,discount_percent,price_verified_at,featured,category_id,haul_category",
+    "select=id,asin,title,image_url,affiliate_url,current_price,list_price,currency,discount_percent,price_verified_at,featured,category_id,haul_category,bestseller_rank",
     `limit=${queryLimit}`,
-    "order=current_price.asc.nullslast,updated_at.desc",
+    category === "bestseller"
+      ? "order=bestseller_rank.asc.nullslast,updated_at.desc"
+      : "order=current_price.asc.nullslast,updated_at.desc",
   ];
 
   if (q) filters.push(`title=ilike.*${encodeURIComponent(q)}*`);
