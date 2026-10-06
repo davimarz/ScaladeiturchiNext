@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isRelevantProduct } from "../src/lib/ai-shopping.ts";
+import { isRelevantProduct } from "../src/lib/ai-relevance.ts";
 
 test("rejects unrelated products for coffee pod machine query", () => {
   const query = "mi serve una macchina da caffè con cialde";
