@@ -79,3 +79,12 @@ export async function recordAIQuery(data: {
     }),
   });
 }
+
+export async function markAIExhausted(usageDay: string) {
+  const now = new Date().toISOString();
+  await supabaseAdminFetch<void>("ai_daily_usage?usage_day=eq." + encodeURIComponent(usageDay), {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ exhausted_at: now, updated_at: now }),
+  });
+}
