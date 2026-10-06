@@ -370,3 +370,119 @@ export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
     await browser.close();
   }
 }
+
+
+export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
+  const uniqueAsins = [...new Set(asins.map((asin) => asin.trim().toUpperCase()).filter((asin) => /^[A-Z0-9]{10}$/.test(asin)))];
+  if (!uniqueAsins.length) return new Map<string, string>();
+
+  const chromium = (await import("@sparticuz/chromium-min")).default;
+  const puppeteer = await import("puppeteer-core");
+  chromium.setGraphicsMode = false;
+
+  const args = [...chromium.args];
+  if (!args.includes("--disable-blink-features=AutomationControlled")) {
+    args.push("--disable-blink-features=AutomationControlled");
+  }
+
+  const browser = await puppeteer.launch({
+    args,
+    defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
+    executablePath: await getChromiumExecutablePath(),
+    headless: true,
+  });
+
+  const results = new Map<string, string>();
+  const generic = /\/11\+\+B3A2NEL\._SS200_\.png(?:\?|$)|transparent-pixel|\/pixel\.|\/loading\.|\/no-image/i;
+
+  try {
+    for (let offset = 0; offset < uniqueAsins.length; offset += 4) {
+      const batch = uniqueAsins.slice(offset, offset + 4);
+      const entries = await Promise.all(batch.map(async (asin) => {
+        const page = await browser.newPage();
+        try {
+          await page.setUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+          );
+          await page.setExtraHTTPHeaders({ "accept-language": "it-IT,it;q=0.9,en;q=0.7" });
+          const response = await page.goto("https://www.amazon.it/dp/" + asin, {
+            waitUntil: "domcontentloaded",
+            timeout: 20_000,
+          });
+          if (!response || [403, 429, 503].includes(response.status())) return [asin, null] as const;
+
+          const image = await page.evaluate(() => {
+            const candidates: string[] = [];
+            const add = (value: string | null | undefined) => {
+              if (!value) return;
+              const url = value.trim();
+              if (!url) return;
+              candidates.push(url);
+            };
+
+            const main = document.querySelector<HTMLImageElement>("#landingImage, #imgBlkFront, #mainImage, #ebooksImgBlkFront");
+            if (main) {
+              add(main.getAttribute("data-old-hires"));
+              add(main.getAttribute("data-hires"));
+              add(main.currentSrc);
+              add(main.src);
+              const dynamic = main.getAttribute("data-a-dynamic-image");
+              if (dynamic) {
+                try {
+                  const parsed = JSON.parse(dynamic);
+                  for (const key of Object.keys(parsed)) add(key);
+                } catch {}
+              }
+            }
+
+            add(document.querySelector<HTMLMetaElement>('meta[property="og:image"]')?.content);
+            add(document.querySelector<HTMLMetaElement>('meta[name="twitter:image"]')?.content);
+
+            for (const script of Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'))) {
+              try {
+                const parsed = JSON.parse(script.textContent || "null");
+                const items = Array.isArray(parsed) ? parsed : [parsed];
+                for (const item of items) {
+                  if (!item || typeof item !== "object") continue;
+                  const image = item.image;
+                  if (Array.isArray(image)) image.forEach((value: unknown) => typeof value === "string" && add(value));
+                  else if (typeof image === "string") add(image);
+                }
+              } catch {}
+            }
+
+            const valid = candidates.filter((value) =>
+              /^https:\/\/(?:m\.media-amazon\.com|images-(?:na|eu|fe)\.ssl-images-amazon\.com)\//i.test(value)
+            );
+            valid.sort((a, b) => b.length - a.length);
+            return valid[0] || null;
+          }).catch(() => null);
+
+          if (image && !generic.test(image)) return [asin, image] as const;
+
+          await page.goto("https://www.amazon.it/s?k=" + encodeURIComponent(asin), {
+            waitUntil: "domcontentloaded",
+            timeout: 15_000,
+          }).catch(() => null);
+
+          const fallback = await page.evaluate((targetAsin) => {
+            const card = document.querySelector<HTMLElement>('[data-asin="' + targetAsin + '"]');
+            const img = card?.querySelector<HTMLImageElement>("img");
+            return img?.currentSrc || img?.src || null;
+          }, asin).catch(() => null);
+
+          return [asin, fallback && !generic.test(fallback) ? fallback : null] as const;
+        } finally {
+          await page.close().catch(() => undefined);
+        }
+      }));
+
+      for (const [asin, image] of entries) {
+        if (image) results.set(asin, image);
+      }
+    }
+    return results;
+  } finally {
+    await browser.close();
+  }
+}
