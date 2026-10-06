@@ -102,11 +102,6 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
         </form>
       </div>
 
-      {fixedCategory === "haul" && haulCategories.length ? <div className="chips" aria-label="Categorie HAUL">
-        <button className={haulCategory === "" ? "active" : ""} type="button" onClick={() => setHaulCategory("")}>Tutte</button>
-        {haulCategories.map((label) => <button className={haulCategory === label ? "active" : ""} type="button" key={label} onClick={() => setHaulCategory(label)}>{label}</button>)}
-      </div> : null}
-
       {showCategoryChips ? <div className="chips" aria-label="Categorie">
         {categories.map(([slug, label]) => (
           <button className={category === slug ? "active" : ""} type="button" key={slug} onClick={() => selectCategory(slug)}>{label}</button>
