@@ -86,6 +86,9 @@ function titleFromAmazonHref(fragment: string, asin: string) {
 function findTitle(fragment: string, asin: string) {
   const candidates: Array<{ value: string; priority: number }> = [];
 
+  const domTitle = fragment.match(/data-sdt-title=["']([^"']+)["']/i)?.[1];
+  if (domTitle && !isGenericTitle(domTitle)) candidates.push({ value: cleanText(domTitle).slice(0, 300), priority: 160 });
+
   const hrefTitle = titleFromAmazonHref(fragment, asin);
   if (hrefTitle) candidates.push({ value: hrefTitle, priority: 120 });
 
