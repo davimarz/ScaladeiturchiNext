@@ -88,8 +88,20 @@ async function braveWebSearch(apiKey: string, searchQuery: string) {
 async function enrichFromBraveByAsin(apiKey: string, product: ExternalShoppingProduct) {
   if (product.currentPrice != null && product.imageUrl) return product;
   try {
-    const results = await braveWebSearch(apiKey, 'site:amazon.it "' + product.asin + '"');
-    for (const result of results) {
+    const exactQueries = [
+      'site:amazon.it "' + product.asin + '"',
+      'site:amazon.it/dp "' + product.asin + '"',
+      '"' + product.asin + '" Amazon.it prezzo',
+      '"' + product.asin + '" Amazon.it €',
+      '"' + product.asin + '" "' + product.title.slice(0, 80) + '"'
+    ];
+    const combined: BraveResult[] = [];
+    for (const exactQuery of exactQueries) {
+      const batch = await braveWebSearch(apiKey, exactQuery);
+      combined.push(...batch);
+      if (combined.some((item) => (item.url || "").toUpperCase().includes(product.asin))) break;
+    }
+    for (const result of combined) {
       const rawUrl = result.url || "";
       const match = rawUrl.match(/amazon\.it\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
       if (!match || match[1].toUpperCase() !== product.asin) continue;
@@ -177,13 +189,21 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
     }
   };
 
-  const queries = [...new Set([query, ...semanticQueries].map((value) => value.trim()).filter(Boolean))].slice(0, 4);
+  const queries = [...new Set([query, ...semanticQueries].map((value) => value.trim()).filter(Boolean))].slice(0, 6);
   for (const candidate of queries) {
     if (products.length >= limit) break;
     const candidateKeywords = queryTokens(candidate).join(" ") || candidate;
-    collect(await braveWebSearch(apiKey, 'site:amazon.it "' + candidateKeywords + '"'));
-    if (products.length < limit) {
-      collect(await braveWebSearch(apiKey, candidateKeywords + " Amazon.it"));
+    const searchPatterns = [
+      'site:amazon.it "' + candidateKeywords + '"',
+      'site:amazon.it/dp "' + candidateKeywords + '"',
+      candidateKeywords + " Amazon.it",
+      candidateKeywords + " Amazon.it cappello",
+      candidateKeywords + " Amazon.it berretto",
+      candidateKeywords + " Amazon.it baseball cap"
+    ];
+    for (const pattern of searchPatterns) {
+      if (products.length >= limit) break;
+      collect(await braveWebSearch(apiKey, pattern));
     }
   }
 
