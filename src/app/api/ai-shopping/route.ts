@@ -166,6 +166,7 @@ export async function POST(request: NextRequest) {
       totalTokens,
       productsCount: products.length,
       productAsins: products.map((product) => product.asin),
+      productTitles: products.map((product) => product.title),
       productSources: products.map((product) => product.source),
     }).catch(() => undefined);
 
