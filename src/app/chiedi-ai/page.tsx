@@ -1,6 +1,7 @@
 import Link from "next/link";
 import PublicTabs from "../../components/PublicTabs";
 import AIShoppingAssistant from "../../components/AIShoppingAssistant";
+import MostSearchedProducts from "../../components/MostSearchedProducts";
 
 export default function ChiediAIPage() {
   return (
@@ -15,6 +16,8 @@ export default function ChiediAIPage() {
       <PublicTabs active="ai" />
 
       <AIShoppingAssistant />
+
+      <MostSearchedProducts />
 
       <section className="notice compactNotice">
         <strong>Trasparenza</strong>
