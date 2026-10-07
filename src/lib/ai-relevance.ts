@@ -1,3 +1,11 @@
+const GENERIC_QUALIFIERS = new Set([
+  "donna","donne","uomo","uomini","bambino","bambina","bambini","bambine",
+  "ragazzo","ragazza","ragazzi","ragazze","adulto","adulta","adulti","adulte",
+  "nero","nera","neri","nere","bianco","bianca","bianchi","bianche",
+  "rosso","rossa","rossi","rosse","blu","verde","verdi","giallo","gialla",
+  "gialli","gialle","rosa","grigio","grigia","grigi","grigie"
+]);
+
 export function queryTokens(query: string) {
   return query
     .toLowerCase()
@@ -8,17 +16,24 @@ export function queryTokens(query: string) {
     .filter((token) => token.length >= 3 && !["cerco","cerca","cercando","voglio","prodotto","prodotti","amazon","migliore","migliori","consigliami","vorrei","serve","servono","una","uno","con","per","sotto","entro","fino","meno","euro","economico","economica","economici","economiche","conveniente","convenienti","buono","buona","buoni","buone","piacerebbe","trovare","offerta","offerte","marcato","marcata","marcati","marcate","marca"].includes(token));
 }
 
-export function titleRelevance(title: string, tokens: string[]) {
-  const words = title
+function stem(value: string) {
+  return value
+    .replace(/(?:ini|ine|ino|ina|etti|ette|etto|etta|oni|one|ano|ana|i|e|o|a)$/i, "")
+    .slice(0, 12);
+}
+
+function normalizedWords(title: string) {
+  return title
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .split(/\s+/)
     .filter(Boolean);
-  const stem = (value: string) => value
-    .replace(/(?:ini|ine|ino|ina|etti|ette|etto|etta|oni|one|ano|ana|i|e|o|a)$/i, "")
-    .slice(0, 12);
+}
+
+export function titleRelevance(title: string, tokens: string[]) {
+  const words = normalizedWords(title);
   const wordStems = new Set(words.map(stem).filter((value) => value.length >= 4));
   const matches = tokens.filter((token) => words.includes(token) || wordStems.has(stem(token))).length;
   return { matches, score: matches * 5 };
@@ -27,8 +42,17 @@ export function titleRelevance(title: string, tokens: string[]) {
 export function isRelevantProduct(title: string, query: string) {
   const tokens = queryTokens(query);
   if (!tokens.length) return true;
-  const { matches } = titleRelevance(title, tokens);
-  return matches >= (tokens.length >= 3 ? 2 : 1);
+
+  const words = normalizedWords(title);
+  const wordStems = new Set(words.map(stem).filter((value) => value.length >= 4));
+  const matchesToken = (token: string) => words.includes(token) || wordStems.has(stem(token));
+
+  const conceptTokens = tokens.filter((token) => !GENERIC_QUALIFIERS.has(token));
+  if (conceptTokens.length > 0 && !conceptTokens.some(matchesToken)) return false;
+
+  const matched = tokens.filter(matchesToken).length;
+  if (tokens.length >= 3) return matched >= 2 || conceptTokens.some(matchesToken);
+  return matched >= 1;
 }
 
 export function maxPriceFromQuery(query: string) {

@@ -53,7 +53,7 @@ export async function searchLocalCatalog(query: string, limit = 8): Promise<Shop
       const relevance = titleRelevance(row.title, tokens);
       return { row, matches: relevance.matches, score: relevance.score + (row.current_price != null ? 1 : 0) + (row.image_url ? 0.5 : 0) };
     })
-    .filter(({ matches }) => tokens.length === 0 || matches >= 1)
+    .filter(({ row }) => isRelevantProduct(row.title, query))
     .sort((a, b) => b.score - a.score || (a.row.current_price ?? Infinity) - (b.row.current_price ?? Infinity))
     .slice(0, limit)
     .map(({ row }) => ({
