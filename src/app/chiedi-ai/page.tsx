@@ -5,7 +5,7 @@ import { getMostSearchedProducts } from "../../lib/ai-shopping";
 
 export default async function ChiediAIPage() {
   const popularSuggestions = (await getMostSearchedProducts(4).catch(() => []))
-    .map((product) => product.title)
+    .map((product) => product.query)
     .filter(Boolean);
 
   return (
