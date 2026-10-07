@@ -25,10 +25,19 @@ type BraveResult = {
 
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
 
-function affiliateUrl(asin: string) {
-  const url = new URL("https://www.amazon.it/dp/" + asin);
-  url.searchParams.set("tag", PARTNER_TAG);
-  return url.toString();
+function affiliateUrlFromAmazonUrl(rawUrl: string, asin: string) {
+  try {
+    const url = new URL(rawUrl);
+    if (!/(^|\.)amazon\.it$/i.test(url.hostname)) throw new Error("not amazon.it");
+    url.search = "";
+    url.hash = "";
+    url.searchParams.set("tag", PARTNER_TAG);
+    return url.toString();
+  } catch {
+    const url = new URL("https://www.amazon.it/dp/" + asin);
+    url.searchParams.set("tag", PARTNER_TAG);
+    return url.toString();
+  }
 }
 
 function cleanText(value: string) {
@@ -121,7 +130,7 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
         listPrice,
         discountPercent,
         currency: "EUR",
-        affiliateUrl: affiliateUrl(asin),
+        affiliateUrl: affiliateUrlFromAmazonUrl(rawUrl, asin),
         source: "brave-search",
         features: snippets.slice(0, 2).map((value) => value.slice(0, 220)),
       });
