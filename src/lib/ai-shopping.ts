@@ -195,8 +195,8 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
   }));
 }
 
-async function enrichMissingPrices(products: ShoppingProduct[]): Promise<ShoppingProduct[]> {
-  const missing = products.filter((product) => product.currentPrice == null);
+export async function enrichMissingProductData(products: ShoppingProduct[]): Promise<ShoppingProduct[]> {
+  const missing = products.filter((product) => product.currentPrice == null || !product.imageUrl);
   if (!missing.length) return products;
 
   const enrichedByAsin = new Map<string, ShoppingProduct>();
@@ -207,16 +207,14 @@ async function enrichMissingPrices(products: ShoppingProduct[]): Promise<Shoppin
       try {
         const snapshot = await fetchAmazonProductSnapshot(product.asin);
         const offer = snapshot.offer;
-        if (!offer) return product;
-
         return {
           ...product,
           title: product.title,
           imageUrl: snapshot.imageUrl || product.imageUrl,
-          currentPrice: offer.currentPrice,
-          listPrice: offer.listPrice,
-          discountPercent: offer.discountPercent,
-          currency: offer.currency,
+          currentPrice: offer?.currentPrice ?? product.currentPrice,
+          listPrice: offer?.listPrice ?? product.listPrice,
+          discountPercent: offer?.discountPercent ?? product.discountPercent,
+          currency: offer?.currency ?? product.currency,
         };
       } catch {
         return product;

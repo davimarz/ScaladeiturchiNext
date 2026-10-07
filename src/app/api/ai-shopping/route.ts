@@ -5,6 +5,7 @@ import {
   searchAmazonCreators,
   searchAmazonFallback,
   searchLocalCatalog,
+  enrichMissingProductData,
 } from "../../../lib/ai-shopping";
 import { searchAmazonViaBrave } from "../../../lib/brave-shopping";
 import {
@@ -51,16 +52,17 @@ export async function POST(request: NextRequest) {
       }, { status: 429 });
     }
 
-    const local = await searchLocalCatalog(query, 8).catch(() => []);
+    const TARGET_PRODUCTS = 8;
+    const local = await searchLocalCatalog(query, TARGET_PRODUCTS).catch(() => []);
     let products = local;
     const searchInputTokens = 0;
     const searchOutputTokens = 0;
     const searchTotalTokens = 0;
     const searchErrors: string[] = [];
 
-    if (products.length < 4) {
+    if (products.length < TARGET_PRODUCTS) {
       try {
-        const creators = await searchAmazonCreators(query, 8);
+        const creators = await searchAmazonCreators(query, TARGET_PRODUCTS);
         products = mergeProducts(products, creators);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -69,9 +71,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < 4) {
+    if (products.length < TARGET_PRODUCTS) {
       try {
-        const fallback = await searchAmazonFallback(query, 8);
+        const fallback = await searchAmazonFallback(query, TARGET_PRODUCTS);
         products = mergeProducts(products, fallback);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -80,9 +82,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < 4) {
+    if (products.length < TARGET_PRODUCTS) {
       try {
-        const external = await searchAmazonViaBrave(query, 8);
+        const external = await searchAmazonViaBrave(query, TARGET_PRODUCTS);
         products = mergeProducts(products, external);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -91,7 +93,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    products = products.slice(0, 8);
+    products = await enrichMissingProductData(products.slice(0, TARGET_PRODUCTS));
 
     if (!products.length) {
       if (searchTotalTokens > 0) {
