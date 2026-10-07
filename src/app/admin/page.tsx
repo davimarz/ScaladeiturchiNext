@@ -20,8 +20,6 @@ type SyncRun = {
   started_at: string;
   finished_at: string | null;
   error_message: string | null;
-  product_asins: string[];
-  product_titles: string[];
 };
 
 type AIUsage = {
@@ -46,6 +44,8 @@ type AIHistory = {
   total_tokens: number;
   products_count: number;
   error_message: string | null;
+  product_asins: string[];
+  product_titles: string[];
 };
 
 type Product = {
