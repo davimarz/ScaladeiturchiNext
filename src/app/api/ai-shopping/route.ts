@@ -8,7 +8,7 @@ import {
   enrichMissingProductData,
   interpretShoppingQuery,
 } from "../../../lib/ai-shopping";
-import { searchAmazonViaBrave } from "../../../lib/brave-shopping";
+import { enrichAmazonProductsViaBraveByAsin, searchAmazonViaBrave } from "../../../lib/brave-shopping";
 import {
   finalizeAIUsage,
   markAIExhausted,
@@ -134,6 +134,9 @@ export async function POST(request: NextRequest) {
       return conceptTokens.length === 0 || conceptTokens.some((token) => title.includes(token.slice(0, Math.max(4, token.length - 3))));
     });
     products = await enrichMissingProductData(products.slice(0, TARGET_PRODUCTS));
+    if (mode === "more") {
+      products = await enrichAmazonProductsViaBraveByAsin(products);
+    }
 
     if (!products.length) {
       if (searchTotalTokens > 0) {
