@@ -123,8 +123,12 @@ export async function searchAmazonViaBrave(query: string, limit = 8): Promise<Ex
 
   collect(await braveWebSearch(apiKey, "site:amazon.it " + keywords));
 
-  if (products.length < 4) {
+  if (products.length < limit) {
     collect(await braveWebSearch(apiKey, keywords + " Amazon.it"));
+  }
+
+  if (products.length < limit) {
+    collect(await braveWebSearch(apiKey, "site:amazon.it/dp " + keywords));
   }
 
   if (!products.length) return products;

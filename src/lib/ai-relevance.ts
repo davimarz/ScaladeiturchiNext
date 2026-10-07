@@ -16,7 +16,11 @@ export function titleRelevance(title: string, tokens: string[]) {
     .replace(/[^a-z0-9]+/g, " ")
     .split(/\s+/)
     .filter(Boolean);
-  const matches = tokens.filter((token) => words.includes(token)).length;
+  const stem = (value: string) => value
+    .replace(/(?:ini|ine|ino|ina|etti|ette|etto|etta|oni|one|ano|ana|i|e|o|a)$/i, "")
+    .slice(0, 12);
+  const wordStems = new Set(words.map(stem).filter((value) => value.length >= 4));
+  const matches = tokens.filter((token) => words.includes(token) || wordStems.has(stem(token))).length;
   return { matches, score: matches * 5 };
 }
 
