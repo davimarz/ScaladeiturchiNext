@@ -27,6 +27,89 @@ function affiliateUrl(asin: string) {
   return url.toString();
 }
 
+
+export type ShoppingIntent = {
+  canonicalQuery: string;
+  searchQueries: string[];
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+export async function interpretShoppingQuery(query: string): Promise<ShoppingIntent> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+  const fallback = {
+    canonicalQuery: query,
+    searchQueries: [query],
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+  };
+  if (!apiKey) return fallback;
+
+  try {
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
+      {
+        method: "POST",
+        cache: "no-store",
+        signal: AbortSignal.timeout(12000),
+        headers: {
+          "x-goog-api-key": apiKey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [{
+              text:
+                "Interpreta questa richiesta shopping in italiano come un unico intento di prodotto, senza separare parole che insieme definiscono il prodotto. " +
+                "Mantieni genere, uso, fascia prezzo, colore e altri vincoli quando presenti. " +
+                "Genera inoltre fino a 4 query Amazon italiane molto specifiche, usando solo sinonimi strettamente equivalenti del tipo di prodotto e senza allargare a categorie generiche. " +
+                "Esempio: 'cappellino donna' => canonicalQuery 'cappellino da donna'; searchQueries ['cappellino donna','cappello donna','berretto donna','cappellino baseball donna']. " +
+                "Rispondi SOLO JSON valido nel formato {\"canonicalQuery\":\"...\",\"searchQueries\":[\"...\"]}. " +
+                "Richiesta: " + query
+            }]
+          }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 180,
+            responseMimeType: "application/json"
+          }
+        }),
+      }
+    );
+
+    const data = await response.json().catch(() => ({})) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        thoughtsTokenCount?: number;
+        totalTokenCount?: number;
+      };
+    };
+    if (!response.ok) return fallback;
+
+    const raw = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim() || "";
+    const parsed = JSON.parse(raw) as { canonicalQuery?: string; searchQueries?: string[] };
+    const canonicalQuery = String(parsed.canonicalQuery || query).replace(/\s+/g, " ").trim().slice(0, 180) || query;
+    const searchQueries = [...new Set([
+      canonicalQuery,
+      ...(Array.isArray(parsed.searchQueries) ? parsed.searchQueries : []),
+      query,
+    ].map((value) => String(value).replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 4);
+
+    const inputTokens = data.usageMetadata?.promptTokenCount || 0;
+    const outputTokens = (data.usageMetadata?.candidatesTokenCount || 0) + (data.usageMetadata?.thoughtsTokenCount || 0);
+    const totalTokens = data.usageMetadata?.totalTokenCount || inputTokens + outputTokens;
+    return { canonicalQuery, searchQueries, inputTokens, outputTokens, totalTokens };
+  } catch {
+    return fallback;
+  }
+}
+
 export async function searchLocalCatalog(query: string, limit = 8): Promise<ShoppingProduct[]> {
   const rows = await supabaseAdminFetch<Array<{
     asin: string;

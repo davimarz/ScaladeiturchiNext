@@ -75,7 +75,7 @@ async function braveWebSearch(apiKey: string, searchQuery: string) {
   return data.web?.results ?? [];
 }
 
-export async function searchAmazonViaBrave(query: string, limit = 8): Promise<ExternalShoppingProduct[]> {
+export async function searchAmazonViaBrave(query: string, limit = 8, semanticQueries: string[] = [query]): Promise<ExternalShoppingProduct[]> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
   if (!apiKey) throw new Error("Brave Search API key unavailable");
 
@@ -102,15 +102,24 @@ export async function searchAmazonViaBrave(query: string, limit = 8): Promise<Ex
         .filter((value): value is string => Boolean(value))
         .map(cleanText)
         .filter((value) => value.length >= 20 && value.toLowerCase() !== title.toLowerCase());
+      const snippetText = snippets.join(" ");
+      const priceMatches = [...snippetText.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{2})?)|([0-9]{1,5}(?:[.,][0-9]{2})?)\s*€)/g)]
+        .map((match) => Number((match[1] || match[2] || "").replace(",", ".")))
+        .filter((value) => Number.isFinite(value) && value > 0 && value < 100000);
+      const currentPrice = priceMatches[0] ?? null;
+      const listPrice = priceMatches.find((value) => currentPrice != null && value > currentPrice) ?? null;
+      const discountPercent = currentPrice != null && listPrice != null
+        ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
+        : null;
 
       seen.add(asin);
       products.push({
         asin,
         title,
         imageUrl: result.thumbnail?.src || null,
-        currentPrice: null,
-        listPrice: null,
-        discountPercent: null,
+        currentPrice,
+        listPrice,
+        discountPercent,
         currency: "EUR",
         affiliateUrl: affiliateUrl(asin),
         source: "brave-search",
@@ -121,14 +130,14 @@ export async function searchAmazonViaBrave(query: string, limit = 8): Promise<Ex
     }
   };
 
-  collect(await braveWebSearch(apiKey, "site:amazon.it " + keywords));
-
-  if (products.length < limit) {
-    collect(await braveWebSearch(apiKey, keywords + " Amazon.it"));
-  }
-
-  if (products.length < limit) {
-    collect(await braveWebSearch(apiKey, "site:amazon.it/dp " + keywords));
+  const queries = [...new Set([query, ...semanticQueries].map((value) => value.trim()).filter(Boolean))].slice(0, 4);
+  for (const candidate of queries) {
+    if (products.length >= limit) break;
+    const candidateKeywords = queryTokens(candidate).join(" ") || candidate;
+    collect(await braveWebSearch(apiKey, 'site:amazon.it "' + candidateKeywords + '"'));
+    if (products.length < limit) {
+      collect(await braveWebSearch(apiKey, candidateKeywords + " Amazon.it"));
+    }
   }
 
   if (!products.length) return products;

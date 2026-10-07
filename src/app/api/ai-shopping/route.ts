@@ -7,6 +7,7 @@ import {
   searchLocalCatalog,
   searchAmazonWithGeminiGrounding,
   enrichMissingProductData,
+  interpretShoppingQuery,
 } from "../../../lib/ai-shopping";
 import { searchAmazonViaBrave } from "../../../lib/brave-shopping";
 import {
@@ -54,17 +55,23 @@ export async function POST(request: NextRequest) {
     }
 
     const TARGET_PRODUCTS = 8;
-    const local = await searchLocalCatalog(query, TARGET_PRODUCTS).catch(() => []);
+    const intent = await interpretShoppingQuery(query);
+    const semanticQuery = intent.canonicalQuery;
+    const searchQueries = intent.searchQueries;
+    const local = await searchLocalCatalog(semanticQuery, TARGET_PRODUCTS).catch(() => []);
     let products = local;
-    let searchInputTokens = 0;
-    let searchOutputTokens = 0;
-    let searchTotalTokens = 0;
+    let searchInputTokens = intent.inputTokens;
+    let searchOutputTokens = intent.outputTokens;
+    let searchTotalTokens = intent.totalTokens;
     const searchErrors: string[] = [];
 
     if (products.length < TARGET_PRODUCTS) {
       try {
-        const creators = await searchAmazonCreators(query, TARGET_PRODUCTS);
-        products = mergeProducts(products, creators);
+        for (const candidateQuery of searchQueries) {
+          if (products.length >= TARGET_PRODUCTS) break;
+          const creators = await searchAmazonCreators(candidateQuery, TARGET_PRODUCTS);
+          products = mergeProducts(products, creators);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         searchErrors.push("Creators: " + message);
@@ -74,8 +81,11 @@ export async function POST(request: NextRequest) {
 
     if (products.length < TARGET_PRODUCTS) {
       try {
-        const fallback = await searchAmazonFallback(query, TARGET_PRODUCTS);
-        products = mergeProducts(products, fallback);
+        for (const candidateQuery of searchQueries) {
+          if (products.length >= TARGET_PRODUCTS) break;
+          const fallback = await searchAmazonFallback(candidateQuery, TARGET_PRODUCTS);
+          products = mergeProducts(products, fallback);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         searchErrors.push("Amazon browser: " + message);
@@ -85,11 +95,14 @@ export async function POST(request: NextRequest) {
 
     if (products.length < TARGET_PRODUCTS) {
       try {
-        const grounded = await searchAmazonWithGeminiGrounding(query, TARGET_PRODUCTS);
-        products = mergeProducts(products, grounded.products);
-        searchInputTokens += grounded.inputTokens;
-        searchOutputTokens += grounded.outputTokens;
-        searchTotalTokens += grounded.totalTokens;
+        for (const candidateQuery of searchQueries.slice(0, 2)) {
+          if (products.length >= TARGET_PRODUCTS) break;
+          const grounded = await searchAmazonWithGeminiGrounding(candidateQuery, TARGET_PRODUCTS);
+          products = mergeProducts(products, grounded.products);
+          searchInputTokens += grounded.inputTokens;
+          searchOutputTokens += grounded.outputTokens;
+          searchTotalTokens += grounded.totalTokens;
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         searchErrors.push("Gemini Amazon: " + message);
@@ -99,7 +112,7 @@ export async function POST(request: NextRequest) {
 
     if (products.length < TARGET_PRODUCTS) {
       try {
-        const external = await searchAmazonViaBrave(query, TARGET_PRODUCTS);
+        const external = await searchAmazonViaBrave(semanticQuery, TARGET_PRODUCTS, searchQueries);
         products = mergeProducts(products, external);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -108,6 +121,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    products = products.filter((product) => {
+      const title = product.title.toLowerCase();
+      const conceptTokens = semanticQuery.toLowerCase().split(/\s+/).filter((token) => token.length >= 4 && !["donna","donne","uomo","uomini","bambino","bambina","bambini","bambine","nero","nera","bianco","bianca","rosso","rossa","blu","verde","giallo","gialla","rosa"].includes(token));
+      return conceptTokens.length === 0 || conceptTokens.some((token) => title.includes(token.slice(0, Math.max(4, token.length - 3))));
+    });
     products = await enrichMissingProductData(products.slice(0, TARGET_PRODUCTS));
 
     if (!products.length) {
@@ -135,7 +153,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const gemini = await generateShoppingAnswer(query, products);
+    const gemini = await generateShoppingAnswer(semanticQuery, products);
     const inputTokens = searchInputTokens + gemini.inputTokens;
     const outputTokens = searchOutputTokens + gemini.outputTokens;
     const totalTokens = searchTotalTokens + gemini.totalTokens;
