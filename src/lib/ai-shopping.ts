@@ -1,6 +1,6 @@
 import "server-only";
 import { parseHaulHtml } from "./haul-import";
-import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductImagesWithBrowser } from "./haul-browser";
+import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductImagesWithBrowser, fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
 import { supabaseAdminFetch } from "./supabase/admin";
 import { isRelevantProduct, maxPriceFromQuery, queryTokens, titleRelevance } from "./ai-relevance";
 import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
@@ -209,7 +209,6 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
         const offer = snapshot.offer;
         return {
           ...product,
-          title: product.title,
           imageUrl: snapshot.imageUrl || product.imageUrl,
           currentPrice: offer?.currentPrice ?? product.currentPrice,
           listPrice: offer?.listPrice ?? product.listPrice,
@@ -224,7 +223,30 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
     for (const product of results) enrichedByAsin.set(product.asin, product);
   }
 
-  return products.map((product) => enrichedByAsin.get(product.asin) ?? product);
+  let enriched = products.map((product) => enrichedByAsin.get(product.asin) ?? product);
+  const stillMissing = enriched.filter((product) => product.currentPrice == null || !product.imageUrl);
+  if (!stillMissing.length) return enriched;
+
+  try {
+    const browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(stillMissing.map((product) => product.asin));
+    enriched = enriched.map((product) => {
+      const snapshot = browserSnapshots.get(product.asin);
+      if (!snapshot) return product;
+      return {
+        ...product,
+        title: snapshot.title && isRelevantProduct(snapshot.title, product.title) ? snapshot.title : product.title,
+        imageUrl: snapshot.imageUrl || product.imageUrl,
+        currentPrice: snapshot.currentPrice ?? product.currentPrice,
+        listPrice: snapshot.listPrice ?? product.listPrice,
+        discountPercent: snapshot.discountPercent ?? product.discountPercent,
+        currency: snapshot.currency ?? product.currency,
+      };
+    });
+  } catch {
+    // Keep already verified data if browser enrichment is unavailable.
+  }
+
+  return enriched;
 }
 
 export type GroundedSearchResult = {
