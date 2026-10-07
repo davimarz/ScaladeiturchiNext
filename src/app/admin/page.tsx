@@ -163,7 +163,7 @@ export default async function AdminPage({
   const aiExhausted = Boolean(todayAI?.exhausted_at) || aiRemainingRequests === 0 || aiRemainingTokens === 0;
 
   const productSearchRanking = (() => {
-    const stats = new Map<string, { asin: string; title: string; searches: number }>();
+    const stats = new Map<string, { asin: string; title: string; searches: number; queries: string[] }>();
     for (const item of aiHistoryStats) {
       if (item.status !== "success") continue;
       const seenInQuery = new Set<string>();
@@ -178,8 +178,9 @@ export default async function AdminPage({
         if (current) {
           current.searches += 1;
           if (current.title === current.asin && title !== asin) current.title = title;
+          if (!current.queries.includes(item.query)) current.queries.push(item.query);
         } else {
-          stats.set(asin, { asin, title, searches: 1 });
+          stats.set(asin, { asin, title, searches: 1, queries: [item.query] });
         }
       }
     }
@@ -225,10 +226,9 @@ export default async function AdminPage({
         </div>
 
         <details className="adminAdvancedPanel aiHistoryPanel">
-          <summary>Storico ultime domande dei clienti</summary>
-
+          <summary>Prodotti più ricercati</summary>
+          <p>Classifica dei prodotti comparsi più spesso nelle ricerche dei clienti, con le domande che li hanno generati.</p>
           <div className="adminTableWrap">
-            <h3>Prodotti più ricercati</h3>
             <table className="adminTable">
               <thead>
                 <tr>
@@ -236,6 +236,7 @@ export default async function AdminPage({
                   <th>Prodotto</th>
                   <th>ASIN</th>
                   <th>Ricerche</th>
+                  <th>Domande dei clienti</th>
                 </tr>
               </thead>
               <tbody>
@@ -245,14 +246,19 @@ export default async function AdminPage({
                     <td>{item.title}</td>
                     <td>{item.asin}</td>
                     <td><strong>{item.searches}</strong></td>
+                    <td>{item.queries.slice(0, 5).join(" · ")}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={4}>Nessun prodotto ancora conteggiato.</td></tr>
+                  <tr><td colSpan={5}>Nessun prodotto ancora conteggiato.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+        </details>
 
+        <details className="adminAdvancedPanel aiHistoryPanel">
+          <summary>Cronologia delle ricerche</summary>
+          <p>Ultime domande inviate dai clienti all&apos;assistente AI.</p>
           <div className="adminTableWrap">
             <table className="adminTable">
               <thead>
