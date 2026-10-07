@@ -26,6 +26,9 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
   const [answer, setAnswer] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [moreLoading, setMoreLoading] = useState(false);
+  const [lastQuery, setLastQuery] = useState("");
+  const [noMoreProducts, setNoMoreProducts] = useState(false);
   const [error, setError] = useState("");
 
   async function ask(event: FormEvent) {
@@ -37,6 +40,8 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
     setError("");
     setAnswer("");
     setProducts([]);
+    setNoMoreProducts(false);
+    setLastQuery(text);
 
     try {
       const response = await fetch("/api/ai-shopping", {
@@ -52,6 +57,45 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
       setError(err instanceof Error ? err.message : "Ricerca non disponibile.");
     } finally {
       setLoading(false);
+    }
+  }
+
+
+  async function findMore() {
+    const text = lastQuery.trim();
+    if (text.length < 3 || moreLoading) return;
+
+    setMoreLoading(true);
+    setError("");
+    setNoMoreProducts(false);
+
+    try {
+      const response = await fetch("/api/ai-shopping", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: text,
+          excludeAsins: products.map((product) => product.asin),
+          mode: "more",
+        }),
+      });
+      const data = await response.json() as { products?: Product[]; error?: string };
+      if (!response.ok) throw new Error(data.error || "Ricerca non disponibile.");
+
+      const incoming = data.products || [];
+      if (!incoming.length) {
+        setNoMoreProducts(true);
+        return;
+      }
+
+      setProducts((current) => {
+        const seen = new Set(current.map((product) => product.asin));
+        return [...current, ...incoming.filter((product) => !seen.has(product.asin))];
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ricerca non disponibile.");
+    } finally {
+      setMoreLoading(false);
     }
   }
 
@@ -122,6 +166,14 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
               </div>
             </article>
           ))}
+        </div>
+      ) : null}
+
+      {!loading && products.length > 0 ? (
+        <div className="aiMoreWrap">
+          <button type="button" className="aiMoreButton" onClick={findMore} disabled={moreLoading || noMoreProducts}>
+            {moreLoading ? "Sto cercando altri prodotti…" : noMoreProducts ? "Nessun altro prodotto trovato" : "Trovane altri"}
+          </button>
         </div>
       ) : null}
 
