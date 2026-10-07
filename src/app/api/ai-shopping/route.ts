@@ -29,8 +29,15 @@ export async function POST(request: NextRequest) {
   let reserved = false;
 
   try {
-    const body = await request.json() as { query?: string };
+    const body = await request.json() as { query?: string; excludeAsins?: string[]; mode?: string };
     query = String(body.query ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+    const mode = body.mode === "more" ? "more" : "search";
+    const excludedAsins = new Set(
+      (Array.isArray(body.excludeAsins) ? body.excludeAsins : [])
+        .map((value) => String(value).trim().toUpperCase())
+        .filter((value) => /^[A-Z0-9]{10}$/.test(value))
+        .slice(0, 40),
+    );
     if (query.length < 3) {
       return NextResponse.json({ error: "Scrivi una richiesta un po’ più precisa." }, { status: 400 });
     }
@@ -54,21 +61,22 @@ export async function POST(request: NextRequest) {
     }
 
     const TARGET_PRODUCTS = 8;
+    const DISCOVERY_TARGET = Math.min(32, TARGET_PRODUCTS + excludedAsins.size);
     const intent = await interpretShoppingQuery(query);
     const semanticQuery = intent.canonicalQuery;
     const searchQueries = intent.searchQueries;
-    const local = await searchLocalCatalog(semanticQuery, TARGET_PRODUCTS).catch(() => []);
+    const local = await searchLocalCatalog(semanticQuery, DISCOVERY_TARGET).catch(() => []);
     let products = local;
     const searchInputTokens = intent.inputTokens;
     const searchOutputTokens = intent.outputTokens;
     const searchTotalTokens = intent.totalTokens;
     const searchErrors: string[] = [];
 
-    if (products.length < TARGET_PRODUCTS) {
+    if (products.length < DISCOVERY_TARGET) {
       try {
         for (const candidateQuery of searchQueries) {
-          if (products.length >= TARGET_PRODUCTS) break;
-          const creators = await searchAmazonCreators(candidateQuery, TARGET_PRODUCTS);
+          if (products.length >= DISCOVERY_TARGET) break;
+          const creators = await searchAmazonCreators(candidateQuery, DISCOVERY_TARGET);
           products = mergeProducts(products, creators);
         }
       } catch (error) {
@@ -78,11 +86,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < TARGET_PRODUCTS) {
+    if (products.length < DISCOVERY_TARGET) {
       try {
         for (const candidateQuery of searchQueries) {
-          if (products.length >= TARGET_PRODUCTS) break;
-          const fallback = await searchAmazonFallback(candidateQuery, TARGET_PRODUCTS);
+          if (products.length >= DISCOVERY_TARGET) break;
+          const fallback = await searchAmazonFallback(candidateQuery, DISCOVERY_TARGET);
           products = mergeProducts(products, fallback);
         }
       } catch (error) {
@@ -92,9 +100,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < TARGET_PRODUCTS) {
+    if (products.length < DISCOVERY_TARGET) {
       try {
-        const external = await searchAmazonViaBrave(semanticQuery, TARGET_PRODUCTS, searchQueries);
+        const external = await searchAmazonViaBrave(semanticQuery, DISCOVERY_TARGET, searchQueries);
         products = mergeProducts(products, external);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -108,7 +116,7 @@ export async function POST(request: NextRequest) {
     // on matching ASINs without changing the discovered product set/order.
     try {
       for (const candidateQuery of searchQueries) {
-        const amazonParsed = await searchAmazonFallback(candidateQuery, TARGET_PRODUCTS);
+        const amazonParsed = await searchAmazonFallback(candidateQuery, DISCOVERY_TARGET);
         products = mergeProducts(products, amazonParsed);
       }
     } catch (error) {
@@ -117,7 +125,10 @@ export async function POST(request: NextRequest) {
       console.info("ai-shopping-amazon-price-enrichment", message);
     }
 
-    products = products.filter((product) => product.source !== "gemini-search").filter((product) => {
+    products = products
+      .filter((product) => product.source !== "gemini-search")
+      .filter((product) => !excludedAsins.has(product.asin))
+      .filter((product) => {
       const title = product.title.toLowerCase();
       const conceptTokens = semanticQuery.toLowerCase().split(/\s+/).filter((token) => token.length >= 4 && !["donna","donne","uomo","uomini","bambino","bambina","bambini","bambine","nero","nera","bianco","bianca","rosso","rossa","blu","verde","giallo","gialla","rosa"].includes(token));
       return conceptTokens.length === 0 || conceptTokens.some((token) => title.includes(token.slice(0, Math.max(4, token.length - 3))));
@@ -131,21 +142,36 @@ export async function POST(request: NextRequest) {
         await releaseAIUsage(usageDay);
       }
       reserved = false;
-      await recordAIQuery({
-        usageDay,
-        query,
-        status: "no_products",
-        inputTokens: searchInputTokens,
-        outputTokens: searchOutputTokens,
-        totalTokens: searchTotalTokens,
-        productsCount: 0,
-        errorMessage: searchErrors.join(" | ") || null,
-      }).catch(() => undefined);
+      if (mode !== "more") {
+        await recordAIQuery({
+          usageDay,
+          query,
+          status: "no_products",
+          inputTokens: searchInputTokens,
+          outputTokens: searchOutputTokens,
+          totalTokens: searchTotalTokens,
+          productsCount: 0,
+          errorMessage: searchErrors.join(" | ") || null,
+        }).catch(() => undefined);
+      }
 
       return NextResponse.json({
         answer: "Non ho trovato prodotti sufficientemente pertinenti per questa richiesta. Prova a specificare meglio cosa cerchi.",
         products: [],
         count: 0,
+      });
+    }
+
+    if (mode === "more") {
+      if (searchTotalTokens > 0) {
+        await finalizeAIUsage(usageDay, searchInputTokens, searchOutputTokens, searchTotalTokens);
+      } else {
+        await releaseAIUsage(usageDay);
+      }
+      reserved = false;
+      return NextResponse.json({
+        products,
+        count: products.length,
       });
     }
 
