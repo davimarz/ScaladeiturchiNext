@@ -103,6 +103,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Always re-scan Amazon search pages after discovery, even when we already have 8 products.
+    // This reuses the HAUL/Offerte Lampo HTML parser to fill price, list price and discount
+    // on matching ASINs without changing the discovered product set/order.
+    try {
+      for (const candidateQuery of searchQueries) {
+        const amazonParsed = await searchAmazonFallback(candidateQuery, TARGET_PRODUCTS);
+        products = mergeProducts(products, amazonParsed);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      searchErrors.push("Amazon price enrichment: " + message);
+      console.info("ai-shopping-amazon-price-enrichment", message);
+    }
+
     products = products.filter((product) => product.source !== "gemini-search").filter((product) => {
       const title = product.title.toLowerCase();
       const conceptTokens = semanticQuery.toLowerCase().split(/\s+/).filter((token) => token.length >= 4 && !["donna","donne","uomo","uomini","bambino","bambina","bambini","bambine","nero","nera","bianco","bianca","rosso","rossa","blu","verde","giallo","gialla","rosa"].includes(token));
