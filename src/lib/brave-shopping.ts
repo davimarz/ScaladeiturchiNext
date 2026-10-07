@@ -25,19 +25,17 @@ type BraveResult = {
 
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
 
-function affiliateUrlFromAmazonUrl(rawUrl: string, asin: string) {
-  try {
-    const url = new URL(rawUrl);
-    if (!/(^|\.)amazon\.it$/i.test(url.hostname)) throw new Error("not amazon.it");
-    url.search = "";
-    url.hash = "";
-    url.searchParams.set("tag", PARTNER_TAG);
-    return url.toString();
-  } catch {
-    const url = new URL("https://www.amazon.it/dp/" + asin);
-    url.searchParams.set("tag", PARTNER_TAG);
-    return url.toString();
-  }
+function affiliateProductUrl(asin: string) {
+  const url = new URL("https://www.amazon.it/dp/" + asin + "/ref=nosim");
+  url.searchParams.set("tag", PARTNER_TAG);
+  return url.toString();
+}
+
+function affiliateSearchUrl(asin: string) {
+  const url = new URL("https://www.amazon.it/s");
+  url.searchParams.set("k", asin);
+  url.searchParams.set("tag", PARTNER_TAG);
+  return url.toString();
 }
 
 function cleanText(value: string) {
@@ -128,7 +126,7 @@ async function enrichFromBraveByAsin(apiKey: string, product: ExternalShoppingPr
         currentPrice,
         listPrice,
         discountPercent,
-        affiliateUrl: affiliateUrlFromAmazonUrl(rawUrl, product.asin),
+        affiliateUrl: affiliateSearchUrl(product.asin),
       };
     }
   } catch {}
@@ -180,7 +178,7 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
         listPrice,
         discountPercent,
         currency: "EUR",
-        affiliateUrl: affiliateUrlFromAmazonUrl(rawUrl, asin),
+        affiliateUrl: affiliateSearchUrl(asin),
         source: "brave-search",
         features: snippets.slice(0, 2).map((value) => value.slice(0, 220)),
       });
@@ -216,6 +214,7 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
       const offer = snapshot.offer;
       current = {
         ...product,
+        affiliateUrl: (snapshot.title || snapshot.imageUrl || offer) ? affiliateProductUrl(product.asin) : affiliateSearchUrl(product.asin),
         title: snapshot.title && isRelevantProduct(snapshot.title, query) ? snapshot.title : product.title,
         imageUrl: snapshot.imageUrl || product.imageUrl,
         currentPrice: offer?.currentPrice ?? product.currentPrice,
