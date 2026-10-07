@@ -1,9 +1,13 @@
 import Link from "next/link";
 import PublicTabs from "../../components/PublicTabs";
 import AIShoppingAssistant from "../../components/AIShoppingAssistant";
-import MostSearchedProducts from "../../components/MostSearchedProducts";
+import { getMostSearchedProducts } from "../../lib/ai-shopping";
 
-export default function ChiediAIPage() {
+export default async function ChiediAIPage() {
+  const popularSuggestions = (await getMostSearchedProducts(4).catch(() => []))
+    .map((product) => product.title)
+    .filter(Boolean);
+
   return (
     <main>
       <header className="topbar">
@@ -15,9 +19,7 @@ export default function ChiediAIPage() {
 
       <PublicTabs active="ai" />
 
-      <AIShoppingAssistant />
-
-      <MostSearchedProducts />
+      <AIShoppingAssistant suggestions={popularSuggestions} />
 
       <section className="notice compactNotice">
         <strong>Trasparenza</strong>
