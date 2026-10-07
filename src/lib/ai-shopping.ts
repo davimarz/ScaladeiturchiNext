@@ -602,12 +602,12 @@ type SearchHistoryRankingRow = {
   product_titles: string[];
 };
 
-export async function getMostSearchedProducts(limit = 4): Promise<Array<ShoppingProduct & { searches: number }>> {
+export async function getMostSearchedProducts(limit = 4): Promise<Array<ShoppingProduct & { searches: number; query: string }>> {
   const history = await supabaseAdminFetch<SearchHistoryRankingRow[]>(
     "ai_search_history?status=eq.success&select=query,status,product_asins,product_titles&order=created_at.desc&limit=500",
   );
 
-  const ranking = new Map<string, { asin: string; title: string; searches: number }>();
+  const ranking = new Map<string, { asin: string; title: string; searches: number; query: string }>();
   for (const item of history) {
     const seen = new Set<string>();
     const asins = Array.isArray(item.product_asins) ? item.product_asins : [];
@@ -622,7 +622,7 @@ export async function getMostSearchedProducts(limit = 4): Promise<Array<Shopping
         current.searches += 1;
         if (current.title === current.asin && title !== asin) current.title = title;
       } else {
-        ranking.set(asin, { asin, title, searches: 1 });
+        ranking.set(asin, { asin, title, searches: 1, query: item.query });
       }
     }
   }
@@ -647,8 +647,10 @@ export async function getMostSearchedProducts(limit = 4): Promise<Array<Shopping
 
   const enriched = await enrichMissingProductData(base);
   const searchesByAsin = new Map(top.map((item) => [item.asin, item.searches]));
+  const queryByAsin = new Map(top.map((item) => [item.asin, item.query]));
   return enriched.map((product) => ({
     ...product,
     searches: searchesByAsin.get(product.asin) ?? 0,
+    query: queryByAsin.get(product.asin) || product.title,
   }));
 }
