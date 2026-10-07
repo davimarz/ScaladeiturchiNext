@@ -21,7 +21,7 @@ function money(value: number | null, currency: string) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(value);
 }
 
-export default function AIShoppingAssistant() {
+export default function AIShoppingAssistant({ suggestions }: { suggestions: string[] }) {
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
@@ -54,13 +54,6 @@ export default function AIShoppingAssistant() {
       setLoading(false);
     }
   }
-
-  const suggestions = [
-    "Cuffie Bluetooth sotto 50 €",
-    "Migliori offerte per la cucina",
-    "Idee regalo sotto 30 €",
-    "Un aspirapolvere conveniente",
-  ];
 
   return (
     <section className="aiShopping">
