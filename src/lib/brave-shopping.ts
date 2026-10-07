@@ -84,6 +84,45 @@ async function braveWebSearch(apiKey: string, searchQuery: string) {
   return data.web?.results ?? [];
 }
 
+
+async function enrichFromBraveByAsin(apiKey: string, product: ExternalShoppingProduct) {
+  if (product.currentPrice != null && product.imageUrl) return product;
+  try {
+    const results = await braveWebSearch(apiKey, 'site:amazon.it "' + product.asin + '"');
+    for (const result of results) {
+      const rawUrl = result.url || "";
+      const match = rawUrl.match(/amazon\.it\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+      if (!match || match[1].toUpperCase() !== product.asin) continue;
+
+      const snippets = [result.description, ...(result.extra_snippets ?? [])]
+        .filter((value): value is string => Boolean(value))
+        .map(cleanText);
+      const snippetText = snippets.join(" ");
+      const prices = [...snippetText.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{2})?)|([0-9]{1,5}(?:[.,][0-9]{2})?)\s*€)/g)]
+        .map((match) => Number((match[1] || match[2] || "").replace(",", ".")))
+        .filter((value) => Number.isFinite(value) && value > 0 && value < 100000);
+
+      const currentPrice = product.currentPrice ?? prices[0] ?? null;
+      const listPrice = product.listPrice ?? prices.find((value) => currentPrice != null && value > currentPrice) ?? null;
+      const discountPercent = product.discountPercent ?? (
+        currentPrice != null && listPrice != null
+          ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
+          : null
+      );
+
+      return {
+        ...product,
+        imageUrl: result.thumbnail?.src || product.imageUrl,
+        currentPrice,
+        listPrice,
+        discountPercent,
+        affiliateUrl: affiliateUrlFromAmazonUrl(rawUrl, product.asin),
+      };
+    }
+  } catch {}
+  return product;
+}
+
 export async function searchAmazonViaBrave(query: string, limit = 8, semanticQueries: string[] = [query]): Promise<ExternalShoppingProduct[]> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
   if (!apiKey) throw new Error("Brave Search API key unavailable");
@@ -152,10 +191,11 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
   if (!products.length) return products;
 
   const enriched = await Promise.all(products.slice(0, limit).map(async (product) => {
+    let current = product;
     try {
       const snapshot = await fetchAmazonProductSnapshot(product.asin);
       const offer = snapshot.offer;
-      return {
+      current = {
         ...product,
         title: snapshot.title && isRelevantProduct(snapshot.title, query) ? snapshot.title : product.title,
         imageUrl: snapshot.imageUrl || product.imageUrl,
@@ -164,9 +204,8 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
         discountPercent: offer?.discountPercent ?? product.discountPercent,
         currency: offer?.currency ?? product.currency,
       };
-    } catch {
-      return product;
-    }
+    } catch {}
+    return enrichFromBraveByAsin(apiKey, current);
   }));
 
   return enriched;
