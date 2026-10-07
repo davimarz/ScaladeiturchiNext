@@ -59,9 +59,9 @@ export async function POST(request: NextRequest) {
     const searchQueries = intent.searchQueries;
     const local = await searchLocalCatalog(semanticQuery, TARGET_PRODUCTS).catch(() => []);
     let products = local;
-    let searchInputTokens = intent.inputTokens;
-    let searchOutputTokens = intent.outputTokens;
-    let searchTotalTokens = intent.totalTokens;
+    const searchInputTokens = intent.inputTokens;
+    const searchOutputTokens = intent.outputTokens;
+    const searchTotalTokens = intent.totalTokens;
     const searchErrors: string[] = [];
 
     if (products.length < TARGET_PRODUCTS) {
