@@ -129,7 +129,7 @@ export default async function AdminPage({
   const pageNumber = Number(params.page ?? 1);
   const page = Number.isFinite(pageNumber) ? Math.min(10000, Math.max(1, Math.floor(pageNumber))) : 1;
   const usageDay = currentUsageDay();
-  const [runs, products, categories, settings, catalogStats, aiUsage, aiHistory] = await Promise.all([
+  const [runs, products, categories, settings, catalogStats, aiUsage, aiHistory, aiHistoryStats] = await Promise.all([
     supabaseAdminFetch<SyncRun[]>(
       "sync_runs?select=id,status,products_seen,products_updated,started_at,finished_at,error_message&order=started_at.desc&limit=10",
     ),
@@ -145,6 +145,7 @@ export default async function AdminPage({
       body: JSON.stringify({}),
     }),
     supabaseAdminFetch<AIUsage[]>("ai_daily_usage?usage_day=eq." + encodeURIComponent(usageDay) + "&select=usage_day,requests_count,input_tokens,output_tokens,total_tokens,reserved_tokens,last_request_at,exhausted_at&limit=1"),
+    supabaseAdminFetch<AIHistory[]>("ai_search_history?select=id,created_at,query,status,model,input_tokens,output_tokens,total_tokens,products_count,error_message,product_asins,product_titles&order=created_at.desc&limit=20"),
     supabaseAdminFetch<AIHistory[]>("ai_search_history?select=id,created_at,query,status,model,input_tokens,output_tokens,total_tokens,products_count,error_message,product_asins,product_titles&order=created_at.desc&limit=500"),
   ]);
   const settingsByKey = new Map(settings.map((row) => [row.key, row.value]));
@@ -163,7 +164,7 @@ export default async function AdminPage({
 
   const productSearchRanking = (() => {
     const stats = new Map<string, { asin: string; title: string; searches: number }>();
-    for (const item of aiHistory) {
+    for (const item of aiHistoryStats) {
       if (item.status !== "success") continue;
       const seenInQuery = new Set<string>();
       const asins = Array.isArray(item.product_asins) ? item.product_asins : [];
