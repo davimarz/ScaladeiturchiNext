@@ -127,7 +127,6 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
   if (!apiKey) throw new Error("Brave Search API key unavailable");
 
-  const keywords = queryTokens(query).join(" ") || query;
   const products: ExternalShoppingProduct[] = [];
   const seen = new Set<string>();
 
