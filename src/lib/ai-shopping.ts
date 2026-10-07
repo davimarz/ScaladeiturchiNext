@@ -22,7 +22,14 @@ const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
 const MARKETPLACE = "www.amazon.it";
 
 function affiliateUrl(asin: string) {
-  const url = new URL(`https://www.amazon.it/dp/${asin}`);
+  const url = new URL(`https://www.amazon.it/dp/${asin}/ref=nosim`);
+  url.searchParams.set("tag", PARTNER_TAG);
+  return url.toString();
+}
+
+function affiliateSearchUrl(asin: string) {
+  const url = new URL("https://www.amazon.it/s");
+  url.searchParams.set("k", asin);
   url.searchParams.set("tag", PARTNER_TAG);
   return url.toString();
 }
@@ -147,7 +154,7 @@ export async function searchLocalCatalog(query: string, limit = 8): Promise<Shop
       listPrice: row.list_price,
       discountPercent: row.discount_percent,
       currency: row.currency || "EUR",
-      affiliateUrl: row.affiliate_url || affiliateUrl(row.asin),
+      affiliateUrl: row.affiliate_url || affiliateSearchUrl(row.asin),
       source: "catalogo" as const,
     }));
 }
@@ -320,6 +327,7 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
         const offer = snapshot.offer;
         return {
           ...product,
+          affiliateUrl: (snapshot.title || snapshot.imageUrl || offer) ? affiliateUrl(product.asin) : affiliateSearchUrl(product.asin),
           imageUrl: snapshot.imageUrl || product.imageUrl,
           currentPrice: offer?.currentPrice ?? product.currentPrice,
           listPrice: offer?.listPrice ?? product.listPrice,
@@ -345,6 +353,7 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
       if (!snapshot) return product;
       return {
         ...product,
+        affiliateUrl: (snapshot.title || snapshot.imageUrl || snapshot.currentPrice != null) ? affiliateUrl(product.asin) : affiliateSearchUrl(product.asin),
         title: snapshot.title && isRelevantProduct(snapshot.title, product.title) ? snapshot.title : product.title,
         imageUrl: snapshot.imageUrl || product.imageUrl,
         currentPrice: snapshot.currentPrice ?? product.currentPrice,
