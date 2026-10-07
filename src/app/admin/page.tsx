@@ -20,6 +20,8 @@ type SyncRun = {
   started_at: string;
   finished_at: string | null;
   error_message: string | null;
+  product_asins: string[];
+  product_titles: string[];
 };
 
 type AIUsage = {
@@ -143,7 +145,7 @@ export default async function AdminPage({
       body: JSON.stringify({}),
     }),
     supabaseAdminFetch<AIUsage[]>("ai_daily_usage?usage_day=eq." + encodeURIComponent(usageDay) + "&select=usage_day,requests_count,input_tokens,output_tokens,total_tokens,reserved_tokens,last_request_at,exhausted_at&limit=1"),
-    supabaseAdminFetch<AIHistory[]>("ai_search_history?select=id,created_at,query,status,model,input_tokens,output_tokens,total_tokens,products_count,error_message&order=created_at.desc&limit=20"),
+    supabaseAdminFetch<AIHistory[]>("ai_search_history?select=id,created_at,query,status,model,input_tokens,output_tokens,total_tokens,products_count,error_message,product_asins,product_titles&order=created_at.desc&limit=500"),
   ]);
   const settingsByKey = new Map(settings.map((row) => [row.key, row.value]));
   const stats = catalogStats[0];
@@ -158,6 +160,32 @@ export default async function AdminPage({
   const aiRemainingRequests = Math.max(0, DAILY_REQUEST_LIMIT - aiRequests);
   const aiRemainingTokens = Math.max(0, DAILY_TOKEN_LIMIT - aiTokens - (todayAI?.reserved_tokens ?? 0));
   const aiExhausted = Boolean(todayAI?.exhausted_at) || aiRemainingRequests === 0 || aiRemainingTokens === 0;
+
+  const productSearchRanking = (() => {
+    const stats = new Map<string, { asin: string; title: string; searches: number }>();
+    for (const item of aiHistory) {
+      if (item.status !== "success") continue;
+      const seenInQuery = new Set<string>();
+      const asins = Array.isArray(item.product_asins) ? item.product_asins : [];
+      const titles = Array.isArray(item.product_titles) ? item.product_titles : [];
+      for (let index = 0; index < asins.length; index++) {
+        const asin = String(asins[index] ?? "").trim().toUpperCase();
+        if (!/^[A-Z0-9]{10}$/.test(asin) || seenInQuery.has(asin)) continue;
+        seenInQuery.add(asin);
+        const title = String(titles[index] ?? "").trim() || asin;
+        const current = stats.get(asin);
+        if (current) {
+          current.searches += 1;
+          if (current.title === current.asin && title !== asin) current.title = title;
+        } else {
+          stats.set(asin, { asin, title, searches: 1 });
+        }
+      }
+    }
+    return [...stats.values()]
+      .sort((a, b) => b.searches - a.searches || a.title.localeCompare(b.title, "it"))
+      .slice(0, 20);
+  })();
 
   return (
     <main className="adminShell">
@@ -197,6 +225,33 @@ export default async function AdminPage({
 
         <details className="adminAdvancedPanel aiHistoryPanel">
           <summary>Storico ultime domande dei clienti</summary>
+
+          <div className="adminTableWrap">
+            <h3>Prodotti più ricercati</h3>
+            <table className="adminTable">
+              <thead>
+                <tr>
+                  <th>Posizione</th>
+                  <th>Prodotto</th>
+                  <th>ASIN</th>
+                  <th>Ricerche</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productSearchRanking.length ? productSearchRanking.map((item, index) => (
+                  <tr key={item.asin}>
+                    <td>{index + 1}</td>
+                    <td>{item.title}</td>
+                    <td>{item.asin}</td>
+                    <td><strong>{item.searches}</strong></td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={4}>Nessun prodotto ancora conteggiato.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
           <div className="adminTableWrap">
             <table className="adminTable">
               <thead>
