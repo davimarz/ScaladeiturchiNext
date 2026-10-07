@@ -264,18 +264,46 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
   const url = new URL("https://www.amazon.it/s");
   const keywords = queryTokens(query).join(" ") || query;
   url.searchParams.set("k", keywords.slice(0, 180));
-  const result = await fetchAmazonKeywordSearchWithFullScroll(url.toString());
-  return parseHaulHtml(result.html).filter((product) => isRelevantProduct(product.title, query)).slice(0, limit).map((product) => ({
-    asin: product.asin,
-    title: product.title,
-    imageUrl: product.imageUrl,
-    currentPrice: product.currentPrice,
-    listPrice: product.listPrice,
-    discountPercent: product.discountPercent,
-    currency: "EUR",
-    affiliateUrl: affiliateUrl(product.asin),
-    source: "amazon-search" as const,
-  }));
+
+  let html = "";
+  try {
+    const response = await fetch(url.toString(), {
+      redirect: "follow",
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+        "accept-language": "it-IT,it;q=0.9,en;q=0.7",
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+      },
+    });
+    if (response.ok) {
+      const candidate = await response.text();
+      if (!/robot check|captcha|\/errors\/validateCaptcha|automated access/i.test(candidate)) {
+        html = candidate;
+      }
+    }
+  } catch {}
+
+  if (!html) {
+    const result = await fetchAmazonKeywordSearchWithFullScroll(url.toString());
+    html = result.html;
+  }
+
+  return parseHaulHtml(html)
+    .filter((product) => isRelevantProduct(product.title, query))
+    .slice(0, limit)
+    .map((product) => ({
+      asin: product.asin,
+      title: product.title,
+      imageUrl: product.imageUrl,
+      currentPrice: product.currentPrice,
+      listPrice: product.listPrice,
+      discountPercent: product.discountPercent,
+      currency: "EUR",
+      affiliateUrl: affiliateUrl(product.asin),
+      source: "amazon-search" as const,
+    }));
 }
 
 export async function enrichMissingProductData(products: ShoppingProduct[]): Promise<ShoppingProduct[]> {
@@ -436,16 +464,45 @@ export async function searchAmazonWithGeminiGrounding(query: string, limit = 8):
   return { products, inputTokens, outputTokens, totalTokens, model };
 }
 export function mergeProducts(...groups: ShoppingProduct[][]) {
-  const seen = new Set<string>();
-  const merged: ShoppingProduct[] = [];
+  const byAsin = new Map<string, ShoppingProduct>();
+  const order: string[] = [];
+
   for (const group of groups) {
     for (const product of group) {
-      if (seen.has(product.asin)) continue;
-      seen.add(product.asin);
-      merged.push(product);
+      const existing = byAsin.get(product.asin);
+      if (!existing) {
+        byAsin.set(product.asin, product);
+        order.push(product.asin);
+        continue;
+      }
+
+      const mergedProduct: ShoppingProduct = {
+        ...existing,
+        title: existing.title.length >= product.title.length ? existing.title : product.title,
+        imageUrl: existing.imageUrl || product.imageUrl,
+        currentPrice: existing.currentPrice ?? product.currentPrice,
+        listPrice: existing.listPrice ?? product.listPrice,
+        discountPercent: existing.discountPercent ?? product.discountPercent,
+        currency: existing.currency || product.currency,
+        affiliateUrl: product.affiliateUrl || existing.affiliateUrl,
+        features: [...new Set([...(existing.features ?? []), ...(product.features ?? [])])].slice(0, 6),
+        source: existing.source,
+      };
+
+      if (existing.currentPrice == null && product.currentPrice != null) {
+        mergedProduct.currentPrice = product.currentPrice;
+        mergedProduct.listPrice = product.listPrice;
+        mergedProduct.discountPercent = product.discountPercent;
+        mergedProduct.currency = product.currency;
+        mergedProduct.source = product.source;
+      }
+      if (!existing.imageUrl && product.imageUrl) mergedProduct.imageUrl = product.imageUrl;
+
+      byAsin.set(product.asin, mergedProduct);
     }
   }
-  return merged;
+
+  return order.map((asin) => byAsin.get(asin)).filter((product): product is ShoppingProduct => Boolean(product));
 }
 
 export type GeminiAnswer = {
