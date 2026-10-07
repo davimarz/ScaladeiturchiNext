@@ -133,6 +133,24 @@ async function enrichFromBraveByAsin(apiKey: string, product: ExternalShoppingPr
   return product;
 }
 
+
+export async function enrichAmazonProductsViaBraveByAsin<T extends ExternalShoppingProduct>(products: T[]): Promise<T[]> {
+  const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+  if (!apiKey || !products.length) return products;
+
+  const enriched: T[] = [];
+  for (let offset = 0; offset < products.length; offset += 4) {
+    const batch = products.slice(offset, offset + 4);
+    const results = await Promise.all(batch.map(async (product) => {
+      if (product.currentPrice != null && product.imageUrl) return product;
+      const value = await enrichFromBraveByAsin(apiKey, product);
+      return value as T;
+    }));
+    enriched.push(...results);
+  }
+  return enriched;
+}
+
 export async function searchAmazonViaBrave(query: string, limit = 8, semanticQueries: string[] = [query]): Promise<ExternalShoppingProduct[]> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
   if (!apiKey) throw new Error("Brave Search API key unavailable");
