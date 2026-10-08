@@ -4,7 +4,7 @@ import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonBestsellersUrl, parseHaulHtml } from "../../../../../lib/haul-import";
 import { fetchAmazonBestsellersWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
-import { syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
+import { repairCatalogMissingFields, syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
 import { needsProductTitleEnrichment } from "../../../../../lib/amazon-page-offer";
 
 export const runtime = "nodejs";
@@ -197,6 +197,9 @@ export async function POST(request: NextRequest) {
     });
 
     const prices = await syncCatalogPricesByMembership("bestseller");
+    await repairCatalogMissingFields("bestseller", "price", 24).catch((error) => {
+      console.warn("bestseller-missing-price-repair", error instanceof Error ? error.message : error);
+    });
     return finish("success", rows.length, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
   } catch (error) {
     console.error("bestseller-import-save", error instanceof Error ? error.message : error);
