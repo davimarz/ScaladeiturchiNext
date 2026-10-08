@@ -93,38 +93,51 @@ async function enrichFromBraveByAsin(apiKey: string, product: ExternalShoppingPr
       '"' + product.asin + '" Amazon.it €',
       '"' + product.asin + '" "' + product.title.slice(0, 80) + '"'
     ];
-    const combined: BraveResult[] = [];
+    const exactMatches: BraveResult[] = [];
+    let foundPrice: number | null = product.currentPrice;
+    let foundListPrice: number | null = product.listPrice;
+    let foundImage = product.imageUrl;
+
     for (const exactQuery of exactQueries) {
       const batch = await braveWebSearch(apiKey, exactQuery);
-      combined.push(...batch);
-      if (combined.some((item) => (item.url || "").toUpperCase().includes(product.asin))) break;
+
+      for (const result of batch) {
+        const rawUrl = result.url || "";
+        const match = rawUrl.match(/amazon\.it\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+        if (!match || match[1].toUpperCase() !== product.asin) continue;
+
+        exactMatches.push(result);
+        if (!foundImage && result.thumbnail?.src) foundImage = result.thumbnail.src;
+
+        const snippets = [result.description, ...(result.extra_snippets ?? [])]
+          .filter((value): value is string => Boolean(value))
+          .map(cleanText);
+        const snippetText = snippets.join(" ");
+        const prices = [...snippetText.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{2})?)|([0-9]{1,5}(?:[.,][0-9]{2})?)\s*€)/g)]
+          .map((match) => Number((match[1] || match[2] || "").replace(",", ".")))
+          .filter((value) => Number.isFinite(value) && value > 0 && value < 100000);
+
+        if (foundPrice == null && prices.length) foundPrice = prices[0];
+        if (foundListPrice == null && foundPrice != null) {
+          foundListPrice = prices.find((value) => value > foundPrice!) ?? null;
+        }
+      }
+
+      if (foundPrice != null && foundImage) break;
     }
-    for (const result of combined) {
-      const rawUrl = result.url || "";
-      const match = rawUrl.match(/amazon\.it\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
-      if (!match || match[1].toUpperCase() !== product.asin) continue;
 
-      const snippets = [result.description, ...(result.extra_snippets ?? [])]
-        .filter((value): value is string => Boolean(value))
-        .map(cleanText);
-      const snippetText = snippets.join(" ");
-      const prices = [...snippetText.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{2})?)|([0-9]{1,5}(?:[.,][0-9]{2})?)\s*€)/g)]
-        .map((match) => Number((match[1] || match[2] || "").replace(",", ".")))
-        .filter((value) => Number.isFinite(value) && value > 0 && value < 100000);
-
-      const currentPrice = product.currentPrice ?? prices[0] ?? null;
-      const listPrice = product.listPrice ?? prices.find((value) => currentPrice != null && value > currentPrice) ?? null;
+    if (exactMatches.length) {
       const discountPercent = product.discountPercent ?? (
-        currentPrice != null && listPrice != null
-          ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
+        foundPrice != null && foundListPrice != null
+          ? Math.round(((foundListPrice - foundPrice) / foundListPrice) * 100)
           : null
       );
 
       return {
         ...product,
-        imageUrl: result.thumbnail?.src || product.imageUrl,
-        currentPrice,
-        listPrice,
+        imageUrl: foundImage,
+        currentPrice: foundPrice,
+        listPrice: foundListPrice,
         discountPercent,
         affiliateUrl: affiliateSearchUrl(product.asin),
       };
