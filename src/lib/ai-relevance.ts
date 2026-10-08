@@ -22,6 +22,16 @@ function stem(value: string) {
     .slice(0, 12);
 }
 
+const TOKEN_SYNONYMS: Record<string, string[]> = {
+  scarpa: ["shoe","shoes","sneaker","sneakers","calzatura","calzature"],
+  scarpe: ["shoe","shoes","sneaker","sneakers","calzatura","calzature"],
+  cappellino: ["cappello","berretto","cap"],
+  cappello: ["cappellino","berretto","cap"],
+  berretto: ["cappello","cappellino","cap"],
+  cuffia: ["cuffie","headphone","headphones","earbud","earbuds"],
+  cuffie: ["cuffia","headphone","headphones","earbud","earbuds"],
+};
+
 function normalizedWords(title: string) {
   return title
     .toLowerCase()
@@ -45,13 +55,20 @@ export function isRelevantProduct(title: string, query: string) {
 
   const words = normalizedWords(title);
   const wordStems = new Set(words.map(stem).filter((value) => value.length >= 4));
-  const matchesToken = (token: string) => words.includes(token) || wordStems.has(stem(token));
+  const matchesToken = (token: string) => {
+    if (words.includes(token) || wordStems.has(stem(token))) return true;
+    return (TOKEN_SYNONYMS[token] ?? []).some((synonym) =>
+      words.includes(synonym) || wordStems.has(stem(synonym))
+    );
+  };
 
   const conceptTokens = tokens.filter((token) => !GENERIC_QUALIFIERS.has(token));
-  if (conceptTokens.length > 0 && !conceptTokens.some(matchesToken)) return false;
+  const matchedConcepts = conceptTokens.filter(matchesToken).length;
+
+  if (conceptTokens.length === 1) return matchedConcepts === 1;
+  if (conceptTokens.length >= 2) return matchedConcepts >= 2;
 
   const matched = tokens.filter(matchesToken).length;
-  if (tokens.length >= 3) return matched >= 2 || conceptTokens.some(matchesToken);
   return matched >= 1;
 }
 
