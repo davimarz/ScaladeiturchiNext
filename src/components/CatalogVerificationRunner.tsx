@@ -19,7 +19,7 @@ export default function CatalogVerificationRunner({
 }: {
   catalog: Catalog | null;
 }) {
-  const [running, setRunning] = useState(Boolean(catalog));
+  const [running, setRunning] = useState(() => Boolean(catalog));
   const [remaining, setRemaining] = useState<number | null>(null);
   const [processed, setProcessed] = useState(0);
   const [verified, setVerified] = useState(0);
@@ -30,7 +30,6 @@ export default function CatalogVerificationRunner({
   useEffect(() => {
     if (!catalog) return;
     stopped.current = false;
-    setRunning(true);
 
     async function loop() {
       let emptyPasses = 0;
