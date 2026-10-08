@@ -360,3 +360,128 @@ export async function repairCatalogMissingFields(
     stillMissing: Math.max(0, products.length - repaired),
   };
 }
+
+
+export async function verifyCatalogProductsBatch(
+  membership: "offerte-lambo" | "bestseller",
+  limit = 6,
+) {
+  const filter = membership === "offerte-lambo"
+    ? "in_offerte_lambo=eq.true"
+    : "in_bestseller=eq.true";
+
+  const products = await supabaseAdminFetch<Array<{
+    asin: string;
+    title: string;
+    description: string | null;
+    image_url: string | null;
+    current_price: number | null;
+    list_price: number | null;
+    discount_percent: number | null;
+    catalog_verified_at: string | null;
+    catalog_verification_status: string;
+    catalog_verification_attempts: number;
+  }>>(
+    "products?active=eq.true&" + filter +
+    "&catalog_verification_status=neq.verified" +
+    "&select=asin,title,description,image_url,current_price,list_price,discount_percent,catalog_verified_at,catalog_verification_status,catalog_verification_attempts" +
+    "&order=catalog_verification_attempts.asc,updated_at.asc&limit=" + Math.max(1, Math.min(limit, 12)),
+  );
+
+  if (!products.length) {
+    return { checked: 0, verified: 0, pending: 0, failed: 0 };
+  }
+
+  const snapshots = await fetchAmazonProductSnapshotsWithBrowser(products.map((product) => product.asin));
+  let verified = 0;
+  let pending = 0;
+  let failed = 0;
+
+  for (const product of products) {
+    const snapshot = snapshots.get(product.asin);
+    const now = new Date().toISOString();
+    const attempts = (product.catalog_verification_attempts || 0) + 1;
+
+    if (!snapshot) {
+      failed++;
+      await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          catalog_verification_status: attempts >= 8 ? "failed" : "pending",
+          catalog_verification_attempts: attempts,
+          catalog_last_verification_error: "Pagina Amazon non leggibile o bloccata",
+          updated_at: now,
+        }),
+      });
+      continue;
+    }
+
+    const title = snapshot.title && !needsProductTitleEnrichment(snapshot.title)
+      ? snapshot.title
+      : product.title;
+    const description = (snapshot.description || product.description || "").replace(/\s+/g, " ").trim().slice(0, 1400) || null;
+    const imageUrl = snapshot.imageUrl && !isGenericAmazonImage(snapshot.imageUrl)
+      ? snapshot.imageUrl
+      : product.image_url;
+    const currentPrice = snapshot.currentPrice ?? product.current_price;
+    const listPrice = snapshot.currentPrice != null ? snapshot.listPrice : product.list_price;
+    const discountPercent = snapshot.currentPrice != null ? snapshot.discountPercent : product.discount_percent;
+
+    const titleOk = Boolean(title && !needsProductTitleEnrichment(title));
+    const descriptionOk = Boolean(description && description.length >= 20);
+    const imageOk = Boolean(imageUrl && !isGenericAmazonImage(imageUrl));
+    const priceOk = currentPrice != null && Number.isFinite(Number(currentPrice)) && Number(currentPrice) > 0 && Number(currentPrice) < 10000;
+    const complete = titleOk && descriptionOk && imageOk && priceOk;
+
+    const missing = [
+      titleOk ? null : "titolo",
+      descriptionOk ? null : "descrizione",
+      imageOk ? null : "immagine",
+      priceOk ? null : "prezzo",
+    ].filter(Boolean).join(", ");
+
+    await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        title,
+        description,
+        image_url: imageUrl,
+        current_price: currentPrice,
+        list_price: listPrice,
+        discount_percent: discountPercent,
+        currency: snapshot.currency,
+        price_verified_at: snapshot.currentPrice != null ? now : undefined,
+        catalog_verified_at: complete ? now : product.catalog_verified_at,
+        catalog_verification_status: complete ? "verified" : (attempts >= 8 ? "failed" : "pending"),
+        catalog_verification_attempts: attempts,
+        catalog_last_verification_error: complete ? null : "Dati mancanti: " + missing,
+        updated_at: now,
+      }),
+    });
+
+    if (complete) verified++;
+    else if (attempts >= 8) failed++;
+    else pending++;
+  }
+
+  return { checked: products.length, verified, pending, failed };
+}
+
+export async function markCatalogVerificationPending(
+  membership: "offerte-lambo" | "bestseller",
+) {
+  const filter = membership === "offerte-lambo"
+    ? "in_offerte_lambo=eq.true"
+    : "in_bestseller=eq.true";
+  await supabaseAdminFetch("products?active=eq.true&" + filter, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      catalog_verification_status: "pending",
+      catalog_verification_attempts: 0,
+      catalog_last_verification_error: null,
+    }),
+  });
+}
