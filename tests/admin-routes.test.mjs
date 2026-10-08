@@ -70,7 +70,7 @@ test("catalog clear requires the explicit confirmation phrase",async()=>{
   const rejected=await route.POST(request({confirm:"NO"}));
   assert.equal(calls,0);
   assert.equal(rejected.headers.get("location"),"/admin?clear=confirm");
-  const accepted=await route.POST(request({confirm:"SVUOTA CATALOGO"}));
+  const accepted=await route.POST(request({confirm:"SVUOTA MANUALI"}));
   assert.equal(calls,1);
   assert.equal(accepted.headers.get("location"),"/admin?clear=success");
 });
