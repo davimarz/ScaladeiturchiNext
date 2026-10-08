@@ -2,7 +2,7 @@ import "server-only";
 import { getAmazonItems, searchAmazonItems } from "./amazon/client";
 import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle, needsProductTitleEnrichment } from "./amazon-page-offer";
 import { supabaseAdminFetch } from "./supabase/admin";
-import { fetchAmazonProductImagesWithBrowser, fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
+import { fetchAmazonProductImagesWithBrowser, fetchAmazonProductSnapshotsWithBrowser, fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
 import { isGenericAmazonImage } from "./amazon-input";
 
 type OfferListing = {
@@ -291,4 +291,72 @@ export async function syncCatalogPricesByMembership(membership: "haul" | "offert
       ? "in_offerte_lambo=eq.true"
       : "in_bestseller=eq.true";
   return syncExistingFromAmazonPages(filter);
+}
+
+
+export async function repairCatalogMissingFields(
+  membership: "offerte-lambo" | "bestseller",
+  field: "image" | "price",
+  limit = 36,
+) {
+  const filter = membership === "offerte-lambo"
+    ? "in_offerte_lambo=eq.true"
+    : "in_bestseller=eq.true";
+  const missing = field === "image"
+    ? "or=(image_url.is.null,image_url.eq.)"
+    : "current_price=is.null";
+
+  const products = await supabaseAdminFetch<Array<{
+    asin: string;
+    title: string;
+    image_url: string | null;
+    current_price: number | null;
+    list_price: number | null;
+    discount_percent: number | null;
+  }>>(
+    "products?active=eq.true&" + filter + "&" + missing +
+    "&select=asin,title,image_url,current_price,list_price,discount_percent&order=updated_at.desc&limit=" + Math.max(1, Math.min(limit, 60)),
+  );
+
+  if (!products.length) {
+    return { checked: 0, repaired: 0, stillMissing: 0 };
+  }
+
+  let repaired = 0;
+  const snapshots = await fetchAmazonProductSnapshotsWithBrowser(products.map((product) => product.asin));
+
+  for (const product of products) {
+    const snapshot = snapshots.get(product.asin);
+    if (!snapshot) continue;
+
+    const payload: Record<string, unknown> = {};
+    if (field === "image" && snapshot.imageUrl) {
+      payload.image_url = snapshot.imageUrl;
+    }
+    if (field === "price" && snapshot.currentPrice != null) {
+      payload.current_price = snapshot.currentPrice;
+      payload.list_price = snapshot.listPrice;
+      payload.discount_percent = snapshot.discountPercent;
+      payload.currency = snapshot.currency;
+      payload.price_verified_at = new Date().toISOString();
+    }
+    if (snapshot.title && needsProductTitleEnrichment(product.title)) {
+      payload.title = snapshot.title;
+    }
+    if (!Object.keys(payload).length) continue;
+
+    payload.updated_at = new Date().toISOString();
+    await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify(payload),
+    });
+    repaired++;
+  }
+
+  return {
+    checked: products.length,
+    repaired,
+    stillMissing: Math.max(0, products.length - repaired),
+  };
 }
