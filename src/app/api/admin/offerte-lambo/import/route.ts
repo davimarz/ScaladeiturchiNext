@@ -4,7 +4,7 @@ import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonDealsUrl, parseHaulHtml } from "../../../../../lib/haul-import";
 import { fetchAmazonSearchWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
-import { repairCatalogMissingFields, syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
+import { markCatalogVerificationPending, repairCatalogMissingFields, syncCatalogPricesByMembership, verifyCatalogProductsBatch } from "../../../../../lib/catalog-sync";
 import { needsProductTitleEnrichment } from "../../../../../lib/amazon-page-offer";
 
 export const runtime = "nodejs";
@@ -117,7 +117,11 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Amazon Offerte Lampo browser scan failed";
     console.warn("offerte-lambo-import-browser", message);
     try {
-      const prices = await syncCatalogPricesByMembership("offerte-lambo");
+      await markCatalogVerificationPending("offerte-lambo");
+    const prices = await syncCatalogPricesByMembership("offerte-lambo");
+    await verifyCatalogProductsBatch("offerte-lambo", 6).catch((verifyError) => {
+      console.warn("offerte-lambo-initial-verification", verifyError instanceof Error ? verifyError.message : verifyError);
+    });
       await repairCatalogMissingFields("offerte-lambo", "image", 24).catch((repairError) => {
         console.warn("offerte-lambo-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
       });
