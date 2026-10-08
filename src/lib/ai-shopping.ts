@@ -1,6 +1,6 @@
 import "server-only";
 import { parseHaulHtml } from "./haul-import";
-import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductImagesWithBrowser, fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
+import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
 import { supabaseAdminFetch } from "./supabase/admin";
 import { isRelevantProduct, maxPriceFromQuery, queryTokens, titleRelevance } from "./ai-relevance";
 import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
@@ -14,7 +14,7 @@ export type ShoppingProduct = {
   discountPercent: number | null;
   currency: string;
   affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search" | "gemini-search" | "brave-search";
+  source: "catalogo" | "amazon-api" | "amazon-search" | "brave-search";
   features?: string[];
 };
 
@@ -370,109 +370,6 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
   return enriched;
 }
 
-export type GroundedSearchResult = {
-  products: ShoppingProduct[];
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  model: string;
-};
-
-export async function searchAmazonWithGeminiGrounding(query: string, limit = 8): Promise<GroundedSearchResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
-  if (!apiKey) throw new Error("Gemini API key unavailable");
-
-  const keywords = queryTokens(query).join(" ") || query;
-  const amazonUrl = new URL("https://www.amazon.it/s");
-  amazonUrl.searchParams.set("k", keywords.slice(0, 160));
-
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent",
-    {
-      method: "POST",
-      cache: "no-store",
-      signal: AbortSignal.timeout(30000),
-      headers: {
-        "x-goog-api-key": apiKey,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: [{
-            text:
-              "Leggi questa pagina di ricerca Amazon Italia: " + amazonUrl.toString() +
-              "\nLa richiesta originale del cliente è: " + query +
-              "\nEstrai soltanto prodotti realmente presenti nella pagina e pertinenti alla richiesta. " +
-              "Per ogni prodotto restituisci una riga esattamente nel formato ASIN|TITOLO. " +
-              "L ASIN deve essere di 10 caratteri e provenire dal link /dp/ASIN della pagina. " +
-              "Non inventare ASIN o prodotti. Restituisci fino a " + Math.min(8, Math.max(4, limit)) + " prodotti."
-          }]
-        }],
-        tools: [{ url_context: {} }],
-        generationConfig: { temperature: 0, maxOutputTokens: 500 }
-      }),
-    }
-  );
-
-  const data = await response.json().catch(() => ({})) as {
-    candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> };
-      urlContextMetadata?: unknown;
-    }>;
-    usageMetadata?: {
-      promptTokenCount?: number;
-      candidatesTokenCount?: number;
-      thoughtsTokenCount?: number;
-      toolUsePromptTokenCount?: number;
-      totalTokenCount?: number;
-    };
-    error?: { message?: string; code?: number; status?: string };
-  };
-
-  if (!response.ok) {
-    const error = new Error(data.error?.message || "Gemini URL context error " + response.status);
-    (error as Error & { statusCode?: number }).statusCode = response.status;
-    throw error;
-  }
-
-  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n") || "";
-  const candidates = new Map<string, string>();
-
-  for (const line of text.split(/\r?\n/)) {
-    const match = line.match(/\b([A-Z0-9]{10})\b\s*\|\s*(.+)$/i);
-    if (!match) continue;
-    const asin = match[1].toUpperCase();
-    const title = match[2].replace(/[*_`#]/g, "").trim();
-    if (title.length >= 4 && isRelevantProduct(title, query)) {
-      candidates.set(asin, title.slice(0, 300));
-    }
-  }
-
-  const entries = [...candidates.entries()].slice(0, limit);
-  const images = entries.length
-    ? await fetchAmazonProductImagesWithBrowser(entries.map(([asin]) => asin)).catch(() => new Map<string, string>())
-    : new Map<string, string>();
-
-  const products = entries.map(([asin, title]) => ({
-    asin,
-    title,
-    imageUrl: images.get(asin) || null,
-    currentPrice: null,
-    listPrice: null,
-    discountPercent: null,
-    currency: "EUR",
-    affiliateUrl: affiliateUrl(asin),
-    source: "gemini-search" as const,
-  }));
-
-  const inputTokens = (data.usageMetadata?.promptTokenCount || 0) + (data.usageMetadata?.toolUsePromptTokenCount || 0);
-  const outputTokens = (data.usageMetadata?.candidatesTokenCount || 0) + (data.usageMetadata?.thoughtsTokenCount || 0);
-  const totalTokens = data.usageMetadata?.totalTokenCount || inputTokens + outputTokens;
-
-  return { products, inputTokens, outputTokens, totalTokens, model };
-}
 export function mergeProducts(...groups: ShoppingProduct[][]) {
   const byAsin = new Map<string, ShoppingProduct>();
   const order: string[] = [];
