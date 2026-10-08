@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { adminCookie, verifyAdminSessionValue } from "../../../../../lib/admin-auth";
-import { isSameOrigin } from "../../../../../lib/admin-request";
-import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
+import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
+import { isSameOrigin } from "../../../../lib/admin-request";
+import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
