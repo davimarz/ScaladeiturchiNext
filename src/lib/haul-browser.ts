@@ -135,8 +135,11 @@ async function fetchAmazonWithFullScroll(
           const asin = (element.dataset.asin || "").trim().toUpperCase();
           if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
         }
-        for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
-          const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+        for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+          const href = link.href || "";
+          const match =
+            href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+            href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
           if (match) asins.add(match[1].toUpperCase());
         }
         return asins.size;
@@ -183,8 +186,11 @@ async function fetchAmazonWithFullScroll(
         const asin = clean(marker.dataset.asin).toUpperCase();
         if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
       }
-      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
-        const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+        const href = link.href || "";
+        const match =
+          href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+          href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
         if (match) asins.add(match[1].toUpperCase());
       }
 
@@ -198,7 +204,14 @@ async function fetchAmazonWithFullScroll(
           candidates.push({ text: text.slice(0, 300), score });
         };
 
-        const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/' + asin + '"]'));
+        const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]")).filter((link) => {
+          const href = link.href || "";
+          return href.includes("/dp/" + asin) ||
+            href.includes("/gp/product/" + asin) ||
+            href.includes("/gp/aw/d/" + asin) ||
+            href.includes("asin=" + asin) ||
+            href.includes("ASIN=" + asin);
+        });
         for (const link of links) {
           add(link.getAttribute("aria-label"), 120);
           add(link.getAttribute("title"), 115);
@@ -298,15 +311,25 @@ async function fetchAmazonWithFullScroll(
         const asin = clean(element.dataset.asin).toUpperCase();
         if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
       }
-      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
-        const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+        const href = link.href || "";
+        const match =
+          href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+          href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
         if (match) asins.add(match[1].toUpperCase());
       }
 
       for (const asin of asins) {
         const marker = Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))
           .find((element) => clean(element.dataset.asin).toUpperCase() === asin);
-        const link = document.querySelector<HTMLAnchorElement>('a[href*="/dp/' + asin + '"]');
+        const link = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]")).find((candidate) => {
+          const href = candidate.href || "";
+          return href.includes("/dp/" + asin) ||
+            href.includes("/gp/product/" + asin) ||
+            href.includes("/gp/aw/d/" + asin) ||
+            href.includes("asin=" + asin) ||
+            href.includes("ASIN=" + asin);
+        }) || null;
         const card = marker || link?.closest<HTMLElement>("[data-component-type='s-search-result'], article, li, div") || link?.parentElement;
         if (!card) continue;
 
