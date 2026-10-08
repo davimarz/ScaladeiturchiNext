@@ -8,6 +8,7 @@ type Product = {
   id: string;
   asin: string;
   title: string;
+  description: string | null;
   image_url: string | null;
   affiliate_url: string;
   current_price: number | null;
@@ -121,6 +122,12 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
                 {fixedCategory === "haul" && product.haul_category ? <span className="cardTag">{product.haul_category}</span> : null}
                 {price?.discount != null ? <span className="discount">RISPARMIA {price.discount}%</span> : null}
                 <h3>{displayProductTitle(product.title)}</h3>
+                {(fixedCategory === "offerte-lambo" || fixedCategory === "bestseller") && product.description ? (
+                  <details className="productDescription">
+                    <summary>Descrizione</summary>
+                    <p>{product.description}</p>
+                  </details>
+                ) : null}
                 <div className="priceRow">
                   {price ? <strong>{formatPrice(price.current, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
                   {price?.reference != null ? <del aria-label="Prezzo di riferimento">{formatPrice(price.reference, product.currency)}</del> : null}
