@@ -226,7 +226,9 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
     const searchPatterns = [
       'site:amazon.it "' + candidateKeywords + '"',
       'site:amazon.it/dp "' + candidateKeywords + '"',
-      candidateKeywords + " Amazon.it"
+      'site:amazon.it/dp ' + candidateKeywords + ' prezzo',
+      candidateKeywords + " Amazon.it",
+      candidateKeywords + " Amazon.it prezzo"
     ];
     for (const pattern of searchPatterns) {
       if (products.length >= limit) break;
