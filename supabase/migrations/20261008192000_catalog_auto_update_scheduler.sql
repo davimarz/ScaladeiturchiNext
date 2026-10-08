@@ -1,14 +1,8 @@
 create extension if not exists pg_cron with schema extensions;
 create extension if not exists pg_net with schema extensions;
 
-select vault.create_secret(
-  'QiFOmP6PWW9ZOvu9dxQlcuLAIiQ-v0IO5DcArHmu1XczJgxC5AjPkbH1yA7eIQRV',
-  'catalog_cron_secret',
-  'Server-to-server secret for daily Amazon catalog scheduler'
-)
-where not exists (
-  select 1 from vault.decrypted_secrets where name = 'catalog_cron_secret'
-);
+-- Secret provisioning is intentionally kept outside the repository.
+-- The scheduler reads catalog_cron_secret from Supabase Vault at runtime.
 
 do $$
 declare
