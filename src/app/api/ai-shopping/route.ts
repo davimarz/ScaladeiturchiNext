@@ -9,6 +9,7 @@ import {
   interpretShoppingQuery,
 } from "../../../lib/ai-shopping";
 import { enrichAmazonProductsViaBraveByAsin, searchAmazonViaBrave } from "../../../lib/brave-shopping";
+import { isRelevantProduct } from "../../../lib/ai-relevance";
 import {
   finalizeAIUsage,
   markAIExhausted,
@@ -128,16 +129,51 @@ export async function POST(request: NextRequest) {
     products = products
       .filter((product) => product.source !== "gemini-search")
       .filter((product) => !excludedAsins.has(product.asin))
-      .filter((product) => {
-      const title = product.title.toLowerCase();
-      const conceptTokens = semanticQuery.toLowerCase().split(/\s+/).filter((token) => token.length >= 4 && !["donna","donne","uomo","uomini","bambino","bambina","bambini","bambine","nero","nera","bianco","bianca","rosso","rossa","blu","verde","giallo","gialla","rosa"].includes(token));
-      return conceptTokens.length === 0 || conceptTokens.some((token) => title.includes(token.slice(0, Math.max(4, token.length - 3))));
-    });
-    products = await enrichMissingProductData(products.slice(0, TARGET_PRODUCTS));
+      .filter((product) => isRelevantProduct(product.title, semanticQuery));
+
+    const candidateLimit = Math.min(24, Math.max(TARGET_PRODUCTS * 2, TARGET_PRODUCTS + excludedAsins.size));
+    products = await enrichMissingProductData(products.slice(0, candidateLimit));
+
     if (mode === "more") {
       products = await enrichAmazonProductsViaBraveByAsin(products);
       products = await enrichMissingProductData(products);
     }
+
+    const plausiblePrices = products
+      .map((product) => product.currentPrice)
+      .filter((value): value is number => value != null && Number.isFinite(value) && value >= 1 && value <= 9999)
+      .sort((a, b) => a - b);
+    const medianPrice = plausiblePrices.length
+      ? plausiblePrices[Math.floor(plausiblePrices.length / 2)]
+      : null;
+
+    products = products
+      .map((product) => {
+        const tooHighAbsolute = product.currentPrice != null && product.currentPrice > 9999;
+        const tooHighRelative = product.currentPrice != null
+          && medianPrice != null
+          && plausiblePrices.length >= 2
+          && product.currentPrice > Math.max(1000, medianPrice * 8);
+
+        if (!tooHighAbsolute && !tooHighRelative) return product;
+
+        return {
+          ...product,
+          currentPrice: null,
+          listPrice: null,
+          discountPercent: null,
+        };
+      })
+      .sort((a, b) => {
+        const score = (product: typeof a) =>
+          (product.imageUrl ? 3 : 0)
+          + (product.currentPrice != null ? 4 : 0)
+          + (product.listPrice != null ? 1 : 0)
+          + (product.source === "amazon-api" || product.source === "amazon-search" || product.source === "catalogo" ? 1 : 0);
+        return score(b) - score(a);
+      })
+      .filter((product) => product.imageUrl || product.currentPrice != null)
+      .slice(0, TARGET_PRODUCTS);
 
     if (!products.length) {
       if (searchTotalTokens > 0) {
