@@ -8,6 +8,7 @@ import AdminUpdateButton from "../../components/AdminUpdateButton";
 import AdminCatalogCard from "../../components/AdminCatalogCard";
 import CreatorsApiTest from "../../components/CreatorsApiTest";
 import CatalogAutoSchedule from "../../components/CatalogAutoSchedule";
+import CatalogVerificationRunner from "../../components/CatalogVerificationRunner";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
 import { currentUsageDay, DAILY_REQUEST_LIMIT, DAILY_TOKEN_LIMIT } from "../../lib/ai-limits";
@@ -314,6 +315,16 @@ export default async function AdminPage({
         {params.auto_schedule === "saved" ? <p className="adminNotice">Orario dell&apos;aggiornamento automatico salvato.</p> : null}
         {params.auto_schedule === "invalid" ? <p className="adminError">Inserisci un orario valido.</p> : null}
         {params.auto_schedule === "error" ? <p className="adminError">Non è stato possibile salvare lo scheduler automatico.</p> : null}
+
+        <CatalogVerificationRunner
+          catalog={
+            params.lambo_import === "success" || params.lambo_import === "price-only"
+              ? "offerte-lambo"
+              : params.bestseller_import === "success" || params.bestseller_import === "price-only"
+                ? "bestseller"
+                : null
+          }
+        />
 
         <CatalogAutoSchedule
           enabled={catalogAutoEnabled}
