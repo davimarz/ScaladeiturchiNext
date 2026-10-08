@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const queryLimit = category === "offerte-lambo" ? Math.min(limit * 5, 200) : limit;
   const filters = [
     "active=eq.true",
-    "select=id,asin,title,description,image_url,affiliate_url,current_price,list_price,currency,discount_percent,price_verified_at,featured,category_id,haul_category,bestseller_rank,catalog_verified_at",
+    "select=id,asin,title,description,image_url,affiliate_url,current_price,list_price,currency,discount_percent,price_verified_at,featured,category_id,haul_category,bestseller_rank",
     `limit=${queryLimit}`,
     category === "bestseller"
       ? "order=bestseller_rank.asc.nullslast,updated_at.desc"
@@ -51,13 +51,13 @@ export async function GET(request: NextRequest) {
     if (haulCategory) filters.push(`haul_category=eq.${encodeURIComponent(haulCategory)}`);
   } else if (category === "offerte-lambo") {
     filters.push("in_offerte_lambo=eq.true");
-    filters.push("catalog_verified_at=not.is.null");
+    filters.push("lambo_verified_at=not.is.null");
     filters.push("image_url=not.is.null");
     filters.push("current_price=not.is.null");
     filters.push("description=not.is.null");
   } else if (category === "bestseller") {
     filters.push("in_bestseller=eq.true");
-    filters.push("catalog_verified_at=not.is.null");
+    filters.push("bestseller_verified_at=not.is.null");
     filters.push("image_url=not.is.null");
     filters.push("current_price=not.is.null");
     filters.push("description=not.is.null");
