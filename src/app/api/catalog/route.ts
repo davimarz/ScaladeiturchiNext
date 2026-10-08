@@ -51,16 +51,10 @@ export async function GET(request: NextRequest) {
     if (haulCategory) filters.push(`haul_category=eq.${encodeURIComponent(haulCategory)}`);
   } else if (category === "offerte-lambo") {
     filters.push("in_offerte_lambo=eq.true");
-    filters.push("lambo_verified_at=not.is.null");
     filters.push("image_url=not.is.null");
-    filters.push("current_price=not.is.null");
-    filters.push("description=not.is.null");
   } else if (category === "bestseller") {
     filters.push("in_bestseller=eq.true");
-    filters.push("bestseller_verified_at=not.is.null");
     filters.push("image_url=not.is.null");
-    filters.push("current_price=not.is.null");
-    filters.push("description=not.is.null");
   } else if (category === "outlet") {
     filters.push("in_outlet=eq.true");
   } else {
