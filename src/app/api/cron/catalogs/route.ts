@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (lastDay === now.day) return NextResponse.json({ ok: true, skipped: "already-run", day: now.day });
 
   const diff = minutes(now.time) - minutes(scheduled);
-  if (diff < 0 || diff > 9) {
+  if (diff < 0 || diff > 1) {
     return NextResponse.json({ ok: true, skipped: "not-due", now: now.time, scheduled });
   }
 
