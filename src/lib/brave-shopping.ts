@@ -117,7 +117,7 @@ async function enrichFromBraveByAsin<T extends EnrichableShoppingProduct>(apiKey
         const snippetText = snippets.join(" ");
         const prices = [...snippetText.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{2})?)|([0-9]{1,5}(?:[.,][0-9]{2})?)\s*€)/g)]
           .map((match) => Number((match[1] || match[2] || "").replace(",", ".")))
-          .filter((value) => Number.isFinite(value) && value > 0 && value < 100000);
+          .filter((value) => Number.isFinite(value) && value >= 1 && value <= 9999);
 
         if (foundPrice == null && prices.length) foundPrice = prices[0];
         if (foundListPrice == null && foundPrice != null) {
@@ -194,7 +194,7 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
       const snippetText = snippets.join(" ");
       const priceMatches = [...snippetText.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{2})?)|([0-9]{1,5}(?:[.,][0-9]{2})?)\s*€)/g)]
         .map((match) => Number((match[1] || match[2] || "").replace(",", ".")))
-        .filter((value) => Number.isFinite(value) && value > 0 && value < 100000);
+        .filter((value) => Number.isFinite(value) && value >= 1 && value <= 9999);
       const currentPrice = priceMatches[0] ?? null;
       const listPrice = priceMatches.find((value) => currentPrice != null && value > currentPrice) ?? null;
       const discountPercent = currentPrice != null && listPrice != null
@@ -226,10 +226,7 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
     const searchPatterns = [
       'site:amazon.it "' + candidateKeywords + '"',
       'site:amazon.it/dp "' + candidateKeywords + '"',
-      candidateKeywords + " Amazon.it",
-      candidateKeywords + " Amazon.it cappello",
-      candidateKeywords + " Amazon.it berretto",
-      candidateKeywords + " Amazon.it baseball cap"
+      candidateKeywords + " Amazon.it"
     ];
     for (const pattern of searchPatterns) {
       if (products.length >= limit) break;
