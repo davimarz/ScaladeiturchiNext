@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await supabaseAdminFetch<SettingRow[]>(
-    "site_settings?key=in.(catalog_auto_update_enabled,catalog_auto_update_time,catalog_auto_update_last_day)&select=key,value",
+    "site_settings?key=in.(catalog_auto_update_enabled,catalog_auto_update_time,catalog_auto_update_last_day,haul_source_url,offerte_lambo_source_url,bestseller_source_url)&select=key,value",
   );
   const settings = new Map(rows.map((row) => [row.key, row.value]));
   const enabled = settings.get("catalog_auto_update_enabled") === true;
@@ -89,15 +89,34 @@ export async function POST(request: NextRequest) {
   };
 
   const jobs = [
-    { name: "HAUL", path: "/api/admin/haul/import", statusKey: "haul_import" },
-    { name: "Offerte Lampo", path: "/api/admin/offerte-lambo/import", statusKey: "lambo_import" },
-    { name: "Bestseller", path: "/api/admin/bestseller/import", statusKey: "bestseller_import" },
+    {
+      name: "HAUL",
+      path: "/api/admin/haul/import",
+      statusKey: "haul_import",
+      field: "haul_url",
+      url: valueString(settings.get("haul_source_url"), "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb"),
+    },
+    {
+      name: "Offerte Lampo",
+      path: "/api/admin/offerte-lambo/import",
+      statusKey: "lambo_import",
+      field: "lambo_url",
+      url: valueString(settings.get("offerte_lambo_source_url"), "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno"),
+    },
+    {
+      name: "Bestseller",
+      path: "/api/admin/bestseller/import",
+      statusKey: "bestseller_import",
+      field: "bestseller_url",
+      url: valueString(settings.get("bestseller_source_url"), "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers"),
+    },
   ];
 
   const results = await Promise.all(jobs.map(async (job) => {
     try {
       const form = new FormData();
       form.set("return_to", "/admin");
+      form.set(job.field, job.url);
       const response = await fetch(origin + job.path, {
         method: "POST",
         headers: commonHeaders,
