@@ -1,11 +1,8 @@
 import Link from "next/link";
 import PublicTabs from "../../components/PublicTabs";
 import AIShoppingAssistant from "../../components/AIShoppingAssistant";
-import { getMostSearchedQueries } from "../../lib/ai-shopping";
 
-export default async function ChiediAIPage() {
-  const popularSuggestions = await getMostSearchedQueries(4).catch(() => []);
-
+export default function ChiediAIPage() {
   return (
     <main>
       <header className="topbar">
@@ -17,7 +14,7 @@ export default async function ChiediAIPage() {
 
       <PublicTabs active="ai" />
 
-      <AIShoppingAssistant suggestions={popularSuggestions} />
+      <AIShoppingAssistant />
 
       <section className="notice compactNotice">
         <strong>Trasparenza</strong>
