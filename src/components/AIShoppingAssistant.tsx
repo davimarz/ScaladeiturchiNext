@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 
 type Product = {
@@ -21,8 +21,9 @@ function money(value: number | null, currency: string) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(value);
 }
 
-export default function AIShoppingAssistant({ suggestions }: { suggestions: string[] }) {
+export default function AIShoppingAssistant() {
   const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [answer, setAnswer] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,6 +31,17 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
   const [lastQuery, setLastQuery] = useState("");
   const [noMoreProducts, setNoMoreProducts] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/ai-suggestions", { signal: controller.signal })
+      .then(async (response) => response.ok ? await response.json() as { suggestions?: string[] } : { suggestions: [] })
+      .then((data) => {
+        if (!controller.signal.aborted) setSuggestions(data.suggestions || []);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   async function ask(event: FormEvent) {
     event.preventDefault();
