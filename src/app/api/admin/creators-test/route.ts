@@ -9,17 +9,40 @@ const MARKETPLACE = "www.amazon.it";
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
 
 function safeErrorBody(value: unknown) {
-  if (!value || typeof value !== "object") return {};
-  const body = value as {
-    error?: string;
-    error_description?: string;
-    errors?: Array<{ code?: string; message?: string }>;
+  if (!value || typeof value !== "object") {
+    return {
+      error: null,
+      errorDescription: null,
+      code: null,
+      message: null,
+      type: null,
+      reason: null,
+      status: null,
+    };
+  }
+
+  const body = value as Record<string, unknown>;
+  const errors = Array.isArray(body.errors) ? body.errors : [];
+  const first = errors[0] && typeof errors[0] === "object"
+    ? errors[0] as Record<string, unknown>
+    : {};
+
+  const pick = (...values: unknown[]) => {
+    for (const value of values) {
+      if (typeof value === "string" && value.trim()) return value.trim().slice(0, 500);
+      if (typeof value === "number") return String(value);
+    }
+    return null;
   };
+
   return {
-    error: body.error || null,
-    errorDescription: body.error_description || null,
-    code: body.errors?.[0]?.code || null,
-    message: body.errors?.[0]?.message || null,
+    error: pick(body.error),
+    errorDescription: pick(body.error_description, body.errorDescription),
+    code: pick(first.code, body.code, body.errorCode),
+    message: pick(first.message, body.message, body.errorMessage),
+    type: pick(first.type, body.type, body.__type, body.errorType),
+    reason: pick(first.reason, body.reason, body.errorReason),
+    status: pick(first.status, body.status, body.errorStatus),
   };
 }
 
@@ -70,6 +93,9 @@ export async function POST() {
         status: tokenResponse.status,
         message: details.errorDescription || details.message || details.error || "Amazon non ha rilasciato il token Creators.",
         code: details.code || details.error,
+        type: details.type,
+        reason: details.reason,
+        providerStatus: details.status,
         partnerTag: PARTNER_TAG,
         marketplace: MARKETPLACE,
       });
@@ -118,7 +144,10 @@ export async function POST() {
         stage: "searchItems",
         status: response.status,
         code: details.code,
-        message: details.message || "Amazon ha rifiutato SearchItems.",
+        type: details.type,
+        reason: details.reason,
+        providerStatus: details.status,
+        message: details.message || details.errorDescription || details.error || "Amazon ha rifiutato SearchItems.",
         partnerTag: PARTNER_TAG,
         marketplace: MARKETPLACE,
       });
