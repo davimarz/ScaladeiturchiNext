@@ -277,7 +277,6 @@ export async function verifyCatalogProductsBatch(
     const discountPercent = snapshot.currentPrice != null ? snapshot.discountPercent : product.discount_percent;
 
     const titleOk = Boolean(title && !needsProductTitleEnrichment(title));
-    const descriptionOk = Boolean(description && description.length >= 20);
     const imageOk = Boolean(imageUrl && !isGenericAmazonImage(imageUrl));
     const priceOk = currentPrice != null && Number.isFinite(Number(currentPrice)) && Number(currentPrice) > 0 && Number(currentPrice) < 10000;
     const complete = titleOk && imageOk && priceOk;
