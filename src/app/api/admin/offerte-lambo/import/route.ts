@@ -118,6 +118,9 @@ export async function POST(request: NextRequest) {
     console.warn("offerte-lambo-import-browser", message);
     try {
       const prices = await syncCatalogPricesByMembership("offerte-lambo");
+      await repairCatalogMissingFields("offerte-lambo", "image", 24).catch((repairError) => {
+        console.warn("offerte-lambo-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
+      });
       return finish("price-only", undefined, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
     } catch (priceError) {
       console.warn("offerte-lambo-price-refresh", priceError instanceof Error ? priceError.message : priceError);
@@ -130,6 +133,9 @@ export async function POST(request: NextRequest) {
   if (!parsed.length) {
     try {
       const prices = await syncCatalogPricesByMembership("offerte-lambo");
+      await repairCatalogMissingFields("offerte-lambo", "image", 24).catch((repairError) => {
+        console.warn("offerte-lambo-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
+      });
       return finish("price-only", 0, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
     } catch {
       return finish("empty");
@@ -209,6 +215,9 @@ export async function POST(request: NextRequest) {
     });
 
     const prices = await syncCatalogPricesByMembership("offerte-lambo");
+      await repairCatalogMissingFields("offerte-lambo", "image", 24).catch((repairError) => {
+        console.warn("offerte-lambo-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
+      });
     await repairCatalogMissingFields("offerte-lambo", "image", 24).catch((error) => {
       console.warn("offerte-lambo-missing-image-repair", error instanceof Error ? error.message : error);
     });
