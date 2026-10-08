@@ -1,12 +1,10 @@
 import Link from "next/link";
 import PublicTabs from "../../components/PublicTabs";
 import AIShoppingAssistant from "../../components/AIShoppingAssistant";
-import { getMostSearchedProducts } from "../../lib/ai-shopping";
+import { getMostSearchedQueries } from "../../lib/ai-shopping";
 
 export default async function ChiediAIPage() {
-  const popularSuggestions = (await getMostSearchedProducts(4).catch(() => []))
-    .map((product) => product.query)
-    .filter(Boolean);
+  const popularSuggestions = await getMostSearchedQueries(4).catch(() => []);
 
   return (
     <main>
