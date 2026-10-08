@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
     products = await enrichMissingProductData(products.slice(0, TARGET_PRODUCTS));
     if (mode === "more") {
       products = await enrichAmazonProductsViaBraveByAsin(products);
+      products = await enrichMissingProductData(products);
     }
 
     if (!products.length) {
