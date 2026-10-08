@@ -80,7 +80,8 @@ export async function POST(request: NextRequest) {
 
   const diff = minutes(now.time) - minutes(scheduled);
   if (diff < 0 || diff > 1) {
-    return NextResponse.json({ ok: true, skipped: "not-due", now: now.time, scheduled });
+    const verification = await verificationTick().catch(() => null);
+    return NextResponse.json({ ok: true, skipped: "daily-import-not-due", now: now.time, scheduled, verification });
   }
 
   // Mark before execution so a second scheduler tick cannot start duplicate imports.
