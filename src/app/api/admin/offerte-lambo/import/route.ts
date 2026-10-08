@@ -4,7 +4,7 @@ import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonDealsUrl, parseHaulHtml } from "../../../../../lib/haul-import";
 import { fetchAmazonSearchWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
-import { markCatalogVerificationPending, verifyCatalogProductsBatch } from "../../../../../lib/catalog-sync";
+import { markCatalogVerificationPending, syncCatalogPricesByMembership, verifyCatalogProductsBatch } from "../../../../../lib/catalog-sync";
 import { needsProductTitleEnrichment } from "../../../../../lib/amazon-page-offer";
 
 export const runtime = "nodejs";
@@ -117,9 +117,10 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Amazon Offerte Lampo browser scan failed";
     console.warn("offerte-lambo-import-browser", message);
     try {
+      const prices = await syncCatalogPricesByMembership("offerte-lambo");
       await markCatalogVerificationPending("offerte-lambo");
-      const verification = await verifyCatalogProductsBatch("offerte-lambo", 6);
-      return finish("price-only", verification.checked);
+      await verifyCatalogProductsBatch("offerte-lambo", 6).catch(() => undefined);
+      return finish("price-only", undefined, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
     } catch (fallbackError) {
       console.warn("offerte-lambo-verification-fallback", fallbackError instanceof Error ? fallbackError.message : fallbackError);
       if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return finish("blocked");
@@ -130,9 +131,10 @@ export async function POST(request: NextRequest) {
   const parsed = parseHaulHtml(html);
   if (!parsed.length) {
     try {
+      const prices = await syncCatalogPricesByMembership("offerte-lambo");
       await markCatalogVerificationPending("offerte-lambo");
-      const verification = await verifyCatalogProductsBatch("offerte-lambo", 6);
-      return finish("price-only", verification.checked);
+      await verifyCatalogProductsBatch("offerte-lambo", 6).catch(() => undefined);
+      return finish("price-only", 0, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
     } catch {
       return finish("empty");
     }
@@ -209,11 +211,12 @@ export async function POST(request: NextRequest) {
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
       body: JSON.stringify([{ key: "offerte_lambo_source_url", value: sourceUrl }]),
     });
+    const prices = await syncCatalogPricesByMembership("offerte-lambo");
     await markCatalogVerificationPending("offerte-lambo");
     await verifyCatalogProductsBatch("offerte-lambo", 6).catch((verifyError) => {
       console.warn("offerte-lambo-initial-verification", verifyError instanceof Error ? verifyError.message : verifyError);
     });
-    return finish("success", rows.length);
+    return finish("success", rows.length, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
   } catch (error) {
     console.error("offerte-lambo-import-save", error instanceof Error ? error.message : error);
     return finish("save-error");
