@@ -13,7 +13,7 @@ export function queryTokens(query: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9€]+/g, " ")
     .split(/\s+/)
-    .filter((token) => token.length >= 3 && !["cerco","cerca","cercando","voglio","prodotto","prodotti","amazon","migliore","migliori","consigliami","vorrei","serve","servono","una","uno","con","per","sotto","entro","fino","meno","euro","economico","economica","economici","economiche","conveniente","convenienti","buono","buona","buoni","buone","piacerebbe","trovare","offerta","offerte","marcato","marcata","marcati","marcate","marca"].includes(token));
+    .filter((token) => token.length >= 3 && !/[0-9€]/.test(token) && !["cerco","cerca","cercando","voglio","prodotto","prodotti","amazon","migliore","migliori","consigliami","vorrei","serve","servono","una","uno","con","per","sotto","entro","fino","meno","euro","economico","economica","economici","economiche","conveniente","convenienti","buono","buona","buoni","buone","piacerebbe","trovare","offerta","offerte","marcato","marcata","marcati","marcate","marca"].includes(token));
 }
 
 function stem(value: string) {
@@ -30,6 +30,10 @@ const TOKEN_SYNONYMS: Record<string, string[]> = {
   berretto: ["cappello","cappellino","cap"],
   cuffia: ["cuffie","headphone","headphones","earbud","earbuds"],
   cuffie: ["cuffia","headphone","headphones","earbud","earbuds"],
+  macchina: ["macchina","machine","maker"],
+  caffe: ["caffe","coffee","espresso"],
+  cialda: ["cialde","ese","capsula","capsule","pod","pods"],
+  cialde: ["cialda","ese","capsula","capsule","pod","pods"],
 };
 
 function normalizedWords(title: string) {
@@ -66,7 +70,8 @@ export function isRelevantProduct(title: string, query: string) {
   const matchedConcepts = conceptTokens.filter(matchesToken).length;
 
   if (conceptTokens.length === 1) return matchedConcepts === 1;
-  if (conceptTokens.length >= 2) return matchedConcepts >= 2;
+  if (conceptTokens.length === 2) return matchedConcepts === 2;
+  if (conceptTokens.length >= 3) return matchedConcepts >= 2;
 
   const matched = tokens.filter(matchesToken).length;
   return matched >= 1;
