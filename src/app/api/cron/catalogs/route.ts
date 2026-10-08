@@ -61,8 +61,22 @@ export async function POST(request: NextRequest) {
   const lastDay = valueString(settings.get("catalog_auto_update_last_day"));
   const now = romeParts();
 
-  if (!enabled) return NextResponse.json({ ok: true, skipped: "disabled" });
-  if (lastDay === now.day) return NextResponse.json({ ok: true, skipped: "already-run", day: now.day });
+  const verificationTick = async () => {
+    const [lambo, bestseller] = await Promise.all([
+      verifyCatalogProductsBatch("offerte-lambo", 4),
+      verifyCatalogProductsBatch("bestseller", 4),
+    ]);
+    return { lambo, bestseller };
+  };
+
+  if (!enabled) {
+    const verification = await verificationTick().catch(() => null);
+    return NextResponse.json({ ok: true, skipped: "auto-update-disabled", verification });
+  }
+  if (lastDay === now.day) {
+    const verification = await verificationTick().catch(() => null);
+    return NextResponse.json({ ok: true, skipped: "daily-import-already-run", day: now.day, verification });
+  }
 
   const diff = minutes(now.time) - minutes(scheduled);
   if (diff < 0 || diff > 1) {
