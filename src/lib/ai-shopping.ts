@@ -73,7 +73,7 @@ export async function interpretShoppingQuery(query: string): Promise<ShoppingInt
               text:
                 "Interpreta questa richiesta shopping in italiano come un unico intento di prodotto, senza separare parole che insieme definiscono il prodotto. " +
                 "Mantieni genere, uso, fascia prezzo, colore e altri vincoli quando presenti. " +
-                "Genera inoltre fino a 4 query Amazon italiane molto specifiche, usando solo sinonimi strettamente equivalenti del tipo di prodotto e senza allargare a categorie generiche. " +
+                "Genera inoltre fino a 6 query Amazon italiane molto specifiche. Mantieni SEMPRE il prodotto principale in ogni query e varia solo sinonimi, formati o compatibilità strettamente utili. Non trasformare mai la richiesta in una ricerca di accessori. Se il cliente indica un formato (es. cialde), puoi aggiungere formati commercialmente equivalenti o compatibili (es. ESE/capsule) solo mantenendo il prodotto principale (es. macchina da caffè). " +
                 "Esempio: 'cappellino donna' => canonicalQuery 'cappellino da donna'; searchQueries ['cappellino donna','cappello donna','berretto donna','cappellino baseball donna']. " +
                 "Rispondi SOLO JSON valido nel formato {\"canonicalQuery\":\"...\",\"searchQueries\":[\"...\"]}. " +
                 "Richiesta: " + query
@@ -106,7 +106,7 @@ export async function interpretShoppingQuery(query: string): Promise<ShoppingInt
       canonicalQuery,
       ...(Array.isArray(parsed.searchQueries) ? parsed.searchQueries : []),
       query,
-    ].map((value) => String(value).replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 4);
+    ].map((value) => String(value).replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 6);
 
     const inputTokens = data.usageMetadata?.promptTokenCount || 0;
     const outputTokens = (data.usageMetadata?.candidatesTokenCount || 0) + (data.usageMetadata?.thoughtsTokenCount || 0);
