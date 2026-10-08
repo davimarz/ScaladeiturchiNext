@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminCookie, verifyAdminSessionValue } from "../../../../../lib/admin-auth";
-import { isSameOrigin } from "../../../../../lib/admin-request";
-import { verifyCatalogProductsBatch } from "../../../../../lib/catalog-sync";
-import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
+import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
+import { isSameOrigin } from "../../../../lib/admin-request";
+import { verifyCatalogProductsBatch } from "../../../../lib/catalog-sync";
+import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
