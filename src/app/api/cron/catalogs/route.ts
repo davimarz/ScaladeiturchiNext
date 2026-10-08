@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 type SettingRow = { key: string; value: unknown };
+type Stage = "haul" | "offerte-lambo" | "bestseller" | "done" | "";
 
 function valueString(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -45,6 +46,14 @@ function statusFromLocation(location: string | null, key: string) {
   }
 }
 
+async function saveSettings(rows: Array<{ key: string; value: unknown }>) {
+  await supabaseAdminFetch("site_settings?on_conflict=key", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(rows),
+  });
+}
+
 export async function POST(request: NextRequest) {
   const expected = process.env.CATALOG_CRON_SECRET;
   const auth = request.headers.get("authorization");
@@ -53,113 +62,142 @@ export async function POST(request: NextRequest) {
   }
 
   const rows = await supabaseAdminFetch<SettingRow[]>(
-    "site_settings?key=in.(catalog_auto_update_enabled,catalog_auto_update_time,catalog_auto_update_last_day,haul_source_url,offerte_lambo_source_url,bestseller_source_url)&select=key,value",
+    "site_settings?key=in.(catalog_auto_update_enabled,catalog_auto_update_time,catalog_auto_update_last_day,catalog_auto_update_stage,catalog_auto_update_had_error,catalog_auto_update_last_message,haul_source_url,offerte_lambo_source_url,bestseller_source_url)&select=key,value",
   );
   const settings = new Map(rows.map((row) => [row.key, row.value]));
   const enabled = settings.get("catalog_auto_update_enabled") === true;
   const scheduled = valueString(settings.get("catalog_auto_update_time"), "06:00");
   const lastDay = valueString(settings.get("catalog_auto_update_last_day"));
+  let stage = valueString(settings.get("catalog_auto_update_stage")) as Stage;
+  let hadError = settings.get("catalog_auto_update_had_error") === true;
+  let message = valueString(settings.get("catalog_auto_update_last_message"));
   const now = romeParts();
 
+  if (!enabled) {
+    return NextResponse.json({ ok: true, skipped: "auto-update-disabled" });
+  }
+
   const verificationTick = async () => {
-    const [lambo, bestseller] = await Promise.all([
-      verifyCatalogProductsBatch("offerte-lambo", 4),
-      verifyCatalogProductsBatch("bestseller", 4),
-    ]);
+    // Sequential on purpose: never open two Amazon browser batches at the same time.
+    const lambo = await verifyCatalogProductsBatch("offerte-lambo", 3).catch((error) => ({
+      checked: 0, verified: 0, pending: 0, failed: 1,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    const bestseller = await verifyCatalogProductsBatch("bestseller", 3).catch((error) => ({
+      checked: 0, verified: 0, pending: 0, failed: 1,
+      error: error instanceof Error ? error.message : String(error),
+    }));
     return { lambo, bestseller };
   };
 
-  if (!enabled) {
-    const verification = await verificationTick().catch(() => null);
-    return NextResponse.json({ ok: true, skipped: "auto-update-disabled", verification });
-  }
-  if (lastDay === now.day) {
-    const verification = await verificationTick().catch(() => null);
-    return NextResponse.json({ ok: true, skipped: "daily-import-already-run", day: now.day, verification });
-  }
-
   const diff = minutes(now.time) - minutes(scheduled);
-  if (diff < 0 || diff > 1) {
-    const verification = await verificationTick().catch(() => null);
-    return NextResponse.json({ ok: true, skipped: "daily-import-not-due", now: now.time, scheduled, verification });
-  }
+  if (lastDay !== now.day) {
+    if (diff < 0 || diff > 1) {
+      const verification = await verificationTick();
+      return NextResponse.json({ ok: true, skipped: "daily-import-not-due", now: now.time, scheduled, verification });
+    }
 
-  // Mark before execution so a second scheduler tick cannot start duplicate imports.
-  await supabaseAdminFetch("site_settings?on_conflict=key", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify([
+    stage = "haul";
+    hadError = false;
+    message = "";
+    await saveSettings([
       { key: "catalog_auto_update_last_day", value: now.day },
+      { key: "catalog_auto_update_stage", value: stage },
+      { key: "catalog_auto_update_had_error", value: false },
       { key: "catalog_auto_update_last_started_at", value: new Date().toISOString() },
       { key: "catalog_auto_update_last_status", value: "running" },
-    ]),
-  });
+      { key: "catalog_auto_update_last_message", value: "" },
+    ]);
+  }
+
+  if (!stage || stage === "done") {
+    const verification = await verificationTick();
+    return NextResponse.json({ ok: true, skipped: "daily-import-complete", day: now.day, verification });
+  }
 
   const origin = request.nextUrl.origin;
   const session = createAdminSessionValue();
-  const cookie = adminCookie.name + "=" + session;
   const commonHeaders = {
     origin,
     "sec-fetch-site": "same-origin",
-    cookie,
+    cookie: adminCookie.name + "=" + session,
   };
 
-  const jobs = [
-    {
+  const jobs = {
+    haul: {
       name: "HAUL",
       path: "/api/admin/haul/import",
       statusKey: "haul_import",
       field: "haul_url",
       url: valueString(settings.get("haul_source_url"), "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb"),
+      next: "offerte-lambo" as Stage,
     },
-    {
+    "offerte-lambo": {
       name: "Offerte Lampo",
       path: "/api/admin/offerte-lambo/import",
       statusKey: "lambo_import",
       field: "lambo_url",
       url: valueString(settings.get("offerte_lambo_source_url"), "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno"),
+      next: "bestseller" as Stage,
     },
-    {
+    bestseller: {
       name: "Bestseller",
       path: "/api/admin/bestseller/import",
       statusKey: "bestseller_import",
       field: "bestseller_url",
       url: valueString(settings.get("bestseller_source_url"), "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers"),
+      next: "done" as Stage,
     },
-  ];
+  } as const;
 
-  const results = await Promise.all(jobs.map(async (job) => {
-    try {
-      const form = new FormData();
-      form.set("return_to", "/admin");
-      form.set(job.field, job.url);
-      const response = await fetch(origin + job.path, {
-        method: "POST",
-        headers: commonHeaders,
-        body: form,
-        redirect: "manual",
-        signal: AbortSignal.timeout(285_000),
-      });
-      const status = statusFromLocation(response.headers.get("location"), job.statusKey);
-      return { name: job.name, http: response.status, status };
-    } catch (error) {
-      return { name: job.name, http: 0, status: error instanceof Error ? error.message.slice(0, 160) : "error" };
-    }
-  }));
+  const job = jobs[stage as keyof typeof jobs];
+  if (!job) {
+    await saveSettings([{ key: "catalog_auto_update_stage", value: "done" }]);
+    return NextResponse.json({ ok: false, error: "Invalid scheduler stage" }, { status: 500 });
+  }
+
+  let result: { name: string; http: number; status: string };
+  try {
+    const form = new FormData();
+    form.set("return_to", "/admin");
+    form.set(job.field, job.url);
+    const response = await fetch(origin + job.path, {
+      method: "POST",
+      headers: commonHeaders,
+      body: form,
+      redirect: "manual",
+      signal: AbortSignal.timeout(285_000),
+    });
+    result = {
+      name: job.name,
+      http: response.status,
+      status: statusFromLocation(response.headers.get("location"), job.statusKey),
+    };
+  } catch (error) {
+    result = {
+      name: job.name,
+      http: 0,
+      status: error instanceof Error ? error.message.slice(0, 160) : "error",
+    };
+  }
 
   const good = new Set(["success", "price-only"]);
-  const allOk = results.every((result) => good.has(result.status));
-  const summary = results.map((result) => result.name + ": " + result.status).join(" · ");
+  hadError = hadError || !good.has(result.status);
+  message = [message, result.name + ": " + result.status].filter(Boolean).join(" · ");
 
-  await supabaseAdminFetch("site_settings?on_conflict=key", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify([
+  const updates: Array<{ key: string; value: unknown }> = [
+    { key: "catalog_auto_update_stage", value: job.next },
+    { key: "catalog_auto_update_had_error", value: hadError },
+    { key: "catalog_auto_update_last_message", value: message },
+  ];
+
+  if (job.next === "done") {
+    updates.push(
       { key: "catalog_auto_update_last_finished_at", value: new Date().toISOString() },
-      { key: "catalog_auto_update_last_status", value: allOk ? "success" : "partial" },
-      { key: "catalog_auto_update_last_message", value: summary },
-    ]),
-  });
+      { key: "catalog_auto_update_last_status", value: hadError ? "partial" : "success" },
+    );
+  }
 
-  return NextResponse.json({ ok: allOk, day: now.day, scheduled, results });
+  await saveSettings(updates);
+  return NextResponse.json({ ok: good.has(result.status), day: now.day, stage, next: job.next, result });
 }
