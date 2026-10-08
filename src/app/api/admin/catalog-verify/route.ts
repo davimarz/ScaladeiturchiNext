@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminCookie, verifyAdminSessionValue } from "../../../../lib/admin-auth";
 import { isSameOrigin } from "../../../../lib/admin-request";
-import { verifyCatalogProductsBatch } from "../../../../lib/catalog-sync";
+import { syncCatalogBatchByMembership } from "../../../../lib/catalog-sync";
 import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -25,25 +25,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Catalogo non valido" }, { status: 400 });
   }
 
-  const result = await verifyCatalogProductsBatch(body.catalog, 1);
-  const statusColumn = body.catalog === "offerte-lambo"
-    ? "lambo_verification_status"
-    : "bestseller_verification_status";
+  const result = await syncCatalogBatchByMembership(body.catalog, 2);
   const membershipFilter = body.catalog === "offerte-lambo"
     ? "in_offerte_lambo=eq.true"
     : "in_bestseller=eq.true";
 
-  const pendingRows = await supabaseAdminFetch<Array<{ asin: string }>>(
-    "products?active=eq.true&" + membershipFilter + "&" + statusColumn + "=eq.pending&select=asin&limit=1000",
+  const remainingRows = await supabaseAdminFetch<Array<{ asin: string }>>(
+    "products?active=eq.true&" + membershipFilter +
+    "&or=(current_price.is.null,image_url.is.null)&select=asin&limit=1000",
   );
 
   return NextResponse.json({
     ok: true,
     catalog: body.catalog,
-    checked: result.checked,
-    verified: result.verified,
-    pending: result.pending,
-    failed: result.failed,
-    remaining: pendingRows.length,
+    checked: result.productsSeen,
+    verified: result.productsChanged + result.productsUnchanged,
+    pending: 0,
+    failed: result.productsFailed,
+    remaining: remainingRows.length,
   });
 }
