@@ -6,9 +6,7 @@ import { isGenericAmazonImage } from "./amazon-input";
 
 async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeIncomplete = false) {
   const suffix = filter ? "&" + filter : "";
-  const order = prioritizeIncomplete
-    ? "&order=price_verified_at.asc.nullsfirst,updated_at.asc"
-    : "&order=updated_at.asc";
+  const order = "&order=updated_at.asc";
   const existing = await supabaseAdminFetch<Array<{
     asin: string;
     current_price: number | null;
@@ -94,6 +92,13 @@ async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeI
         }
 
         if (!offer && !recoveredImage && !recoveredTitle) {
+          if (prioritizeIncomplete) {
+            await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+              method: "PATCH",
+              headers: { Prefer: "return=minimal" },
+              body: JSON.stringify({ updated_at: new Date().toISOString() }),
+            }).catch(() => undefined);
+          }
           return { status: "failed" as const, imageRecovered: false, imageMissing: isGenericAmazonImage(product.image_url) };
         }
 
