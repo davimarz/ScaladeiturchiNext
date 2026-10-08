@@ -218,9 +218,6 @@ export async function POST(request: NextRequest) {
       await repairCatalogMissingFields("offerte-lambo", "image", 24).catch((repairError) => {
         console.warn("offerte-lambo-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
       });
-    await repairCatalogMissingFields("offerte-lambo", "image", 24).catch((error) => {
-      console.warn("offerte-lambo-missing-image-repair", error instanceof Error ? error.message : error);
-    });
     return finish("success", rows.length, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
   } catch (error) {
     console.error("offerte-lambo-import-save", error instanceof Error ? error.message : error);
