@@ -206,9 +206,6 @@ export async function POST(request: NextRequest) {
       await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
         console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
       });
-    await repairCatalogMissingFields("bestseller", "price", 24).catch((error) => {
-      console.warn("bestseller-missing-price-repair", error instanceof Error ? error.message : error);
-    });
     return finish("success", rows.length, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
   } catch (error) {
     console.error("bestseller-import-save", error instanceof Error ? error.message : error);
