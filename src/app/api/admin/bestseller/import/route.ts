@@ -104,6 +104,9 @@ export async function POST(request: NextRequest) {
     console.warn("bestseller-import-browser", message);
     try {
       const prices = await syncCatalogPricesByMembership("bestseller");
+      await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
+        console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
+      });
       return finish("price-only", undefined, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
     } catch {
       if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return finish("blocked");
@@ -115,6 +118,9 @@ export async function POST(request: NextRequest) {
   if (!parsed.length) {
     try {
       const prices = await syncCatalogPricesByMembership("bestseller");
+      await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
+        console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
+      });
       return finish("price-only", 0, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
     } catch {
       return finish("empty");
@@ -197,6 +203,9 @@ export async function POST(request: NextRequest) {
     });
 
     const prices = await syncCatalogPricesByMembership("bestseller");
+      await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
+        console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
+      });
     await repairCatalogMissingFields("bestseller", "price", 24).catch((error) => {
       console.warn("bestseller-missing-price-repair", error instanceof Error ? error.message : error);
     });
