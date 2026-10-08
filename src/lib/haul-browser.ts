@@ -87,6 +87,7 @@ async function fetchAmazonWithFullScroll(
     const candidateUrls = mode === "search"
       ? [
           url,
+          "https://www.amazon.it/deals?ref_=nav_cs_gb&bubble-id=deals-collection-lightning-deals",
           "https://www.amazon.it/s?k=offerte+lampo+del+giorno",
         ]
       : [url];
