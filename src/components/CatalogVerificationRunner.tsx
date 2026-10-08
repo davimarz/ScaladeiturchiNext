@@ -33,8 +33,10 @@ export default function CatalogVerificationRunner({
 
     async function loop() {
       let emptyPasses = 0;
+      let passes = 0;
 
-      while (!stopped.current) {
+      while (!stopped.current && passes < 120) {
+        passes += 1;
         try {
           const response = await fetch("/api/admin/catalog-verify", {
             method: "POST",
@@ -73,7 +75,10 @@ export default function CatalogVerificationRunner({
         }
       }
 
-      if (!stopped.current) setRunning(false);
+      if (!stopped.current) {
+        if (!message && passes >= 120) setMessage("Verifica sospesa dopo 120 lotti; riprenderà al prossimo aggiornamento.");
+        setRunning(false);
+      }
     }
 
     void loop();
