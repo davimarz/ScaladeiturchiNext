@@ -128,7 +128,6 @@ export async function POST(request: NextRequest) {
     }
 
     products = products
-      .filter((product) => product.source !== "gemini-search")
       .filter((product) => !excludedAsins.has(product.asin))
       .filter((product) => isRelevantProduct(product.title, semanticQuery));
 
