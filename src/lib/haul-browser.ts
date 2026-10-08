@@ -501,6 +501,7 @@ export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
 
 export type AmazonBrowserSnapshot = {
   title: string | null;
+  description: string | null;
   imageUrl: string | null;
   currentPrice: number | null;
   listPrice: number | null;
@@ -566,6 +567,22 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               clean(document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content).replace(/\s*:\s*Amazon\.it.*$/i, "") ||
               null;
 
+            const descriptionCandidates: string[] = [];
+            const addDescription = (value: string | null | undefined) => {
+              const text = clean(value);
+              if (text.length >= 12) descriptionCandidates.push(text);
+            };
+            for (const item of Array.from(document.querySelectorAll<HTMLElement>("#feature-bullets li span.a-list-item"))) {
+              addDescription(item.innerText || item.textContent);
+            }
+            addDescription(document.querySelector<HTMLElement>("#productDescription")?.innerText);
+            addDescription(document.querySelector<HTMLElement>("#aplus_feature_div")?.innerText);
+            const description = descriptionCandidates
+              .filter((value, index, values) => values.indexOf(value) === index)
+              .slice(0, 6)
+              .join(" · ")
+              .slice(0, 1400) || null;
+
             const currentText =
               document.querySelector<HTMLElement>(".priceToPay .a-offscreen, .apexPriceToPay .a-offscreen")?.textContent ||
               document.querySelector<HTMLElement>("#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price) .a-offscreen")?.textContent ||
@@ -613,7 +630,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               !/transparent-pixel|\/pixel\.|\/loading\.|\/no-image|11\+\+B3A2NEL/i.test(value)
             ) || null;
 
-            return { title, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
+            return { title, description, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
           }, asin).catch(() => null);
 
           if (snapshot && (snapshot.currentPrice != null || snapshot.imageUrl)) return [asin, snapshot] as const;
@@ -635,6 +652,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               return Number.isFinite(amount) && amount > 0 ? amount : null;
             };
             const title = clean(card.querySelector<HTMLElement>("h2 span")?.innerText || card.querySelector<HTMLImageElement>("img")?.alt) || null;
+            const description = clean(card.innerText).slice(0, 900) || null;
             const imageUrl = card.querySelector<HTMLImageElement>("img")?.currentSrc || card.querySelector<HTMLImageElement>("img")?.src || null;
             const currentPrice = parseMoney(card.querySelector<HTMLElement>(".a-price:not(.a-text-price) .a-offscreen")?.textContent);
             let listPrice = parseMoney(card.querySelector<HTMLElement>(".a-text-price .a-offscreen")?.textContent);
@@ -642,7 +660,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             const discountPercent = currentPrice != null && listPrice != null
               ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
               : null;
-            return { title, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
+            return { title, description, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
           }, asin).catch(() => null);
 
           return [asin, fallback] as const;
