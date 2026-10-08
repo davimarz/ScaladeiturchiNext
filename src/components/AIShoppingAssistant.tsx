@@ -3,6 +3,8 @@
 import { FormEvent, useState } from "react";
 import Image from "next/image";
 
+type ChatMessage = { role: "user" | "assistant"; text: string };
+
 type Product = {
   asin: string;
   title: string;
@@ -30,6 +32,7 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
   const [lastQuery, setLastQuery] = useState("");
   const [noMoreProducts, setNoMoreProducts] = useState(false);
   const [error, setError] = useState("");
+  const [conversation, setConversation] = useState<ChatMessage[]>([]);
 
   async function ask(event: FormEvent) {
     event.preventDefault();
@@ -40,6 +43,7 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
     setError("");
     setAnswer("");
     setProducts([]);
+    setConversation((current) => [...current, { role: "user", text }]);
     setNoMoreProducts(false);
     setLastQuery(text);
 
@@ -51,8 +55,12 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
       });
       const data = await response.json() as { answer?: string; products?: Product[]; error?: string };
       if (!response.ok) throw new Error(data.error || "Ricerca non disponibile.");
-      setAnswer(data.answer || "");
+      const responseText = data.answer || "";
+      setAnswer(responseText);
       setProducts(data.products || []);
+      if (responseText) {
+        setConversation((current) => [...current, { role: "assistant", text: responseText }]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ricerca non disponibile.");
     } finally {
@@ -103,9 +111,26 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
     <section className="aiShopping">
       <div className="aiShoppingIntro">
         <p className="eyebrow">ASSISTENTE SHOPPING</p>
-        <h1>Chiedi all&apos;AI</h1>
-        <p>Descrivi cosa stai cercando. L&apos;assistente confronta i prodotti disponibili e prova a mostrarti almeno 4 alternative pertinenti.</p>
+        <h1>Scala dei Turchi</h1>
+        <p>Chiedi cosa stai cercando, indica prezzo, marca o caratteristiche e continua la conversazione con altre domande.</p>
       </div>
+
+      {conversation.length > 0 ? (
+        <div className="aiConversation" aria-live="polite">
+          <div className="aiConversationHead">
+            <span className="aiConversationMark">ST</span>
+            <div><strong>Scala dei Turchi</strong><small>Assistente shopping</small></div>
+          </div>
+          <div className="aiConversationMessages">
+            {conversation.map((message, index) => (
+              <div className={"aiBubble " + message.role} key={index}>
+                {message.text}
+              </div>
+            ))}
+            {loading ? <div className="aiBubble assistant">Sto cercando le opzioni più pertinenti…</div> : null}
+          </div>
+        </div>
+      ) : null}
 
       <form className="aiAskForm" onSubmit={ask}>
         <label className="srOnly" htmlFor="ai-query">Cosa stai cercando?</label>
@@ -113,12 +138,12 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
           id="ai-query"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Es. Cerco una macchina da caffè sotto 100 €, semplice da usare..."
+          placeholder="Fai una domanda a Scala dei Turchi"
           rows={3}
           maxLength={500}
         />
         <button type="submit" disabled={loading || query.trim().length < 3}>
-          {loading ? "Sto cercando…" : "Chiedi all'AI"}
+          {loading ? "Sto cercando…" : "Invia"}
         </button>
       </form>
 
@@ -131,7 +156,6 @@ export default function AIShoppingAssistant({ suggestions }: { suggestions: stri
       </div>
 
       {error ? <p className="adminError aiMessage">{error}</p> : null}
-      {answer ? <div className="aiAnswer"><strong>Risposta</strong><p>{answer}</p></div> : null}
 
       {!loading && products.length > 0 ? (
         <div className="aiProductGrid">
