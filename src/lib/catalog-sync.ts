@@ -383,7 +383,7 @@ export async function verifyCatalogProductsBatch(
     catalog_verification_attempts: number;
   }>>(
     "products?active=eq.true&" + filter +
-    "&catalog_verification_status=neq.verified" +
+    "&catalog_verification_status=eq.pending" +
     "&select=asin,title,description,image_url,current_price,list_price,discount_percent,catalog_verified_at,catalog_verification_status,catalog_verification_attempts" +
     "&order=catalog_verification_attempts.asc,updated_at.asc&limit=" + Math.max(1, Math.min(limit, 12)),
   );
