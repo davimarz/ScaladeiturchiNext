@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const DEFAULT_LAMBO_URL = "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
+const DEFAULT_LAMBO_URL = "https://www.amazon.it/deals?ref_=nav_cs_gb&bubble-id=deals-collection-lightning-deals";
 const PARTNER_TAG = "eiapromo-21";
 const MAX_HTML_BYTES = 40 * 1024 * 1024;
 
