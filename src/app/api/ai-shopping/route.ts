@@ -9,7 +9,7 @@ import {
   interpretShoppingQuery,
 } from "../../../lib/ai-shopping";
 import { enrichAmazonProductsViaBraveByAsin, searchAmazonViaBrave } from "../../../lib/brave-shopping";
-import { isRelevantProduct } from "../../../lib/ai-relevance";
+import { isRelevantProduct, maxPriceFromQuery } from "../../../lib/ai-relevance";
 import {
   finalizeAIUsage,
   markAIExhausted,
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
     const intent = await interpretShoppingQuery(query);
     const semanticQuery = intent.canonicalQuery;
     const searchQueries = intent.searchQueries;
+    const requestedMaxPrice = maxPriceFromQuery(query);
     const local = await searchLocalCatalog(semanticQuery, DISCOVERY_TARGET).catch(() => []);
     let products = local;
     const searchInputTokens = intent.inputTokens;
@@ -173,6 +174,7 @@ export async function POST(request: NextRequest) {
         return score(b) - score(a);
       })
       .filter((product) => product.imageUrl || product.currentPrice != null)
+      .filter((product) => requestedMaxPrice == null || product.currentPrice == null || product.currentPrice <= requestedMaxPrice)
       .slice(0, TARGET_PRODUCTS);
 
     if (!products.length) {
