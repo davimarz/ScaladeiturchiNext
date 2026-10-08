@@ -123,7 +123,7 @@ export default async function AdminPage({
   const usageDay = currentUsageDay();
   const [products, categories, settings, catalogStats, aiUsage, aiHistory, aiHistoryStats] = await Promise.all([
     supabaseAdminFetch<Product[]>(
-      `products?active=eq.true&select=id,asin,title,current_price,list_price,discount_percent,currency,updated_at,active,source,category_id,image_url&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
+      `products?active=eq.true&${MANUAL_SOURCE_FILTER}&select=id,asin,title,current_price,list_price,discount_percent,currency,updated_at,active,source,category_id,image_url&order=updated_at.desc,id.asc&limit=30&offset=${(page - 1) * 30}`,
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>(
@@ -388,9 +388,9 @@ export default async function AdminPage({
       </section>
 
       <section className="adminPanel">
-        <h2>Prodotti nel catalogo</h2>
+        <h2>Prodotti manuali</h2>
         <AdminCatalogActions />
-        <nav className="adminActions" aria-label="Pagine del catalogo">
+        <nav className="adminActions" aria-label="Pagine dei prodotti manuali">
           {page > 1 ? <Link href={"/admin?page=" + (page - 1)}>← Precedenti</Link> : null}
           <span>Pagina {page}</span>
           {products.length === 30 ? <Link href={"/admin?page=" + (page + 1)}>Successivi →</Link> : null}
@@ -474,9 +474,9 @@ export default async function AdminPage({
         {params.manual === "noasin" ? <p className="adminError">Non sono riuscito a trovare l&apos;ASIN nel link. Prova con il link della pagina prodotto.</p> : null}
         {params.manual === "image-invalid" ? <p className="adminError">Immagine non valida. Usa JPG, PNG o WEBP fino a 5 MB.</p> : null}
         {params.manual === "error" ? <p className="adminError">Errore durante il salvataggio del prodotto. Riprova.</p> : null}
-        {params.delete === "success" ? <p className="adminNotice">Prodotto eliminato dal catalogo e dal database.</p> : null}
+        {params.delete === "success" ? <p className="adminNotice">Prodotto manuale eliminato.</p> : null}
         {params.bulk === "success" ? <p className="adminNotice">Prodotti selezionati eliminati.</p> : null}
-        {params.clear === "success" ? <p className="adminNotice">Catalogo svuotato. Categorie e impostazioni sono rimaste intatte.</p> : null}
+        {params.clear === "success" ? <p className="adminNotice">Prodotti manuali svuotati. HAUL, Offerte Lampo e Bestseller sono rimasti intatti.</p> : null}
         {params.delete === "invalid" ? <p className="adminError">Prodotto non valido.</p> : null}
         {params.delete === "error" ? <p className="adminError">Errore durante l&apos;eliminazione del prodotto.</p> : null}
 
