@@ -366,9 +366,12 @@ export async function verifyCatalogProductsBatch(
   membership: "offerte-lambo" | "bestseller",
   limit = 6,
 ) {
-  const filter = membership === "offerte-lambo"
-    ? "in_offerte_lambo=eq.true"
-    : "in_bestseller=eq.true";
+  const isLambo = membership === "offerte-lambo";
+  const filter = isLambo ? "in_offerte_lambo=eq.true" : "in_bestseller=eq.true";
+  const statusColumn = isLambo ? "lambo_verification_status" : "bestseller_verification_status";
+  const attemptsColumn = isLambo ? "lambo_verification_attempts" : "bestseller_verification_attempts";
+  const verifiedAtColumn = isLambo ? "lambo_verified_at" : "bestseller_verified_at";
+  const errorColumn = isLambo ? "lambo_last_verification_error" : "bestseller_last_verification_error";
 
   const products = await supabaseAdminFetch<Array<{
     asin: string;
@@ -378,14 +381,17 @@ export async function verifyCatalogProductsBatch(
     current_price: number | null;
     list_price: number | null;
     discount_percent: number | null;
-    catalog_verified_at: string | null;
-    catalog_verification_status: string;
-    catalog_verification_attempts: number;
+    lambo_verified_at: string | null;
+    lambo_verification_status: string;
+    lambo_verification_attempts: number;
+    bestseller_verified_at: string | null;
+    bestseller_verification_status: string;
+    bestseller_verification_attempts: number;
   }>>(
     "products?active=eq.true&" + filter +
-    "&catalog_verification_status=eq.pending" +
-    "&select=asin,title,description,image_url,current_price,list_price,discount_percent,catalog_verified_at,catalog_verification_status,catalog_verification_attempts" +
-    "&order=catalog_verification_attempts.asc,updated_at.asc&limit=" + Math.max(1, Math.min(limit, 12)),
+    "&" + statusColumn + "=eq.pending" +
+    "&select=asin,title,description,image_url,current_price,list_price,discount_percent,lambo_verified_at,lambo_verification_status,lambo_verification_attempts,bestseller_verified_at,bestseller_verification_status,bestseller_verification_attempts" +
+    "&order=" + attemptsColumn + ".asc,updated_at.asc&limit=" + Math.max(1, Math.min(limit, 12)),
   );
 
   if (!products.length) {
@@ -400,7 +406,13 @@ export async function verifyCatalogProductsBatch(
   for (const product of products) {
     const snapshot = snapshots.get(product.asin);
     const now = new Date().toISOString();
-    const attempts = (product.catalog_verification_attempts || 0) + 1;
+    const previousAttempts = isLambo
+      ? product.lambo_verification_attempts
+      : product.bestseller_verification_attempts;
+    const previousVerifiedAt = isLambo
+      ? product.lambo_verified_at
+      : product.bestseller_verified_at;
+    const attempts = (previousAttempts || 0) + 1;
 
     if (!snapshot) {
       failed++;
@@ -408,9 +420,9 @@ export async function verifyCatalogProductsBatch(
         method: "PATCH",
         headers: { Prefer: "return=minimal" },
         body: JSON.stringify({
-          catalog_verification_status: attempts >= 8 ? "failed" : "pending",
-          catalog_verification_attempts: attempts,
-          catalog_last_verification_error: "Pagina Amazon non leggibile o bloccata",
+          [statusColumn]: attempts >= 8 ? "failed" : "pending",
+          [attemptsColumn]: attempts,
+          [errorColumn]: "Pagina Amazon non leggibile o bloccata",
           updated_at: now,
         }),
       });
@@ -453,10 +465,10 @@ export async function verifyCatalogProductsBatch(
         discount_percent: discountPercent,
         currency: snapshot.currency,
         price_verified_at: snapshot.currentPrice != null ? now : undefined,
-        catalog_verified_at: complete ? now : product.catalog_verified_at,
-        catalog_verification_status: complete ? "verified" : (attempts >= 8 ? "failed" : "pending"),
-        catalog_verification_attempts: attempts,
-        catalog_last_verification_error: complete ? null : "Dati mancanti: " + missing,
+        [verifiedAtColumn]: complete ? now : previousVerifiedAt,
+        [statusColumn]: complete ? "verified" : (attempts >= 8 ? "failed" : "pending"),
+        [attemptsColumn]: attempts,
+        [errorColumn]: complete ? null : "Dati mancanti: " + missing,
         updated_at: now,
       }),
     });
@@ -472,16 +484,20 @@ export async function verifyCatalogProductsBatch(
 export async function markCatalogVerificationPending(
   membership: "offerte-lambo" | "bestseller",
 ) {
-  const filter = membership === "offerte-lambo"
-    ? "in_offerte_lambo=eq.true"
-    : "in_bestseller=eq.true";
+  const isLambo = membership === "offerte-lambo";
+  const filter = isLambo ? "in_offerte_lambo=eq.true" : "in_bestseller=eq.true";
+  const statusColumn = isLambo ? "lambo_verification_status" : "bestseller_verification_status";
+  const attemptsColumn = isLambo ? "lambo_verification_attempts" : "bestseller_verification_attempts";
+  const errorColumn = isLambo ? "lambo_last_verification_error" : "bestseller_last_verification_error";
+
   await supabaseAdminFetch("products?active=eq.true&" + filter, {
     method: "PATCH",
     headers: { Prefer: "return=minimal" },
     body: JSON.stringify({
-      catalog_verification_status: "pending",
-      catalog_verification_attempts: 0,
-      catalog_last_verification_error: null,
+      [statusColumn]: "pending",
+      [attemptsColumn]: 0,
+      [errorColumn]: null,
     }),
   });
 }
+
