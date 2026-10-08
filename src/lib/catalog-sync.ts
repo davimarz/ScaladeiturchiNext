@@ -4,8 +4,11 @@ import { supabaseAdminFetch } from "./supabase/admin";
 import { fetchAmazonProductImagesWithBrowser, fetchAmazonProductSnapshotsWithBrowser, fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
 import { isGenericAmazonImage } from "./amazon-input";
 
-async function syncExistingFromAmazonPages(filter = "") {
+async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeIncomplete = false) {
   const suffix = filter ? "&" + filter : "";
+  const order = prioritizeIncomplete
+    ? "&order=price_verified_at.asc.nullsfirst,updated_at.asc"
+    : "&order=updated_at.asc";
   const existing = await supabaseAdminFetch<Array<{
     asin: string;
     current_price: number | null;
@@ -14,7 +17,7 @@ async function syncExistingFromAmazonPages(filter = "") {
     image_url: string | null;
     title: string;
   }>>(
-    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url,title&order=updated_at.asc&limit=500",
+    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url,title" + order + "&limit=" + Math.max(1, Math.min(limit, 500)),
   );
 
   let changed = 0;
@@ -159,6 +162,16 @@ export async function syncCatalogPricesByMembership(membership: "haul" | "offert
       ? "in_offerte_lambo=eq.true"
       : "in_bestseller=eq.true";
   return syncExistingFromAmazonPages(filter);
+}
+
+export async function syncCatalogBatchByMembership(
+  membership: "offerte-lambo" | "bestseller",
+  limit = 2,
+) {
+  const filter = membership === "offerte-lambo"
+    ? "in_offerte_lambo=eq.true"
+    : "in_bestseller=eq.true";
+  return syncExistingFromAmazonPages(filter, limit, true);
 }
 
 
