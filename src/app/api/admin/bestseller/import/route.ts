@@ -4,7 +4,7 @@ import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonBestsellersUrl, parseHaulHtml } from "../../../../../lib/haul-import";
 import { fetchAmazonBestsellersWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
-import { markCatalogVerificationPending, repairCatalogMissingFields, syncCatalogPricesByMembership, verifyCatalogProductsBatch } from "../../../../../lib/catalog-sync";
+import { markCatalogVerificationPending, verifyCatalogProductsBatch } from "../../../../../lib/catalog-sync";
 import { needsProductTitleEnrichment } from "../../../../../lib/amazon-page-offer";
 
 export const runtime = "nodejs";
@@ -104,14 +104,8 @@ export async function POST(request: NextRequest) {
     console.warn("bestseller-import-browser", message);
     try {
       await markCatalogVerificationPending("bestseller");
-    const prices = await syncCatalogPricesByMembership("bestseller");
-    await verifyCatalogProductsBatch("bestseller", 6).catch((verifyError) => {
-      console.warn("bestseller-initial-verification", verifyError instanceof Error ? verifyError.message : verifyError);
-    });
-      await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
-        console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
-      });
-      return finish("price-only", undefined, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
+      const verification = await verifyCatalogProductsBatch("bestseller", 6);
+      return finish("price-only", verification.checked);
     } catch {
       if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return finish("blocked");
       return finish("browser-error");
@@ -121,11 +115,9 @@ export async function POST(request: NextRequest) {
   const parsed = parseHaulHtml(html);
   if (!parsed.length) {
     try {
-      const prices = await syncCatalogPricesByMembership("bestseller");
-      await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
-        console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
-      });
-      return finish("price-only", 0, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
+      await markCatalogVerificationPending("bestseller");
+      const verification = await verifyCatalogProductsBatch("bestseller", 6);
+      return finish("price-only", verification.checked);
     } catch {
       return finish("empty");
     }
@@ -205,12 +197,11 @@ export async function POST(request: NextRequest) {
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
       body: JSON.stringify([{ key: "bestseller_source_url", value: sourceUrl }]),
     });
-
-    const prices = await syncCatalogPricesByMembership("bestseller");
-      await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
-        console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
-      });
-    return finish("success", rows.length, prices.productsSeen, prices.productsChanged, prices.productsUnchanged, prices.productsFailed, prices.imagesRecovered, prices.imagesMissing);
+    await markCatalogVerificationPending("bestseller");
+    await verifyCatalogProductsBatch("bestseller", 6).catch((verifyError) => {
+      console.warn("bestseller-initial-verification", verifyError instanceof Error ? verifyError.message : verifyError);
+    });
+    return finish("success", rows.length);
   } catch (error) {
     console.error("bestseller-import-save", error instanceof Error ? error.message : error);
     return finish("save-error");
