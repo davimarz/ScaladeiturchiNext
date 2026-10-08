@@ -654,3 +654,25 @@ export async function getMostSearchedProducts(limit = 4): Promise<Array<Shopping
     query: queryByAsin.get(product.asin) || product.title,
   }));
 }
+
+
+export async function getMostSearchedQueries(limit = 4): Promise<string[]> {
+  const history = await supabaseAdminFetch<Array<{ query: string; status: string }>>(
+    "ai_search_history?status=eq.success&select=query,status&order=created_at.desc&limit=500",
+  );
+
+  const counts = new Map<string, number>();
+  const display = new Map<string, string>();
+  for (const item of history) {
+    const query = String(item.query || "").replace(/\s+/g, " ").trim();
+    if (!query) continue;
+    const key = query.toLocaleLowerCase("it-IT");
+    counts.set(key, (counts.get(key) || 0) + 1);
+    if (!display.has(key)) display.set(key, query);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "it"))
+    .slice(0, Math.max(1, Math.min(8, limit)))
+    .map(([key]) => display.get(key) || key);
+}
