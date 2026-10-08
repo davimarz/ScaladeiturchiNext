@@ -6,6 +6,7 @@ import DeleteProductButton from "../../components/DeleteProductButton";
 import AdminCatalogActions from "../../components/AdminCatalogActions";
 import AdminUpdateButton from "../../components/AdminUpdateButton";
 import AdminCatalogCard from "../../components/AdminCatalogCard";
+import CreatorsApiTest from "../../components/CreatorsApiTest";
 import { adminCookie, verifyAdminSessionValue } from "../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../lib/supabase/admin";
 import { currentUsageDay, DAILY_REQUEST_LIMIT, DAILY_TOKEN_LIMIT } from "../../lib/ai-limits";
@@ -205,6 +206,16 @@ export default async function AdminPage({
             <button type="submit">Esci</button>
           </form>
         </div>
+      </section>
+
+      <section className="adminPanel">
+        <div className="compactPanelHead">
+          <div>
+            <h2>Diagnostica Amazon Creators API</h2>
+            <p>Controlla in tempo reale se token e SearchItems sono autorizzati per il tuo account, senza mostrare credenziali sensibili.</p>
+          </div>
+        </div>
+        <CreatorsApiTest />
       </section>
 
       <section className="adminPanel aiUsagePanel">
