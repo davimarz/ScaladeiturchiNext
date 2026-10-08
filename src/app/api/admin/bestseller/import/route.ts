@@ -4,7 +4,7 @@ import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonBestsellersUrl, parseHaulHtml } from "../../../../../lib/haul-import";
 import { fetchAmazonBestsellersWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
-import { repairCatalogMissingFields, syncCatalogPricesByMembership } from "../../../../../lib/catalog-sync";
+import { markCatalogVerificationPending, repairCatalogMissingFields, syncCatalogPricesByMembership, verifyCatalogProductsBatch } from "../../../../../lib/catalog-sync";
 import { needsProductTitleEnrichment } from "../../../../../lib/amazon-page-offer";
 
 export const runtime = "nodejs";
@@ -103,7 +103,11 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Amazon Bestseller browser scan failed";
     console.warn("bestseller-import-browser", message);
     try {
-      const prices = await syncCatalogPricesByMembership("bestseller");
+      await markCatalogVerificationPending("bestseller");
+    const prices = await syncCatalogPricesByMembership("bestseller");
+    await verifyCatalogProductsBatch("bestseller", 6).catch((verifyError) => {
+      console.warn("bestseller-initial-verification", verifyError instanceof Error ? verifyError.message : verifyError);
+    });
       await repairCatalogMissingFields("bestseller", "price", 24).catch((repairError) => {
         console.warn("bestseller-targeted-repair", repairError instanceof Error ? repairError.message : repairError);
       });
