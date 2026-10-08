@@ -108,7 +108,31 @@ async function fetchAmazonWithFullScroll(
         lastStatus === 429 ||
         lastStatus === 503 ||
         /robot check|captcha|inserisci i caratteri|sorry|automated access/i.test(title + "\n" + bodyText);
+
       if (!blocked && lastStatus < 400) {
+        if (mode === "search") {
+          await sleep(1600);
+          const initialAsins = await page.evaluate(() => {
+            const asins = new Set<string>();
+            for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+              const asin = (element.dataset.asin || "").trim().toUpperCase();
+              if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+            }
+            for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+              const href = link.href || "";
+              const match =
+                href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+                href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
+              if (match) asins.add(match[1].toUpperCase());
+            }
+            return asins.size;
+          }).catch(() => 0);
+
+          if (initialAsins < 1 && attempt < candidateUrls.length - 1) {
+            continue;
+          }
+        }
+
         loaded = true;
         break;
       }
