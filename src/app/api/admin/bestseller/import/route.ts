@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
 
   const htmlFile = form.get("html_file");
   let html = "";
+  let browserProducts: ReturnType<typeof parseHaulHtml> = [];
 
   try {
     if (htmlFile instanceof File && htmlFile.size > 0) {
@@ -96,7 +97,8 @@ export async function POST(request: NextRequest) {
       if (!html) {
         const browserResult = await fetchAmazonBestsellersWithFullScroll(sourceUrl);
         html = browserResult.html;
-        console.info("bestseller-full-scroll", { asinCount: browserResult.asinCount, scrolls: browserResult.scrolls });
+        browserProducts = browserResult.products;
+        console.info("bestseller-full-scroll", { asinCount: browserResult.asinCount, scrolls: browserResult.scrolls, structured: browserResult.products.length });
       }
     }
   } catch (error) {
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const parsed = parseHaulHtml(html);
+  const parsed = browserProducts.length ? browserProducts : parseHaulHtml(html);
   if (!parsed.length) {
     try {
       await markCatalogVerificationPending("bestseller");
