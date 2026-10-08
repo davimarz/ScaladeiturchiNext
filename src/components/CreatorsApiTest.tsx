@@ -7,6 +7,9 @@ type TestResult = {
   stage: string;
   status: number;
   code?: string | null;
+  type?: string | null;
+  reason?: string | null;
+  providerStatus?: string | null;
   message: string;
   items?: number;
   partnerTag?: string;
@@ -52,7 +55,10 @@ export default function CreatorsApiTest() {
       {result ? (
         <div className={result.ok ? "creatorsResult ok" : "creatorsResult error"}>
           <strong>{result.ok ? "Operativa" : "Non operativa"}</strong>
-          <span>Fase: {result.stage} · HTTP: {result.status || "—"}{result.code ? " · " + result.code : ""}</span>
+          <span>Fase: {result.stage} · HTTP: {result.status || "—"}{result.code ? " · Code: " + result.code : ""}</span>
+          {result.type ? <span>Type: {result.type}</span> : null}
+          {result.reason ? <span>Reason: {result.reason}</span> : null}
+          {result.providerStatus ? <span>Status Amazon: {result.providerStatus}</span> : null}
           <p>{result.message}</p>
           {typeof result.items === "number" ? <span>Prodotti restituiti nel test: {result.items}</span> : null}
           {result.partnerTag ? <span>Partner tag: {result.partnerTag} · Marketplace: {result.marketplace}</span> : null}
