@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { MANUAL_SOURCES } from "../../lib/product-validation";
+import { MANUAL_SOURCE_FILTER, MANUAL_SOURCES } from "../../lib/product-validation";
 import { cookies } from "next/headers";
 import DeleteProductButton from "../../components/DeleteProductButton";
 import AdminCatalogActions from "../../components/AdminCatalogActions";
