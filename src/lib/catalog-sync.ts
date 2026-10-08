@@ -198,7 +198,43 @@ export async function verifyCatalogProductsBatch(
     return { checked: 0, verified: 0, pending: 0, failed: 0 };
   }
 
-  const snapshots = await fetchAmazonProductSnapshotsWithBrowser(products.map((product) => product.asin));
+  let snapshots = new Map<string, {
+    title: string | null;
+    description: string | null;
+    imageUrl: string | null;
+    currentPrice: number | null;
+    listPrice: number | null;
+    discountPercent: number | null;
+    currency: "EUR";
+  }>();
+
+  try {
+    snapshots = await fetchAmazonProductSnapshotsWithBrowser(products.map((product) => product.asin));
+  } catch (error) {
+    console.warn("catalog-browser-batch", error instanceof Error ? error.message : String(error));
+  }
+
+  // If Chromium fails or Amazon blocks part of the batch, retry each missing ASIN
+  // with the lighter direct product-page reader instead of dropping the whole batch.
+  for (const product of products) {
+    if (snapshots.has(product.asin)) continue;
+    try {
+      const direct = await fetchAmazonProductSnapshot(product.asin);
+      if (direct.title || direct.imageUrl || direct.offer) {
+        snapshots.set(product.asin, {
+          title: direct.title,
+          description: product.description,
+          imageUrl: direct.imageUrl,
+          currentPrice: direct.offer?.currentPrice ?? null,
+          listPrice: direct.offer?.listPrice ?? null,
+          discountPercent: direct.offer?.discountPercent ?? null,
+          currency: direct.offer?.currency ?? "EUR",
+        });
+      }
+    } catch {
+      // The per-product failure is recorded below.
+    }
+  }
   let verified = 0;
   let pending = 0;
   let failed = 0;
@@ -244,11 +280,10 @@ export async function verifyCatalogProductsBatch(
     const descriptionOk = Boolean(description && description.length >= 20);
     const imageOk = Boolean(imageUrl && !isGenericAmazonImage(imageUrl));
     const priceOk = currentPrice != null && Number.isFinite(Number(currentPrice)) && Number(currentPrice) > 0 && Number(currentPrice) < 10000;
-    const complete = titleOk && descriptionOk && imageOk && priceOk;
+    const complete = titleOk && imageOk && priceOk;
 
     const missing = [
       titleOk ? null : "titolo",
-      descriptionOk ? null : "descrizione",
       imageOk ? null : "immagine",
       priceOk ? null : "prezzo",
     ].filter(Boolean).join(", ");
