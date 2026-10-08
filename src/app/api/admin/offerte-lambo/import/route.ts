@@ -120,8 +120,8 @@ export async function POST(request: NextRequest) {
       await markCatalogVerificationPending("offerte-lambo");
       const verification = await verifyCatalogProductsBatch("offerte-lambo", 6);
       return finish("price-only", verification.checked);
-    } catch {
-      console.warn("offerte-lambo-price-refresh", priceError instanceof Error ? priceError.message : priceError);
+    } catch (fallbackError) {
+      console.warn("offerte-lambo-verification-fallback", fallbackError instanceof Error ? fallbackError.message : fallbackError);
       if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return finish("blocked");
       return finish("browser-error");
     }
