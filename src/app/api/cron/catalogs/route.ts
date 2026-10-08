@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminSessionValue, adminCookie } from "../../../../lib/admin-auth";
 import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
+import { verifyCatalogProductsBatch } from "../../../../lib/catalog-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
