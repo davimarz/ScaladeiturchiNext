@@ -4,10 +4,21 @@ const MAX_SCROLLS = 60;
 const STABLE_ROUNDS_TO_STOP = 5;
 const WAIT_AFTER_SCROLL_MS = 1100;
 
+export type BrowserListingProduct = {
+  asin: string;
+  title: string;
+  imageUrl: string | null;
+  currentPrice: number | null;
+  listPrice: number | null;
+  discountPercent: number | null;
+  haulCategory: string | null;
+};
+
 export type HaulBrowserResult = {
   html: string;
   asinCount: number;
   scrolls: number;
+  products: BrowserListingProduct[];
 };
 
 let cachedExecutablePath: string | null = null;
@@ -256,7 +267,107 @@ async function fetchAmazonWithFullScroll(
           : "No HAUL products found after browser scrolling");
     }
 
-    return { html, asinCount: finalCount, scrolls };
+    const products = await page.evaluate(() => {
+      const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
+      const money = (value: string | null | undefined) => {
+        const text = clean(value).replace(/\s/g, "").replace(/€/g, "");
+        if (!text) return null;
+        const normalized = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+        const number = Number(normalized);
+        return Number.isFinite(number) && number > 0 && number < 10000 ? number : null;
+      };
+      const validImage = (value: string | null | undefined) => {
+        const url = clean(value);
+        if (!/^https:\/\/(?:m\.media-amazon\.com|images-(?:na|eu|fe)\.ssl-images-amazon\.com)\//i.test(url)) return null;
+        if (/transparent-pixel|\/pixel\.|\/loading\.|\/no-image|11\+\+B3A2NEL/i.test(url)) return null;
+        return url;
+      };
+      const results = new Map<string, {
+        asin: string;
+        title: string;
+        imageUrl: string | null;
+        currentPrice: number | null;
+        listPrice: number | null;
+        discountPercent: number | null;
+        haulCategory: null;
+      }>();
+
+      const asins = new Set<string>();
+      for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+        const asin = clean(element.dataset.asin).toUpperCase();
+        if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+      }
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
+        const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+        if (match) asins.add(match[1].toUpperCase());
+      }
+
+      for (const asin of asins) {
+        const marker = Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))
+          .find((element) => clean(element.dataset.asin).toUpperCase() === asin);
+        const link = document.querySelector<HTMLAnchorElement>('a[href*="/dp/' + asin + '"]');
+        const card = marker || link?.closest<HTMLElement>("[data-component-type='s-search-result'], article, li, div") || link?.parentElement;
+        if (!card) continue;
+
+        const title =
+          clean(marker?.dataset.sdtTitle) ||
+          clean(card.querySelector<HTMLElement>("h2 span")?.innerText) ||
+          clean(card.querySelector<HTMLElement>(".a-text-normal")?.innerText) ||
+          clean(card.querySelector<HTMLImageElement>("img")?.alt) ||
+          ("Prodotto Amazon " + asin);
+
+        const image = card.querySelector<HTMLImageElement>("img");
+        let imageUrl =
+          validImage(image?.getAttribute("data-old-hires")) ||
+          validImage(image?.getAttribute("data-src")) ||
+          validImage(image?.currentSrc) ||
+          validImage(image?.src);
+
+        if (!imageUrl && image?.getAttribute("srcset")) {
+          const candidates = image.getAttribute("srcset")!.split(",")
+            .map((part) => validImage(part.trim().split(/\s+/)[0]))
+            .filter((value): value is string => Boolean(value));
+          imageUrl = candidates.at(-1) || null;
+        }
+
+        const currentText =
+          card.querySelector<HTMLElement>(".a-price:not(.a-text-price) .a-offscreen")?.textContent ||
+          card.querySelector<HTMLElement>(".a-price-whole")?.textContent ||
+          null;
+        const fractionText = card.querySelector<HTMLElement>(".a-price-fraction")?.textContent || "00";
+        let currentPrice = money(currentText);
+        if (currentPrice == null && currentText && !currentText.includes(",")) {
+          currentPrice = money(clean(currentText) + "," + clean(fractionText));
+        }
+
+        const listPrice = money(
+          card.querySelector<HTMLElement>(".a-text-price .a-offscreen")?.textContent ||
+          card.querySelector<HTMLElement>("[data-a-strike='true'] .a-offscreen")?.textContent ||
+          null
+        );
+
+        const cardText = clean(card.innerText);
+        const explicitDiscount = cardText.match(/-\s*([0-9]{1,2})\s*%/)?.[1];
+        let discountPercent = explicitDiscount ? Number(explicitDiscount) : null;
+        if (discountPercent == null && currentPrice != null && listPrice != null && listPrice > currentPrice) {
+          discountPercent = Math.round(((listPrice - currentPrice) / listPrice) * 100);
+        }
+
+        results.set(asin, {
+          asin,
+          title: title.slice(0, 300),
+          imageUrl,
+          currentPrice,
+          listPrice: listPrice != null && currentPrice != null && listPrice > currentPrice ? listPrice : null,
+          discountPercent: discountPercent != null && discountPercent > 0 && discountPercent < 100 ? discountPercent : null,
+          haulCategory: null,
+        });
+      }
+
+      return [...results.values()];
+    }).catch(() => []);
+
+    return { html, asinCount: finalCount, scrolls, products };
   } finally {
     await browser.close();
   }
