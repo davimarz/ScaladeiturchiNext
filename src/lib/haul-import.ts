@@ -288,8 +288,10 @@ export function isAmazonOutletUrl(value: string) {
 export function isAmazonDealsUrl(value: string) {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase())) return false;
-    return url.pathname === "/deals" || url.pathname === "/offerte-lampo-del-giorno/s";
+    if (!/(^|\.)amazon\.it$/i.test(url.hostname)) return false;
+    return /\/gp\/goldbox\/?$/i.test(url.pathname) ||
+      /\/deals\/?$/i.test(url.pathname) ||
+      /offerte-lampo-del-giorno/i.test(url.pathname + url.search);
   } catch {
     return false;
   }
