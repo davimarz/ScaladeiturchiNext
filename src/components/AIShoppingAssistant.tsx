@@ -130,7 +130,7 @@ export default function AIShoppingAssistant() {
           maxLength={500}
         />
         <button type="submit" disabled={loading || query.trim().length < 3}>
-          {loading ? "Sto cercando…" : "Chiedi all'AI"}
+          {loading ? "Cerco e verifico prezzi…" : "Chiedi all'AI"}
         </button>
       </form>
 
@@ -184,7 +184,7 @@ export default function AIShoppingAssistant() {
       {!loading && products.length > 0 ? (
         <div className="aiMoreWrap">
           <button type="button" className="aiMoreButton" onClick={findMore} disabled={moreLoading || noMoreProducts}>
-            {moreLoading ? "Sto cercando altri prodotti…" : noMoreProducts ? "Nessun altro prodotto trovato" : "Trovane altri"}
+            {moreLoading ? "Cerco e verifico altri prodotti…" : noMoreProducts ? "Nessun altro prodotto trovato" : "Trovane altri"}
           </button>
         </div>
       ) : null}
