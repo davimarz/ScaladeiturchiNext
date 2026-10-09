@@ -319,16 +319,50 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
 
   const enrichedByAsin = new Map<string, ShoppingProduct>();
 
-  for (let offset = 0; offset < missing.length; offset += 3) {
-    const batch = missing.slice(offset, offset + 3);
+  // Accuracy-first: use the rendered Amazon product page first.
+  try {
+    const browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(missing.map((product) => product.asin));
+    for (const product of missing) {
+      const snapshot = browserSnapshots.get(product.asin);
+      if (!snapshot) continue;
+      enrichedByAsin.set(product.asin, {
+        ...product,
+        affiliateUrl: (snapshot.title || snapshot.imageUrl || snapshot.currentPrice != null)
+          ? affiliateUrl(product.asin)
+          : affiliateSearchUrl(product.asin),
+        title: snapshot.title && (product.title === product.asin || isRelevantProduct(snapshot.title, product.title))
+          ? snapshot.title
+          : product.title,
+        imageUrl: snapshot.imageUrl || product.imageUrl,
+        currentPrice: snapshot.currentPrice ?? product.currentPrice,
+        listPrice: snapshot.listPrice ?? product.listPrice,
+        discountPercent: snapshot.discountPercent ?? product.discountPercent,
+        currency: snapshot.currency ?? product.currency,
+      });
+    }
+  } catch (error) {
+    console.info("ai-shopping-browser-enrichment", error instanceof Error ? error.message : String(error));
+  }
+
+  let enriched = products.map((product) => enrichedByAsin.get(product.asin) ?? product);
+  const stillMissing = enriched.filter((product) => product.currentPrice == null || !product.imageUrl);
+  if (!stillMissing.length) return enriched;
+
+  // Fallback only for data the browser could not verify.
+  for (let offset = 0; offset < stillMissing.length; offset += 3) {
+    const batch = stillMissing.slice(offset, offset + 3);
     const results = await Promise.all(batch.map(async (product) => {
       try {
         const snapshot = await fetchAmazonProductSnapshot(product.asin);
         const offer = snapshot.offer;
         return {
           ...product,
-          affiliateUrl: (snapshot.title || snapshot.imageUrl || offer) ? affiliateUrl(product.asin) : affiliateSearchUrl(product.asin),
-          title: snapshot.title && (product.title === product.asin || isRelevantProduct(snapshot.title, product.title)) ? snapshot.title : product.title,
+          affiliateUrl: (snapshot.title || snapshot.imageUrl || offer)
+            ? affiliateUrl(product.asin)
+            : affiliateSearchUrl(product.asin),
+          title: snapshot.title && (product.title === product.asin || isRelevantProduct(snapshot.title, product.title))
+            ? snapshot.title
+            : product.title,
           imageUrl: snapshot.imageUrl || product.imageUrl,
           currentPrice: offer?.currentPrice ?? product.currentPrice,
           listPrice: offer?.listPrice ?? product.listPrice,
@@ -343,30 +377,7 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
     for (const product of results) enrichedByAsin.set(product.asin, product);
   }
 
-  let enriched = products.map((product) => enrichedByAsin.get(product.asin) ?? product);
-  const stillMissing = enriched.filter((product) => product.currentPrice == null || !product.imageUrl);
-  if (!stillMissing.length) return enriched;
-
-  try {
-    const browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(stillMissing.map((product) => product.asin));
-    enriched = enriched.map((product) => {
-      const snapshot = browserSnapshots.get(product.asin);
-      if (!snapshot) return product;
-      return {
-        ...product,
-        affiliateUrl: (snapshot.title || snapshot.imageUrl || snapshot.currentPrice != null) ? affiliateUrl(product.asin) : affiliateSearchUrl(product.asin),
-        title: snapshot.title && (product.title === product.asin || isRelevantProduct(snapshot.title, product.title)) ? snapshot.title : product.title,
-        imageUrl: snapshot.imageUrl || product.imageUrl,
-        currentPrice: snapshot.currentPrice ?? product.currentPrice,
-        listPrice: snapshot.listPrice ?? product.listPrice,
-        discountPercent: snapshot.discountPercent ?? product.discountPercent,
-        currency: snapshot.currency ?? product.currency,
-      };
-    });
-  } catch {
-    // Keep already verified data if browser enrichment is unavailable.
-  }
-
+  enriched = enriched.map((product) => enrichedByAsin.get(product.asin) ?? product);
   return enriched;
 }
 
