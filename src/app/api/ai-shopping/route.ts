@@ -91,7 +91,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    products = products.slice(0, 8);
+    // Keep source ranking within each group, but show verified prices first.
+    products = products.sort((a, b) => Number(b.currentPrice != null) - Number(a.currentPrice != null)).slice(0, 8);
 
     if (!products.length) {
       if (searchTotalTokens > 0) {
