@@ -24,6 +24,16 @@ async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeI
   let imagesRecovered = 0;
   let imagesMissing = 0;
 
+  let browserSnapshots = new Map<string, Awaited<ReturnType<typeof fetchAmazonProductSnapshotsWithBrowser>> extends Map<string, infer T> ? T : never>();
+  const browserTargets = existing.filter((product) => product.current_price == null || isGenericAmazonImage(product.image_url));
+  if (browserTargets.length) {
+    try {
+      browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(browserTargets.map((product) => product.asin));
+    } catch (error) {
+      console.warn("amazon-browser-snapshot-prerepair", error instanceof Error ? error.message : String(error));
+    }
+  }
+
   const weakTitleProducts = existing.filter((product) => needsProductTitleEnrichment(product.title));
   if (weakTitleProducts.length) {
     try {
@@ -73,16 +83,34 @@ async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeI
     const batch = existing.slice(offset, offset + 12);
     const results = await Promise.allSettled(
       batch.map(async (product) => {
+        const browserSnapshot = browserSnapshots.get(product.asin) ?? null;
         let snapshot: Awaited<ReturnType<typeof fetchAmazonProductSnapshot>> | null = null;
-        try {
-          snapshot = await fetchAmazonProductSnapshot(product.asin);
-        } catch {
-          snapshot = null;
+
+        if (!browserSnapshot?.currentPrice || !browserSnapshot?.imageUrl || !browserSnapshot?.title) {
+          try {
+            snapshot = await fetchAmazonProductSnapshot(product.asin);
+          } catch {
+            snapshot = null;
+          }
         }
-        const offer = snapshot?.offer ?? null;
+
+        const browserOffer = browserSnapshot?.currentPrice != null ? {
+          currentPrice: browserSnapshot.currentPrice,
+          listPrice: browserSnapshot.listPrice,
+          discountPercent: browserSnapshot.discountPercent,
+          currency: browserSnapshot.currency,
+        } : null;
+        const offer = browserOffer ?? snapshot?.offer ?? null;
         const imageNeedsRepair = isGenericAmazonImage(product.image_url);
-        const recoveredImage = imageNeedsRepair && snapshot?.imageUrl && !isGenericAmazonImage(snapshot.imageUrl) ? snapshot.imageUrl : null;
-        let recoveredTitle = snapshot?.title && snapshot.title !== product.title ? snapshot.title : null;
+        const browserImage = browserSnapshot?.imageUrl && !isGenericAmazonImage(browserSnapshot.imageUrl)
+          ? browserSnapshot.imageUrl
+          : null;
+        const recoveredImage = imageNeedsRepair
+          ? (browserImage ?? (snapshot?.imageUrl && !isGenericAmazonImage(snapshot.imageUrl) ? snapshot.imageUrl : null))
+          : null;
+        let recoveredTitle =
+          (browserSnapshot?.title && browserSnapshot.title !== product.title ? browserSnapshot.title : null) ??
+          (snapshot?.title && snapshot.title !== product.title ? snapshot.title : null);
         const genericExistingTitle = needsProductTitleEnrichment(product.title);
         if (!recoveredTitle && genericExistingTitle) {
           const searchTitle = await fetchAmazonSearchTitle(product.asin);
@@ -130,7 +158,7 @@ async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeI
         return {
           status: offer ? (hasChanged ? "changed" as const : "unchanged" as const) : "failed" as const,
           imageRecovered: Boolean(recoveredImage),
-          imageMissing: isGenericAmazonImage(product.image_url) && isGenericAmazonImage(snapshot?.imageUrl),
+          imageMissing: isGenericAmazonImage(product.image_url) && isGenericAmazonImage(browserSnapshot?.imageUrl) && isGenericAmazonImage(snapshot?.imageUrl),
         };
       }),
     );
@@ -173,9 +201,10 @@ export async function syncCatalogBatchByMembership(
   membership: "offerte-lambo" | "bestseller",
   limit = 2,
 ) {
-  const filter = membership === "offerte-lambo"
+  const membershipFilter = membership === "offerte-lambo"
     ? "in_offerte_lambo=eq.true"
     : "in_bestseller=eq.true";
+  const filter = membershipFilter + "&or=(current_price.is.null,image_url.is.null)";
   return syncExistingFromAmazonPages(filter, limit, true);
 }
 
