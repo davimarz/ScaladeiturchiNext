@@ -19,6 +19,7 @@ export type HaulBrowserResult = {
   asinCount: number;
   scrolls: number;
   products: BrowserListingProduct[];
+  asins: string[];
 };
 
 let cachedExecutablePath: string | null = null;
@@ -296,7 +297,42 @@ async function fetchAmazonWithFullScroll(
       throw new Error("Amazon blocked the browser session");
     }
 
-    const finalCount = await countAsins();
+    const discoveredAsins = await page.evaluate(() => {
+      const asins = new Set<string>();
+      const add = (value: string | null | undefined) => {
+        const asin = (value || "").trim().toUpperCase();
+        if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+      };
+
+      for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+        add(element.dataset.asin);
+      }
+
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+        const href = link.href || "";
+        const match =
+          href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+          href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
+        if (match) add(match[1]);
+      }
+
+      const html = document.documentElement.innerHTML;
+      const patterns = [
+        /["']asin["']\s*:\s*["']([A-Z0-9]{10})["']/gi,
+        /["']ASIN["']\s*:\s*["']([A-Z0-9]{10})["']/g,
+        /%22asin%22%3A%22([A-Z0-9]{10})%22/gi,
+        /\/dp\/([A-Z0-9]{10})(?:[/?#"'&]|$)/gi,
+        /\/gp\/product\/([A-Z0-9]{10})(?:[/?#"'&]|$)/gi,
+      ];
+      for (const pattern of patterns) {
+        let match: RegExpExecArray | null;
+        while ((match = pattern.exec(html)) !== null) add(match[1]);
+      }
+
+      return [...asins];
+    }).catch(() => []);
+
+    const finalCount = discoveredAsins.length;
     if (!Number.isFinite(finalCount) || finalCount < 1) {
       throw new Error(mode === "search"
         ? "No Amazon search products found after browser scrolling"
@@ -415,7 +451,22 @@ async function fetchAmazonWithFullScroll(
       return [...results.values()];
     }).catch(() => []);
 
-    return { html, asinCount: finalCount, scrolls, products };
+    const productMap = new Map(products.map((product) => [product.asin, product]));
+    for (const asin of discoveredAsins) {
+      if (productMap.has(asin)) continue;
+      productMap.set(asin, {
+        asin,
+        title: "Prodotto Amazon " + asin,
+        imageUrl: null,
+        currentPrice: null,
+        listPrice: null,
+        discountPercent: null,
+        haulCategory: null,
+      });
+    }
+
+    const mergedProducts = [...productMap.values()];
+    return { html, asinCount: discoveredAsins.length, scrolls, products: mergedProducts, asins: discoveredAsins };
   } finally {
     await browser.close();
   }
