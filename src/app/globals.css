@@ -33,3 +33,5 @@
 .productDescription{margin:8px 0 10px;border-top:1px solid var(--line);padding-top:7px}.productDescription summary{cursor:pointer;font-size:12px;font-weight:800;color:var(--sea)}.productDescription p{margin:7px 0 0;font-size:12px;line-height:1.45;color:var(--muted);white-space:normal}
 
 .catalogVerifyRunner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#f4f9f8}.catalogVerifyRunner strong{font-size:13px}.catalogVerifyRunner span{font-size:12px;color:var(--muted)}
+
+.quickImportSaveButton{border:1px solid var(--ink);background:#fff;color:var(--ink);padding:10px 12px;border-radius:7px;font-weight:800;cursor:pointer;white-space:nowrap}.quickImportSaveButton:hover{background:#f4f6f8}@media(max-width:900px){.quickImportControls{flex-wrap:wrap}.quickImportControls input{min-width:100%;flex-basis:100%}.quickImportSaveButton{flex:1}}
