@@ -14,8 +14,9 @@ async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeI
     discount_percent: number | null;
     image_url: string | null;
     title: string;
+    description: string | null;
   }>>(
-    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url,title" + order + "&limit=" + Math.max(1, Math.min(limit, 500)),
+    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url,title,description" + order + "&limit=" + Math.max(1, Math.min(limit, 500)),
   );
 
   let changed = 0;
@@ -25,7 +26,12 @@ async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeI
   let imagesMissing = 0;
 
   let browserSnapshots = new Map<string, Awaited<ReturnType<typeof fetchAmazonProductSnapshotsWithBrowser>> extends Map<string, infer T> ? T : never>();
-  const browserTargets = existing.filter((product) => product.current_price == null || isGenericAmazonImage(product.image_url));
+  const browserTargets = existing.filter((product) =>
+    product.current_price == null ||
+    isGenericAmazonImage(product.image_url) ||
+    !product.description ||
+    product.description.trim().length < 20
+  );
   if (browserTargets.length) {
     try {
       browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(browserTargets.map((product) => product.asin));
@@ -147,7 +153,9 @@ async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeI
         }
         if (recoveredImage) payload.image_url = recoveredImage;
         if (recoveredTitle) payload.title = recoveredTitle;
-        if (hasChanged || recoveredImage || recoveredTitle) payload.updated_at = now;
+        const recoveredDescription = browserSnapshot?.description?.replace(/\s+/g, " ").trim().slice(0, 1400) || null;
+        if (recoveredDescription && recoveredDescription !== product.description) payload.description = recoveredDescription;
+        if (hasChanged || recoveredImage || recoveredTitle || recoveredDescription) payload.updated_at = now;
 
         await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
           method: "PATCH",
@@ -204,7 +212,7 @@ export async function syncCatalogBatchByMembership(
   const membershipFilter = membership === "offerte-lambo"
     ? "in_offerte_lambo=eq.true"
     : "in_bestseller=eq.true";
-  const filter = membershipFilter + "&or=(current_price.is.null,image_url.is.null)";
+  const filter = membershipFilter + "&or=(current_price.is.null,image_url.is.null,description.is.null)";
   return syncExistingFromAmazonPages(filter, limit, true);
 }
 
