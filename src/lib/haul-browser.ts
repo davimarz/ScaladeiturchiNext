@@ -801,7 +801,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               document.querySelector<HTMLElement>("[data-a-color='price'] .a-offscreen")?.textContent ||
               document.querySelector<HTMLElement>("#priceblock_ourprice, #priceblock_dealprice, #price_inside_buybox")?.textContent ||
               null;
-            let listText =
+            const listText =
               document.querySelector<HTMLElement>(".basisPrice .a-offscreen, .a-text-price .a-offscreen")?.textContent ||
               document.querySelector<HTMLElement>("[data-a-strike='true'] .a-offscreen")?.textContent ||
               document.querySelector<HTMLElement>("#listPrice")?.textContent ||
