@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const DEFAULT_LAMBO_URL = "https://www.amazon.it/deals?ref_=nav_cs_gb&bubble-id=deals-collection-lightning-deals";
+const DEFAULT_LAMBO_URL = "https://www.amazon.it/gp/goldbox/?ie=UTF8&ref_=topnav_storetab_gb";
 const PARTNER_TAG = "eiapromo-21";
 const MAX_HTML_BYTES = 40 * 1024 * 1024;
 
