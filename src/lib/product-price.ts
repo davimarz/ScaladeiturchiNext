@@ -6,7 +6,7 @@ type PriceProduct = {
 
 export function getProductPrice(product: PriceProduct, now: number) {
   const current = product.current_price;
-  if (current == null || !Number.isFinite(current) || current < 0 || !product.price_verified_at) return null;
+  if (current == null || !Number.isFinite(current) || current <= 0 || !product.price_verified_at) return null;
   const verified = Date.parse(product.price_verified_at);
   if (!Number.isFinite(verified) || !Number.isFinite(now) || verified > now) return null;
   const reference = product.list_price != null && Number.isFinite(product.list_price) && product.list_price > current ? product.list_price : null;

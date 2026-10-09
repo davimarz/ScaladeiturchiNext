@@ -1,392 +1,85 @@
 import "server-only";
-import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle, needsProductTitleEnrichment } from "./amazon-page-offer";
+import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
+import { fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
 import { supabaseAdminFetch } from "./supabase/admin";
-import { fetchAmazonProductImagesWithBrowser, fetchAmazonProductSnapshotsWithBrowser, fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
-import { isGenericAmazonImage } from "./amazon-input";
+import { catalogConfig, type Catalog } from "./catalog-config";
+import { mergeCatalogData, missingCatalogData, validPrice, type CatalogData } from "./catalog-product";
 
-async function syncExistingFromAmazonPages(filter = "", limit = 500, prioritizeIncomplete = false) {
-  const suffix = filter ? "&" + filter : "";
-  const order = "&order=updated_at.asc";
-  const existing = await supabaseAdminFetch<Array<{
-    asin: string;
-    current_price: number | null;
-    list_price: number | null;
-    discount_percent: number | null;
-    image_url: string | null;
-    title: string;
-    description: string | null;
-  }>>(
-    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url,title,description" + order + "&limit=" + Math.max(1, Math.min(limit, 500)),
-  );
-
-  let changed = 0;
-  let unchanged = 0;
-  let failed = 0;
-  let imagesRecovered = 0;
-  let imagesMissing = 0;
-
-  let browserSnapshots = new Map<string, Awaited<ReturnType<typeof fetchAmazonProductSnapshotsWithBrowser>> extends Map<string, infer T> ? T : never>();
-  const browserTargets = existing.filter((product) =>
-    product.current_price == null ||
-    isGenericAmazonImage(product.image_url) ||
-    !product.description ||
-    product.description.trim().length < 20
-  );
-  if (browserTargets.length) {
-    try {
-      browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(browserTargets.map((product) => product.asin));
-    } catch (error) {
-      console.warn("amazon-browser-snapshot-prerepair", error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  const weakTitleProducts = existing.filter((product) => needsProductTitleEnrichment(product.title));
-  if (weakTitleProducts.length) {
-    try {
-      const browserTitles = await fetchAmazonProductTitlesWithBrowser(weakTitleProducts.map((product) => product.asin));
-      for (let offset = 0; offset < weakTitleProducts.length; offset += 8) {
-        const batch = weakTitleProducts.slice(offset, offset + 8);
-        await Promise.all(batch.map(async (product) => {
-          const title = browserTitles.get(product.asin);
-          if (!title || needsProductTitleEnrichment(title)) return;
-          product.title = title;
-          await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-            method: "PATCH",
-            headers: { Prefer: "return=minimal" },
-            body: JSON.stringify({ title, updated_at: new Date().toISOString() }),
-          });
-        }));
-      }
-    } catch (error) {
-      console.warn("amazon-title-prerepair", error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  const weakImageProducts = existing.filter((product) => isGenericAmazonImage(product.image_url));
-  if (weakImageProducts.length) {
-    try {
-      const browserImages = await fetchAmazonProductImagesWithBrowser(weakImageProducts.map((product) => product.asin));
-      for (let offset = 0; offset < weakImageProducts.length; offset += 8) {
-        const batch = weakImageProducts.slice(offset, offset + 8);
-        await Promise.all(batch.map(async (product) => {
-          const imageUrl = browserImages.get(product.asin);
-          if (!imageUrl || isGenericAmazonImage(imageUrl)) return;
-          product.image_url = imageUrl;
-          imagesRecovered++;
-          await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-            method: "PATCH",
-            headers: { Prefer: "return=minimal" },
-            body: JSON.stringify({ image_url: imageUrl, updated_at: new Date().toISOString() }),
-          });
-        }));
-      }
-    } catch (error) {
-      console.warn("amazon-image-prerepair", error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  for (let offset = 0; offset < existing.length; offset += 12) {
-    const batch = existing.slice(offset, offset + 12);
-    const results = await Promise.allSettled(
-      batch.map(async (product) => {
-        const browserSnapshot = browserSnapshots.get(product.asin) ?? null;
-        let snapshot: Awaited<ReturnType<typeof fetchAmazonProductSnapshot>> | null = null;
-
-        if (!browserSnapshot?.currentPrice || !browserSnapshot?.imageUrl || !browserSnapshot?.title) {
-          try {
-            snapshot = await fetchAmazonProductSnapshot(product.asin);
-          } catch {
-            snapshot = null;
-          }
-        }
-
-        const browserOffer = browserSnapshot?.currentPrice != null ? {
-          currentPrice: browserSnapshot.currentPrice,
-          listPrice: browserSnapshot.listPrice,
-          discountPercent: browserSnapshot.discountPercent,
-          currency: browserSnapshot.currency,
-        } : null;
-        const offer = browserOffer ?? snapshot?.offer ?? null;
-        const imageNeedsRepair = isGenericAmazonImage(product.image_url);
-        const browserImage = browserSnapshot?.imageUrl && !isGenericAmazonImage(browserSnapshot.imageUrl)
-          ? browserSnapshot.imageUrl
-          : null;
-        const recoveredImage = imageNeedsRepair
-          ? (browserImage ?? (snapshot?.imageUrl && !isGenericAmazonImage(snapshot.imageUrl) ? snapshot.imageUrl : null))
-          : null;
-        let recoveredTitle =
-          (browserSnapshot?.title && browserSnapshot.title !== product.title ? browserSnapshot.title : null) ??
-          (snapshot?.title && snapshot.title !== product.title ? snapshot.title : null);
-        const genericExistingTitle = needsProductTitleEnrichment(product.title);
-        if (!recoveredTitle && genericExistingTitle) {
-          const searchTitle = await fetchAmazonSearchTitle(product.asin);
-          if (searchTitle && searchTitle !== product.title && searchTitle.length > product.title.length) {
-            recoveredTitle = searchTitle;
-          }
-        }
-
-        if (!offer && !recoveredImage && !recoveredTitle) {
-          if (prioritizeIncomplete) {
-            await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-              method: "PATCH",
-              headers: { Prefer: "return=minimal" },
-              body: JSON.stringify({ updated_at: new Date().toISOString() }),
-            }).catch(() => undefined);
-          }
-          return { status: "failed" as const, imageRecovered: false, imageMissing: isGenericAmazonImage(product.image_url) };
-        }
-
-        const hasChanged = offer ? (
-          product.current_price !== offer.currentPrice ||
-          product.list_price !== offer.listPrice ||
-          product.discount_percent !== offer.discountPercent
-        ) : false;
-
-        const now = new Date().toISOString();
-        const payload: Record<string, unknown> = {};
-        if (offer) {
-          payload.current_price = offer.currentPrice;
-          payload.list_price = offer.listPrice;
-          payload.discount_percent = offer.discountPercent;
-          payload.currency = offer.currency;
-          payload.price_verified_at = now;
-        }
-        if (recoveredImage) payload.image_url = recoveredImage;
-        if (recoveredTitle) payload.title = recoveredTitle;
-        const recoveredDescription = browserSnapshot?.description?.replace(/\s+/g, " ").trim().slice(0, 1400) || null;
-        if (recoveredDescription && recoveredDescription !== product.description) payload.description = recoveredDescription;
-        if (hasChanged || recoveredImage || recoveredTitle || recoveredDescription) payload.updated_at = now;
-
-        await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-          method: "PATCH",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify(payload),
-        });
-
-        return {
-          status: offer ? (hasChanged ? "changed" as const : "unchanged" as const) : "failed" as const,
-          imageRecovered: Boolean(recoveredImage),
-          imageMissing: isGenericAmazonImage(product.image_url) && isGenericAmazonImage(browserSnapshot?.imageUrl) && isGenericAmazonImage(snapshot?.imageUrl),
-        };
-      }),
-    );
-
-    for (const result of results) {
-      if (result.status === "rejected") {
-        failed++;
-        continue;
-      }
-      if (result.value.status === "changed") changed++;
-      else if (result.value.status === "unchanged") unchanged++;
-      else failed++;
-
-      if (result.value.imageRecovered) imagesRecovered++;
-      if (result.value.imageMissing) imagesMissing++;
-    }
-  }
-
-  return {
-    productsSeen: existing.length,
-    productsUpdated: changed,
-    productsChanged: changed,
-    productsUnchanged: unchanged,
-    productsFailed: failed,
-    imagesRecovered,
-    imagesMissing,
-  };
+type ProductRow = {
+  asin: string; title: string; description: string | null; image_url: string | null;
+  current_price: number | null; list_price: number | null; discount_percent: number | null;
+  [key: string]: string | number | null;
+};
+function rowData(product: ProductRow): CatalogData {
+  return { title: product.title, description: product.description, imageUrl: product.image_url,
+    currentPrice: product.current_price, listPrice: product.list_price, discountPercent: product.discount_percent };
 }
-
-export async function syncCatalogPricesByMembership(membership: "haul" | "offerte-lambo" | "bestseller") {
-  const filter = membership === "haul"
-    ? "in_haul=eq.true"
-    : membership === "offerte-lambo"
-      ? "in_offerte_lambo=eq.true"
-      : "in_bestseller=eq.true";
-  return syncExistingFromAmazonPages(filter);
-}
-
-export async function syncCatalogBatchByMembership(
-  membership: "offerte-lambo" | "bestseller",
-  limit = 2,
-) {
-  const membershipFilter = membership === "offerte-lambo"
-    ? "in_offerte_lambo=eq.true"
-    : "in_bestseller=eq.true";
-  const filter = membershipFilter + "&or=(current_price.is.null,image_url.is.null,description.is.null)";
-  return syncExistingFromAmazonPages(filter, limit, true);
-}
-
-
-export async function verifyCatalogProductsBatch(
-  membership: "offerte-lambo" | "bestseller",
-  limit = 6,
-) {
-  const isLambo = membership === "offerte-lambo";
-  const filter = isLambo ? "in_offerte_lambo=eq.true" : "in_bestseller=eq.true";
-  const statusColumn = isLambo ? "lambo_verification_status" : "bestseller_verification_status";
-  const attemptsColumn = isLambo ? "lambo_verification_attempts" : "bestseller_verification_attempts";
-  const verifiedAtColumn = isLambo ? "lambo_verified_at" : "bestseller_verified_at";
-  const errorColumn = isLambo ? "lambo_last_verification_error" : "bestseller_last_verification_error";
-
-  const products = await supabaseAdminFetch<Array<{
-    asin: string;
-    title: string;
-    description: string | null;
-    image_url: string | null;
-    current_price: number | null;
-    list_price: number | null;
-    discount_percent: number | null;
-    lambo_verified_at: string | null;
-    lambo_verification_status: string;
-    lambo_verification_attempts: number;
-    bestseller_verified_at: string | null;
-    bestseller_verification_status: string;
-    bestseller_verification_attempts: number;
-  }>>(
-    "products?active=eq.true&" + filter +
-    "&" + statusColumn + "=eq.pending" +
-    "&select=asin,title,description,image_url,current_price,list_price,discount_percent,lambo_verified_at,lambo_verification_status,lambo_verification_attempts,bestseller_verified_at,bestseller_verification_status,bestseller_verification_attempts" +
-    "&order=" + attemptsColumn + ".asc,updated_at.asc&limit=" + Math.max(1, Math.min(limit, 12)),
-  );
-
-  if (!products.length) {
-    return { checked: 0, verified: 0, pending: 0, failed: 0 };
-  }
-
-  let snapshots = new Map<string, {
-    title: string | null;
-    description: string | null;
-    imageUrl: string | null;
-    currentPrice: number | null;
-    listPrice: number | null;
-    discountPercent: number | null;
-    currency: "EUR";
-  }>();
-
-  try {
-    snapshots = await fetchAmazonProductSnapshotsWithBrowser(products.map((product) => product.asin));
-  } catch (error) {
-    console.warn("catalog-browser-batch", error instanceof Error ? error.message : String(error));
-  }
-
-  // If Chromium fails or Amazon blocks part of the batch, retry each missing ASIN
-  // with the lighter direct product-page reader instead of dropping the whole batch.
-  for (const product of products) {
-    if (snapshots.has(product.asin)) continue;
-    try {
-      const direct = await fetchAmazonProductSnapshot(product.asin);
-      if (direct.title || direct.imageUrl || direct.offer) {
-        snapshots.set(product.asin, {
-          title: direct.title,
-          description: product.description,
-          imageUrl: direct.imageUrl,
-          currentPrice: direct.offer?.currentPrice ?? null,
-          listPrice: direct.offer?.listPrice ?? null,
-          discountPercent: direct.offer?.discountPercent ?? null,
-          currency: direct.offer?.currency ?? "EUR",
-        });
-      }
-    } catch {
-      // The per-product failure is recorded below.
-    }
-  }
-  let verified = 0;
-  let pending = 0;
-  let failed = 0;
-
-  for (const product of products) {
-    const snapshot = snapshots.get(product.asin);
-    const now = new Date().toISOString();
-    const previousAttempts = isLambo
-      ? product.lambo_verification_attempts
-      : product.bestseller_verification_attempts;
-    const previousVerifiedAt = isLambo
-      ? product.lambo_verified_at
-      : product.bestseller_verified_at;
-    const attempts = (previousAttempts || 0) + 1;
-
-    if (!snapshot) {
-      failed++;
-      await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=minimal" },
-        body: JSON.stringify({
-          [statusColumn]: attempts >= 8 ? "failed" : "pending",
-          [attemptsColumn]: attempts,
-          [errorColumn]: "Pagina Amazon non leggibile o bloccata",
-          updated_at: now,
-        }),
-      });
-      continue;
-    }
-
-    const title = snapshot.title && !needsProductTitleEnrichment(snapshot.title)
-      ? snapshot.title
-      : product.title;
-    const description = (snapshot.description || product.description || "").replace(/\s+/g, " ").trim().slice(0, 1400) || null;
-    const imageUrl = snapshot.imageUrl && !isGenericAmazonImage(snapshot.imageUrl)
-      ? snapshot.imageUrl
-      : product.image_url;
-    const currentPrice = snapshot.currentPrice ?? product.current_price;
-    const listPrice = snapshot.currentPrice != null ? snapshot.listPrice : product.list_price;
-    const discountPercent = snapshot.currentPrice != null ? snapshot.discountPercent : product.discount_percent;
-
-    const titleOk = Boolean(title && !needsProductTitleEnrichment(title));
-    const imageOk = Boolean(imageUrl && !isGenericAmazonImage(imageUrl));
-    const priceOk = currentPrice != null && Number.isFinite(Number(currentPrice)) && Number(currentPrice) > 0 && Number(currentPrice) < 10000;
-    const complete = titleOk && imageOk && priceOk;
-
-    const missing = [
-      titleOk ? null : "titolo",
-      imageOk ? null : "immagine",
-      priceOk ? null : "prezzo",
-    ].filter(Boolean).join(", ");
-
-    await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({
-        title,
-        description,
-        image_url: imageUrl,
-        current_price: currentPrice,
-        list_price: listPrice,
-        discount_percent: discountPercent,
-        currency: snapshot.currency,
-        price_verified_at: snapshot.currentPrice != null ? now : undefined,
-        [verifiedAtColumn]: complete ? now : previousVerifiedAt,
-        [statusColumn]: complete ? "verified" : (attempts >= 8 ? "failed" : "pending"),
-        [attemptsColumn]: attempts,
-        [errorColumn]: complete ? null : "Dati mancanti: " + missing,
-        updated_at: now,
-      }),
-    });
-
-    if (complete) verified++;
-    else if (attempts >= 8) failed++;
-    else pending++;
-  }
-
-  return { checked: products.length, verified, pending, failed };
-}
-
-export async function markCatalogVerificationPending(
-  membership: "offerte-lambo" | "bestseller",
-) {
-  const isLambo = membership === "offerte-lambo";
-  const filter = isLambo ? "in_offerte_lambo=eq.true" : "in_bestseller=eq.true";
-  const statusColumn = isLambo ? "lambo_verification_status" : "bestseller_verification_status";
-  const attemptsColumn = isLambo ? "lambo_verification_attempts" : "bestseller_verification_attempts";
-  const errorColumn = isLambo ? "lambo_last_verification_error" : "bestseller_last_verification_error";
-
-  await supabaseAdminFetch("products?active=eq.true&" + filter, {
-    method: "PATCH",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({
-      [statusColumn]: "pending",
-      [attemptsColumn]: 0,
-      [errorColumn]: null,
-    }),
+export async function markCatalogVerificationPending(catalog: Catalog) {
+  const { membership, prefix } = catalogConfig[catalog];
+  await supabaseAdminFetch("products?active=eq.true&" + membership + "=eq.true", {
+    method: "PATCH", headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ [prefix + "_verification_status"]: "pending", [prefix + "_verification_attempts"]: 0, [prefix + "_last_verification_error"]: null }),
   });
 }
-
+export async function catalogVerificationSummary(catalog: Catalog) {
+  const { membership, prefix } = catalogConfig[catalog];
+  const products = await supabaseAdminFetch<Array<{ status: string }>>(
+    `products?active=eq.true&${membership}=eq.true&select=status:${prefix}_verification_status&limit=1000`,
+  );
+  return { total: products.length, remaining: products.filter(p => p.status === "pending").length,
+    complete: products.filter(p => p.status === "verified").length, incomplete: products.filter(p => p.status === "failed").length };
+}
+export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
+  const { membership, prefix } = catalogConfig[catalog];
+  const status = prefix + "_verification_status";
+  const attemptsColumn = prefix + "_verification_attempts";
+  const products = await supabaseAdminFetch<ProductRow[]>(
+    `products?active=eq.true&${membership}=eq.true&${status}=eq.pending&select=asin,title,description,image_url,current_price,list_price,discount_percent,${attemptsColumn},${prefix}_verified_at&order=${attemptsColumn}.asc,updated_at.asc&limit=${Math.max(1, Math.min(limit, 6))}`,
+  );
+  if (!products.length) return { checked: 0, verified: 0, pending: 0, failed: 0, imagesRecovered: 0, imagesMissing: 0 };
+  const snapshots = new Map<string, Partial<CatalogData>>();
+  // Cheap reader first; one Chromium batch only for observations still incomplete.
+  await Promise.allSettled(products.map(async product => {
+    const direct = await fetchAmazonProductSnapshot(product.asin);
+    snapshots.set(product.asin, { title: direct.title, description: direct.description, imageUrl: direct.imageUrl,
+      currentPrice: direct.offer?.currentPrice ?? null, listPrice: direct.offer?.listPrice ?? null, discountPercent: direct.offer?.discountPercent ?? null });
+  }));
+  const browserTargets = products.filter(p => missingCatalogData(mergeCatalogData(rowData(p), snapshots.get(p.asin) || {})).length > 0 || !validPrice(snapshots.get(p.asin)?.currentPrice));
+  if (browserTargets.length) {
+    try {
+      const browser = await fetchAmazonProductSnapshotsWithBrowser(browserTargets.map(p => p.asin));
+      for (const [asin, snapshot] of browser) {
+        const direct = snapshots.get(asin);
+        snapshots.set(asin, mergeCatalogData({ title: direct?.title ?? null, description: direct?.description ?? null,
+          imageUrl: direct?.imageUrl ?? null, currentPrice: direct?.currentPrice ?? null,
+          listPrice: direct?.listPrice ?? null, discountPercent: direct?.discountPercent ?? null }, snapshot));
+      }
+    } catch (error) { console.warn("catalog-browser-batch", error instanceof Error ? error.message : String(error)); }
+  }
+  let verified = 0, pending = 0, failed = 0, imagesRecovered = 0, imagesMissing = 0;
+  // Persist each product before continuing; a later timeout cannot discard earlier work.
+  for (const product of products) {
+    const observation = snapshots.get(product.asin) || {};
+    const data = mergeCatalogData(rowData(product), observation);
+    const missing = missingCatalogData(data);
+    const freshPrice = validPrice(observation.currentPrice);
+    const complete = missing.length === 0 && freshPrice;
+    const attempts = Number(product[attemptsColumn] || 0) + 1;
+    const nextStatus = complete ? "verified" : attempts >= 3 ? "failed" : "pending";
+    const now = new Date().toISOString();
+    await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ title: data.title, description: data.description, image_url: data.imageUrl,
+        current_price: data.currentPrice, list_price: data.listPrice, discount_percent: data.discountPercent,
+        price_verified_at: freshPrice ? now : undefined, currency: "EUR", updated_at: now,
+        [status]: nextStatus, [attemptsColumn]: attempts,
+        [prefix + "_verified_at"]: complete ? now : undefined,
+        [prefix + "_last_verification_error"]: complete ? null : "Dati mancanti o non riletti: " + [...missing, ...(!freshPrice ? ["prezzo aggiornato"] : [])].join(", "),
+      }),
+    });
+    if (complete) verified++; else if (nextStatus === "failed") failed++; else pending++;
+    if (data.imageUrl && data.imageUrl !== product.image_url) imagesRecovered++;
+    if (missing.includes("immagine")) imagesMissing++;
+  }
+  return { checked: products.length, verified, pending, failed, imagesRecovered, imagesMissing };
+}

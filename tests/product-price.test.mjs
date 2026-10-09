@@ -13,7 +13,7 @@ test("retains an older observation while marking it as historical",()=>{
  assert.equal(price.fresh,false);assert.equal(price.current,41.94);assert.equal(price.discount,24);
 });
 test("does not display missing, unverified, invalid or future prices",()=>{
- for(const patch of [{current_price:null},{current_price:NaN},{current_price:-1},{price_verified_at:null},{price_verified_at:"invalid"},{price_verified_at:new Date(now+1).toISOString()}]){
+ for(const patch of [{current_price:null},{current_price:NaN},{current_price:-1},{current_price:0},{price_verified_at:null},{price_verified_at:"invalid"},{price_verified_at:new Date(now+1).toISOString()}]){
   assert.equal(getProductPrice({...product,...patch},now),null);
  }
 });

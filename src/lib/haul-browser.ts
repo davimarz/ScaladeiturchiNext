@@ -12,6 +12,8 @@ export type BrowserListingProduct = {
   listPrice: number | null;
   discountPercent: number | null;
   haulCategory: string | null;
+  description?: string | null;
+  bestsellerRank?: number | null;
 };
 
 export type HaulBrowserResult = {
@@ -85,13 +87,7 @@ async function fetchAmazonWithFullScroll(
       Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
     });
 
-    const candidateUrls = mode === "search"
-      ? [
-          url,
-          "https://www.amazon.it/gp/goldbox/?ie=UTF8&ref_=topnav_storetab_gb",
-          "https://www.amazon.it/s?k=offerte+lampo+del+giorno",
-        ]
-      : [url];
+    const candidateUrls = [url];
 
     let loaded = false;
     let lastStatus = 0;
@@ -390,7 +386,19 @@ async function fetchAmazonWithFullScroll(
             href.includes("asin=" + asin) ||
             href.includes("ASIN=" + asin);
         }) || null;
-        const card = marker || link?.closest<HTMLElement>("[data-component-type='s-search-result'], article, li, div") || link?.parentElement;
+        let card = marker || link?.closest<HTMLElement>("[data-component-type='s-search-result'], article, li, div") || link?.parentElement;
+        // A nested marker often contains only the image/link. Expand within this ASIN's card.
+        while (card?.parentElement && card.parentElement !== document.body) {
+          const parent = card.parentElement;
+          const ids = new Set(Array.from(parent.querySelectorAll<HTMLElement>("[data-asin]"))
+            .map(el => clean(el.dataset.asin).toUpperCase()).filter(id => /^[A-Z0-9]{10}$/.test(id)));
+          for (const anchor of Array.from(parent.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+            const id = anchor.href.match(/\/dp\/([A-Z0-9]{10})/i)?.[1];
+            if (id) ids.add(id.toUpperCase());
+          }
+          if ([...ids].some(id => id !== asin)) break;
+          card = parent;
+        }
         if (!card) continue;
 
         const title =
@@ -414,15 +422,10 @@ async function fetchAmazonWithFullScroll(
           imageUrl = candidates.at(-1) || null;
         }
 
-        const currentText =
-          card.querySelector<HTMLElement>(".a-price:not(.a-text-price) .a-offscreen")?.textContent ||
-          card.querySelector<HTMLElement>(".a-price-whole")?.textContent ||
-          null;
-        const fractionText = card.querySelector<HTMLElement>(".a-price-fraction")?.textContent || "00";
-        let currentPrice = money(currentText);
-        if (currentPrice == null && currentText && !currentText.includes(",")) {
-          currentPrice = money(clean(currentText) + "," + clean(fractionText));
-        }
+        const offscreen = card.querySelector<HTMLElement>(".a-price:not(.a-text-price) .a-offscreen")?.textContent;
+        const whole = card.querySelector<HTMLElement>(".a-price-whole")?.textContent;
+        const fraction = card.querySelector<HTMLElement>(".a-price-fraction")?.textContent || "00";
+        const currentPrice = offscreen ? money(offscreen) : whole ? money(clean(whole).replace(/[.,]$/, "") + "," + clean(fraction)) : null;
 
         const listPrice = money(
           card.querySelector<HTMLElement>(".a-text-price .a-offscreen")?.textContent ||
@@ -524,7 +527,7 @@ export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
             waitUntil: "domcontentloaded",
             timeout: 20_000,
           });
-          if (!response || [403, 429, 503].includes(response.status())) return [asin, null] as const;
+          if (!response || response.status() >= 400) return [asin, null] as const;
 
           const data = await page.evaluate(() => {
             const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
@@ -630,7 +633,7 @@ export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
             waitUntil: "domcontentloaded",
             timeout: 20_000,
           });
-          if (!response || [403, 429, 503].includes(response.status())) return [asin, null] as const;
+          if (!response || response.status() >= 400) return [asin, null] as const;
 
           const image = await page.evaluate(() => {
             const candidates: string[] = [];
@@ -755,7 +758,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             waitUntil: "domcontentloaded",
             timeout: 20_000,
           });
-          if (!response || [403, 429, 503].includes(response.status())) return [asin, null] as const;
+          if (!response || response.status() >= 400) return [asin, null] as const;
 
           const snapshot = await page.evaluate((targetAsin) => {
             const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
@@ -870,7 +873,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             return { title, description, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
           }, asin).catch(() => null);
 
-          if (snapshot && snapshot.currentPrice != null && snapshot.imageUrl) {
+          if (snapshot && snapshot.currentPrice != null && snapshot.imageUrl && snapshot.description) {
             return [asin, snapshot] as const;
           }
 
@@ -891,7 +894,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               return Number.isFinite(amount) && amount > 0 ? amount : null;
             };
             const title = clean(card.querySelector<HTMLElement>("h2 span")?.innerText || card.querySelector<HTMLImageElement>("img")?.alt) || null;
-            const description = clean(card.innerText).slice(0, 900) || null;
+            const description = null; // Listing chrome is not a product description.
             const imageUrl = card.querySelector<HTMLImageElement>("img")?.currentSrc || card.querySelector<HTMLImageElement>("img")?.src || null;
             const currentPrice = parseMoney(card.querySelector<HTMLElement>(".a-price:not(.a-text-price) .a-offscreen")?.textContent);
             let listPrice = parseMoney(card.querySelector<HTMLElement>(".a-text-price .a-offscreen")?.textContent);
@@ -909,10 +912,13 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             description: snapshot.description || fallback.description,
             imageUrl: snapshot.imageUrl || fallback.imageUrl,
             currentPrice: snapshot.currentPrice ?? fallback.currentPrice,
-            listPrice: snapshot.listPrice ?? fallback.listPrice,
-            discountPercent: snapshot.discountPercent ?? fallback.discountPercent,
+            listPrice: snapshot.currentPrice != null ? snapshot.listPrice : fallback.listPrice,
+            discountPercent: snapshot.currentPrice != null ? snapshot.discountPercent : fallback.discountPercent,
             currency: "EUR" as const,
           }] as const;
+        } catch (error) {
+          console.warn("amazon-product-snapshot", asin, error instanceof Error ? error.message : String(error));
+          return [asin, null] as const;
         } finally {
           await page.close().catch(() => undefined);
         }

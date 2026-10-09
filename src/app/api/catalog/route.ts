@@ -26,7 +26,7 @@ function safeSearch(value: string) {
   return value.replace(/[,%()]/g, " ").trim().slice(0, 120);
 }
 
-export async function GET(request: NextRequest) {
+async function getCatalog(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const q = safeSearch(searchParams.get("q") ?? "");
   const category = safeSearch(searchParams.get("category") ?? "");
@@ -34,14 +34,17 @@ export async function GET(request: NextRequest) {
   const haulCategory = safeSearch(searchParams.get("haul_category") ?? "");
   const limit = catalogLimit(searchParams.get("limit"));
 
-  const queryLimit = category === "offerte-lambo" ? Math.min(limit * 5, 200) : limit;
+  const requestedOffset = Number(searchParams.get("offset") || 0);
+  const offset = Number.isFinite(requestedOffset) ? Math.min(10000, Math.max(0, Math.floor(requestedOffset))) : 0;
+  const queryLimit = limit + 1;
   const filters = [
     "active=eq.true",
     "select=id,asin,title,description,image_url,affiliate_url,current_price,list_price,currency,discount_percent,price_verified_at,featured,category_id,haul_category,bestseller_rank",
     `limit=${queryLimit}`,
+    `offset=${offset}`,
     category === "bestseller"
-      ? "order=bestseller_rank.asc.nullslast,updated_at.desc"
-      : "order=current_price.asc.nullslast,updated_at.desc",
+      ? "order=bestseller_rank.asc.nullslast,id.asc"
+      : "order=current_price.asc.nullslast,id.asc",
   ];
 
   if (q) filters.push(`title=ilike.*${encodeURIComponent(q)}*`);
@@ -51,10 +54,8 @@ export async function GET(request: NextRequest) {
     if (haulCategory) filters.push(`haul_category=eq.${encodeURIComponent(haulCategory)}`);
   } else if (category === "offerte-lambo") {
     filters.push("in_offerte_lambo=eq.true");
-    filters.push("image_url=not.is.null");
   } else if (category === "bestseller") {
     filters.push("in_bestseller=eq.true");
-    filters.push("image_url=not.is.null");
   } else if (category === "outlet") {
     filters.push("in_outlet=eq.true");
   } else {
@@ -72,75 +73,10 @@ export async function GET(request: NextRequest) {
     if (excludeSpecial.includes("bestseller")) filters.push("in_bestseller=eq.false");
   }
 
-  let rawProducts = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
-  if (category === "haul") {
-    rawProducts = rawProducts.filter((product) =>
-      !/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida/i.test(product.title)
-    );
-  }
-
-  const isGenericAmazonImage = (value: string | null) =>
-    Boolean(value && /\/11\+\+B3A2NEL\._SS200_\.png(?:\?|$)/i.test(value));
-
-  const imageFingerprint = (value: string | null) => {
-    if (!value || isGenericAmazonImage(value)) return "";
-    try {
-      const url = new URL(value);
-      return url.pathname.replace(/\._[^/]+_\.(jpe?g|png|webp)$/i, ".$1").toLowerCase();
-    } catch {
-      return value.toLowerCase();
-    }
-  };
-
-  const products = category === "offerte-lambo"
-    ? (() => {
-        const score = (row: ProductRow) =>
-          (row.image_url && !isGenericAmazonImage(row.image_url) ? 4 : 0) +
-          (row.image_url ? 1 : 0) +
-          Math.min(row.title.length, 120) / 120 +
-          (row.price_verified_at ? 0.25 : 0);
-
-        const bestBySignature = new Map<string, ProductRow>();
-        for (const product of rawProducts) {
-          const title = product.title.trim().toLowerCase().replace(/\s+/g, " ");
-          const priceSignature = [
-            product.current_price ?? "",
-            product.list_price ?? "",
-            product.discount_percent ?? "",
-          ].join("|");
-          const signature = title + "|" + priceSignature;
-
-          const current = bestBySignature.get(signature);
-          if (!current || score(product) > score(current)) bestBySignature.set(signature, product);
-        }
-
-        const bestByImage = new Map<string, ProductRow>();
-        const withoutImageKey: ProductRow[] = [];
-        for (const product of bestBySignature.values()) {
-          const fingerprint = imageFingerprint(product.image_url);
-          if (!fingerprint) {
-            withoutImageKey.push(product);
-            continue;
-          }
-          const priceSignature = [
-            product.current_price ?? "",
-            product.list_price ?? "",
-            product.discount_percent ?? "",
-          ].join("|");
-          const key = fingerprint + "|" + priceSignature;
-          const current = bestByImage.get(key);
-          if (!current || score(product) > score(current)) bestByImage.set(key, product);
-        }
-
-        return [...bestByImage.values(), ...withoutImageKey]
-          .sort((a, b) => {
-            const aPrice = a.current_price ?? Number.POSITIVE_INFINITY;
-            const bPrice = b.current_price ?? Number.POSITIVE_INFINITY;
-            return aPrice - bPrice;
-          })
-          .slice(0, limit);
-      })()
-    : rawProducts;
+  // ASIN has a unique constraint. Different ASINs may share a picture (size/colour variants).
+  const rows = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
+  const products = rows.slice(0, limit);
+  const hasMore = rows.length > limit;
 
   let haulCategories: string[] = [];
   if (category === "haul") {
@@ -150,7 +86,15 @@ export async function GET(request: NextRequest) {
     haulCategories = [...new Set(rows.map((row) => row.haul_category).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, "it"));
   }
   return NextResponse.json(
-    { products, haul_categories: haulCategories },
+    { products, haul_categories: haulCategories, has_more: hasMore, next_offset: offset + products.length },
     { headers: { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" } },
   );
+}
+
+export async function GET(request: NextRequest) {
+  try { return await getCatalog(request); }
+  catch (error) {
+    console.error("catalog-read", error instanceof Error ? error.message : String(error));
+    return NextResponse.json({ error: "Catalogo temporaneamente non disponibile. Riprova tra poco." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
 }

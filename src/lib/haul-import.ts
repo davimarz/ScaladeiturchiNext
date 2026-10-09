@@ -61,7 +61,7 @@ function isGenericTitle(title: string) {
   const normalized = title.toLowerCase().replace(/\s+/g, " ").trim();
   return !normalized ||
     normalized.length < 4 ||
-    /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|immagine del prodotto|product image|sponsorizzato|sponsored/i.test(normalized);
+    /mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|la gamma di classi energetiche|immagine del prodotto|product image|sponsorizzato|sponsored/i.test(normalized);
 }
 
 function titleFromAmazonHref(fragment: string, asin: string) {
@@ -201,6 +201,8 @@ export type HaulProduct = {
   listPrice: number | null;
   discountPercent: number | null;
   haulCategory: string | null;
+  description?: string | null;
+  bestsellerRank?: number | null;
 };
 
 export function parseHaulHtml(html: string): HaulProduct[] {
@@ -212,7 +214,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
 
   for (let i = 0; i < markers.length; i++) {
     const marker = markers[i];
-    if (unique.has(marker.asin)) continue;
+
     const end = markers[i + 1]?.index ?? Math.min(html.length, marker.index + 30000);
     const fragment = html.slice(marker.index, Math.min(end, marker.index + 30000));
     const categoryContext = html.slice(Math.max(0, marker.index - 16000), marker.index);
@@ -224,7 +226,8 @@ export function parseHaulHtml(html: string): HaulProduct[] {
       discountPercent = Math.round(((listPrice - currentPrice) / listPrice) * 100);
     }
 
-    unique.set(marker.asin, {
+    const previous = unique.get(marker.asin);
+    const candidate: HaulProduct = {
       asin: marker.asin,
       title: findTitle(fragment, marker.asin),
       imageUrl: findImage(fragment),
@@ -232,7 +235,21 @@ export function parseHaulHtml(html: string): HaulProduct[] {
       listPrice,
       discountPercent,
       haulCategory: findHaulCategory(categoryContext),
-    });
+      description: (() => {
+        const text = fragment.match(/data-sdt-description=["']([^"']+)["']/i)?.[1];
+        return text ? cleanText(text).slice(0, 1400) : null;
+      })(),
+      bestsellerRank: Number(fragment.match(/zg-bdg-text[^>]*>\s*#?(\d+)/i)?.[1]) || null,
+    };
+    unique.set(marker.asin, previous ? {
+      ...previous,
+      title: isGenericTitle(previous.title) || /^Prodotto Amazon /.test(previous.title) ? candidate.title : previous.title,
+      imageUrl: previous.imageUrl || candidate.imageUrl,
+      currentPrice: previous.currentPrice ?? candidate.currentPrice,
+      listPrice: previous.currentPrice != null ? previous.listPrice : candidate.listPrice,
+      discountPercent: previous.currentPrice != null ? previous.discountPercent : candidate.discountPercent,
+      description: previous.description || candidate.description,
+    } : candidate);
   }
 
   // Some saved Amazon layouts omit data-asin on outer cards. Recover canonical /dp/ links as a fallback.
@@ -240,7 +257,12 @@ export function parseHaulHtml(html: string): HaulProduct[] {
     const asin = match[1].toUpperCase();
     if (unique.has(asin)) continue;
     const index = match.index ?? 0;
-    const fragment = html.slice(Math.max(0, index - 4000), Math.min(html.length, index + 12000));
+    const before = html.slice(Math.max(0, index - 2000), index);
+    const open = [...before.matchAll(/<(?:article|li|div)\b[^>]*>/gi)].at(-1);
+    const start = open ? index - before.length + (open.index || 0) : index;
+    const nextLink = html.slice(index + match[0].length).search(/href=["'][^"']*\/dp\/[A-Z0-9]{10}/i);
+    const end = nextLink >= 0 ? index + match[0].length + nextLink : Math.min(html.length, index + 12000);
+    const fragment = html.slice(start, end);
     const categoryContext = html.slice(Math.max(0, index - 16000), index);
     const currentPrice = findCurrentPrice(fragment);
     let listPrice = findListPrice(fragment);
@@ -266,7 +288,7 @@ export function parseHaulHtml(html: string): HaulProduct[] {
 export function isAmazonHaulUrl(value: string) {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && ["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) && url.pathname.startsWith("/haul");
+    return url.protocol === "https:" && !url.username && !url.password && ["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) && url.pathname.startsWith("/haul");
   } catch {
     return false;
   }
@@ -276,7 +298,7 @@ export function isAmazonHaulUrl(value: string) {
 export function isAmazonOutletUrl(value: string) {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase())) return false;
+    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) || url.username || url.password) return false;
     const node = url.searchParams.get("node");
     return url.pathname === "/b" && node === "21955579031";
   } catch {
@@ -288,7 +310,7 @@ export function isAmazonOutletUrl(value: string) {
 export function isAmazonDealsUrl(value: string) {
   try {
     const url = new URL(value);
-    if (!/(^|\.)amazon\.it$/i.test(url.hostname)) return false;
+    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) || url.username || url.password) return false;
     return /\/gp\/goldbox\/?$/i.test(url.pathname) ||
       /\/deals\/?$/i.test(url.pathname) ||
       /offerte-lampo-del-giorno/i.test(url.pathname + url.search);
@@ -301,7 +323,7 @@ export function isAmazonDealsUrl(value: string) {
 export function isAmazonBestsellersUrl(value: string) {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase())) return false;
+    if (url.protocol !== "https:" || !["amazon.it", "www.amazon.it"].includes(url.hostname.toLowerCase()) || url.username || url.password) return false;
     return url.pathname === "/gp/bestsellers/" || url.pathname === "/gp/bestsellers";
   } catch {
     return false;

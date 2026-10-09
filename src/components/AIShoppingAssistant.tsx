@@ -46,7 +46,7 @@ export default function AIShoppingAssistant() {
   async function ask(event: FormEvent) {
     event.preventDefault();
     const text = query.trim();
-    if (text.length < 3) return;
+    if (text.length < 3 || loading || moreLoading) return;
 
     setLoading(true);
     setError("");
@@ -75,7 +75,7 @@ export default function AIShoppingAssistant() {
 
   async function findMore() {
     const text = lastQuery.trim();
-    if (text.length < 3 || moreLoading) return;
+    if (text.length < 3 || loading || moreLoading) return;
 
     setMoreLoading(true);
     setError("");
@@ -129,7 +129,7 @@ export default function AIShoppingAssistant() {
           rows={3}
           maxLength={500}
         />
-        <button type="submit" disabled={loading || query.trim().length < 3}>
+        <button type="submit" disabled={loading || moreLoading || query.trim().length < 3}>
           {loading ? "Cerco e verifico prezzi…" : "Chiedi all'AI"}
         </button>
       </form>

@@ -1,106 +1,53 @@
 "use client";
-
-import { useEffect, useRef, useState } from "react";
-
-type Catalog = "offerte-lambo" | "bestseller";
-
-type VerifyResponse = {
-  ok: boolean;
-  checked?: number;
-  verified?: number;
-  pending?: number;
-  failed?: number;
-  remaining?: number;
-  error?: string;
-};
-
-export default function CatalogVerificationRunner({
-  catalog,
-}: {
-  catalog: Catalog | null;
-}) {
-  const [running, setRunning] = useState(() => Boolean(catalog));
-  const [remaining, setRemaining] = useState<number | null>(null);
-  const [processed, setProcessed] = useState(0);
-  const [verified, setVerified] = useState(0);
-  const [failed, setFailed] = useState(0);
+import { useEffect, useState } from "react";
+import { catalogConfig, type Catalog } from "../lib/catalog-config";
+type Progress = { remaining: number; complete: number; incomplete: number; total: number };
+export default function CatalogVerificationRunner({ catalog }: { catalog: Catalog | null }) {
+  const [progress, setProgress] = useState<Partial<Record<Catalog, Progress>>>({});
+  const [running, setRunning] = useState(Boolean(catalog));
   const [message, setMessage] = useState("");
-  const stopped = useRef(false);
-
+  const [revision, setRevision] = useState(0);
   useEffect(() => {
-    if (!catalog) return;
-    stopped.current = false;
-
-    async function loop() {
-      let emptyPasses = 0;
-      let passes = 0;
-
-      while (!stopped.current && passes < 120) {
-        passes += 1;
-        try {
-          const response = await fetch("/api/admin/catalog-verify", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ catalog }),
-          });
-          const data = await response.json() as VerifyResponse;
-
-          if (!response.ok || !data.ok) {
-            setMessage(data.error || "Verifica temporaneamente non disponibile.");
-            break;
+    const controller = new AbortController();
+    let active = true;
+    async function run() {
+      const catalogs = catalog ? [catalog] : Object.keys(catalogConfig) as Catalog[];
+      try {
+        for (const current of catalogs) {
+          const summary = await fetch("/api/admin/catalog-verify?catalog=" + current, { signal: controller.signal, cache: "no-store" });
+          if (!summary.ok) throw new Error("Impossibile leggere lo stato della verifica.");
+          let state = await summary.json() as Progress;
+          if (active) setProgress(previous => ({ ...previous, [current]: state }));
+          if (!catalog && revision === 0) continue;
+          let passes = 0;
+          while (active && state.remaining > 0 && passes < 150) {
+            const response = await fetch("/api/admin/catalog-verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ catalog: current }), signal: controller.signal });
+            const data = await response.json() as Progress & { ok?: boolean; busy?: boolean; error?: string };
+            if (response.status === 409 && data.busy) {
+              if (active) setMessage("Un aggiornamento è in corso. Puoi riprendere la verifica al termine.");
+              break;
+            }
+            if (!response.ok || !data.ok) throw new Error(data.error || "Verifica temporaneamente non disponibile.");
+            state = data;
+            passes++;
+            if (active) { setProgress(previous => ({ ...previous, [current]: data })); setMessage(""); }
           }
-
-          setProcessed((value) => value + (data.checked || 0));
-          setVerified((value) => value + (data.verified || 0));
-          setFailed((value) => value + (data.failed || 0));
-          setRemaining(typeof data.remaining === "number" ? data.remaining : null);
-
-          if ((data.remaining || 0) <= 0) {
-            setMessage("Verifica completata.");
-            break;
-          }
-
-          if ((data.checked || 0) === 0) emptyPasses += 1;
-          else emptyPasses = 0;
-
-          if (emptyPasses >= 2) {
-            setMessage("Nessun altro prodotto elaborabile in questo momento.");
-            break;
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 450));
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : "Verifica interrotta.");
-          break;
         }
-      }
-
-      if (!stopped.current) {
-        if (!message && passes >= 120) setMessage("Verifica sospesa dopo 120 lotti; riprenderà al prossimo aggiornamento.");
-        setRunning(false);
-      }
+      } catch (error) {
+        if (active) setMessage(error instanceof Error ? error.message : "Verifica interrotta.");
+      } finally { if (active) setRunning(false); }
     }
-
-    void loop();
-    return () => {
-      stopped.current = true;
-    };
-  }, [catalog]);
-
-  if (!catalog) return null;
-
-  return (
-    <div className="catalogVerifyRunner" aria-live="polite">
-      <strong>
-        {catalog === "offerte-lambo" ? "Verifica Offerte Lampo" : "Verifica Bestseller"}
-      </strong>
-      <span>
-        {running ? "In corso…" : message || "Terminata"}
-        {" · "}elaborati {processed}
-        {" · "}verificati {verified}
-        {" · "}non riusciti {failed}
-        {remaining != null ? " · restanti " + remaining : ""}
-      </span>
-    </div>
-  );
+    void run();
+    return () => { active = false; controller.abort(); };
+  }, [catalog, revision]);
+  return <div className="catalogVerifyRunner" aria-live="polite">
+    <strong>Completezza dei cataloghi {running ? "· verifica in corso…" : ""}</strong>
+    {(Object.keys(progress) as Catalog[]).map(current => {
+      const state = progress[current]!;
+      return <span key={current}>{catalogConfig[current].label}: {state.complete}/{state.total} completi · {state.remaining} da verificare · {state.incomplete} non completati</span>;
+    })}
+    {message ? <span>{message}</span> : null}
+    <small>Completo = titolo, immagine, descrizione e prezzo rilevato. Sconto e prezzo originario vengono mostrati quando disponibili.</small>
+    <button type="button" disabled={running} onClick={() => { setRunning(true); setMessage(""); setRevision(value => value + 1); }}>{running ? "Verifica in corso…" : "Verifica / riprendi i dati"}</button>
+  </div>;
 }

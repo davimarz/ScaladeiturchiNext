@@ -18,9 +18,8 @@ export default function CatalogAutoSchedule({
   const [saving, setSaving] = useState(false);
 
   function submit(event: FormEvent<HTMLFormElement>) {
+    if (saving) { event.preventDefault(); return; }
     setSaving(true);
-    const form = event.currentTarget;
-    requestAnimationFrame(() => form.submit());
   }
 
   return (

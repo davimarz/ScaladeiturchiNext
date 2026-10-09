@@ -43,6 +43,9 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   const [category, setCategory] = useState(fixedCategory ?? "tutte");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [moreLoading, setMoreLoading] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now);
 
@@ -64,9 +67,9 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
     fetch("/api/catalog?" + params.toString(), { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Impossibile caricare il catalogo.");
-        return await response.json() as { products?: Product[] };
+        return await response.json() as { products?: Product[]; has_more?: boolean; next_offset?: number };
       })
-      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) setProducts(data.products ?? []); })
+      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) { setProducts(data.products ?? []); setHasMore(Boolean(data.has_more)); setOffset(data.next_offset ?? 0); } })
       .catch((err) => {
         if (!controller.signal.aborted && latestRequest.current === requestId) setError(err instanceof Error ? err.message : "Errore durante il caricamento.");
       })
@@ -75,10 +78,32 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   }, [selection, fixedCategory, excludeCategories]);
 
   function startSearch(search: string, selectedCategory: string) {
+    latestRequest.current++;
     setLoading(true);
     setError("");
     setProducts([]);
+    setHasMore(false);
+    setMoreLoading(false);
     setSelection((previous) => ({ q: search, category: selectedCategory, revision: previous.revision + 1 }));
+  }
+  async function loadMore() {
+    if (moreLoading || loading) return;
+    const requestId = latestRequest.current;
+    setMoreLoading(true); setError("");
+    const params = new URLSearchParams({ limit: "30", offset: String(offset) });
+    if (selection.q.trim()) params.set("q", selection.q.trim());
+    if (selection.category !== "tutte") params.set("category", selection.category);
+    if (!fixedCategory && excludeCategories) params.set("exclude", excludeCategories);
+    try {
+      const response = await fetch("/api/catalog?" + params, { cache: "no-store" });
+      if (!response.ok) throw new Error("Impossibile caricare altri prodotti. Riprova.");
+      const data = await response.json() as { products?: Product[]; has_more?: boolean; next_offset?: number };
+      if (latestRequest.current !== requestId) return;
+      setProducts(previous => [...new Map([...previous, ...(data.products || [])].map(product => [product.id, product])).values()]);
+      setHasMore(Boolean(data.has_more)); setOffset(data.next_offset ?? offset);
+    } catch (error) {
+      if (latestRequest.current === requestId) setError(error instanceof Error ? error.message : "Caricamento interrotto.");
+    } finally { if (latestRequest.current === requestId) setMoreLoading(false); }
   }
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -92,7 +117,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   return (
     <section className="catalogSection" id="cerca">
       <div className="catalogHead">
-        <div><p className="eyebrow">{eyebrow}</p><h2>{heading}</h2><p className="catalogOrder">Ordinati dal prezzo più basso.</p></div>
+        <div><p className="eyebrow">{eyebrow}</p><h2>{heading}</h2><p className="catalogOrder">{fixedCategory === "bestseller" ? "Ordinati per posizione nella classifica Amazon." : "Ordinati dal prezzo più basso."}</p></div>
         <form className="searchBox" onSubmit={submit}>
           <label className="srOnly" htmlFor="catalog-search">Cerca prodotti</label>
           <input id="catalog-search" type="search" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Es. cuffie, cucina, sport..." />
@@ -122,7 +147,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
                 {fixedCategory === "haul" && product.haul_category ? <span className="cardTag">{product.haul_category}</span> : null}
                 {price?.discount != null ? <span className="discount">RISPARMIA {price.discount}%</span> : null}
                 <h3>{displayProductTitle(product.title)}</h3>
-                {(fixedCategory === "offerte-lambo" || fixedCategory === "bestseller") && product.description ? (
+                {product.description ? (
                   <details className="productDescription">
                     <summary>Descrizione</summary>
                     <p>{product.description}</p>
@@ -132,7 +157,6 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
                   {price ? <strong>{formatPrice(price.current, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
                   {price?.reference != null ? <del aria-label="Prezzo di riferimento">{formatPrice(price.reference, product.currency)}</del> : null}
                 </div>
-                {price?.reference != null ? <small>Prezzo di riferimento: {formatPrice(price.reference, product.currency)}</small> : null}
                 {price ? <small>{price.fresh ? "Prezzo rilevato" : "Ultimo prezzo rilevato"}: {new Date(price.verifiedAt).toLocaleString("it-IT")}.</small> : <small>Prezzo aggiornato disponibile su Amazon</small>}
                 <a className="buyButton" href={`/api/click/${product.id}`} target="_blank" rel="sponsored noopener noreferrer">Vedi su Amazon</a>
               </div>
@@ -140,6 +164,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
           );
         })}
       </div>
+      {hasMore ? <button type="button" className="buyButton" disabled={loading || moreLoading} onClick={loadMore}>{moreLoading ? "Caricamento…" : "Mostra altri prodotti"}</button> : null}
     </section>
   );
 }

@@ -68,7 +68,7 @@ function isUsefulProductTitle(value: string) {
 export function needsProductTitleEnrichment(value: string) {
   const title = value.replace(/\s+/g, " ").trim();
   if (!title) return true;
-  if (/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|^Prodotto Amazon\s+[A-Z0-9]{10}$/i.test(title)) return true;
+  if (/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|la gamma di classi energetiche|sponsorizzato|sponsored|^Prodotto Amazon\s+[A-Z0-9]{10}$/i.test(title)) return true;
   const meaningfulWords = title.split(/\s+/).filter((word) => word !== "&" && word.length > 0);
   return meaningfulWords.length <= 3 && title.length <= 32 && !/\d/.test(title);
 }
@@ -87,6 +87,19 @@ export function extractAmazonProductTitle(html: string) {
   }
 
   return null;
+}
+
+export function extractAmazonProductDescription(html: string) {
+  const sections = [
+    html.match(/id=["']feature-bullets["'][^>]*>([\s\S]*?)(?:<\/ul>|<\/section>)/i)?.[1],
+    html.match(/id=["']productDescription["'][^>]*>([\s\S]*?)(?:<\/div>|<\/section>)/i)?.[1],
+    html.match(/<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)?.[1],
+  ];
+  const description = sections.filter(Boolean).map(value => decodeEntities(value!)
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    .filter(value => value.length >= 20 && !/acquista online un'ampia selezione|robot check|automated access/i.test(value));
+  return [...new Set(description)].join(" · ").slice(0, 1400) || null;
 }
 
 export function extractAmazonProductOffer(html: string): AmazonPageOffer | null {
@@ -175,10 +188,11 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
       offer: extractAmazonProductOffer(html),
       imageUrl: extractAmazonProductImage(html, normalizedAsin),
       title: extractAmazonProductTitle(html),
+      description: extractAmazonProductDescription(html),
     };
   }
 
-  return { offer: null, imageUrl: null, title: null };
+  return { offer: null, imageUrl: null, title: null, description: null };
 }
 
 export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetch = fetch) {

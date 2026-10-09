@@ -1,3 +1,4 @@
+import CatalogImportNotice from "../../components/CatalogImportNotice";
 import Link from "next/link";
 import Image from "next/image";
 import { MANUAL_SOURCE_FILTER, MANUAL_SOURCES } from "../../lib/product-validation";
@@ -129,7 +130,7 @@ export default async function AdminPage({
     ),
     supabaseAdminFetch<Array<{id: string; name: string}>>("categories?active=eq.true&select=id,name&order=sort_order.asc"),
     supabaseAdminFetch<Array<{key: string; value: unknown}>>(
-      "site_settings?key=in.(haul_source_url,offerte_lambo_source_url,bestseller_source_url,catalog_auto_update_enabled,catalog_auto_update_time,catalog_auto_update_last_finished_at,catalog_auto_update_last_status,catalog_auto_update_last_message)&select=key,value",
+      "site_settings?key=in.(haul_source_url,offerte_lambo_source_url,bestseller_source_url,catalog_auto_update_enabled,catalog_auto_update_time,catalog_auto_update_last_started_at,catalog_auto_update_last_finished_at,catalog_auto_update_last_status,catalog_auto_update_last_message)&select=key,value",
     ),
     supabaseAdminFetch<CatalogStats[]>("rpc/admin_catalog_stats", {
       method: "POST",
@@ -146,7 +147,7 @@ export default async function AdminPage({
   const savedBestsellerUrl = typeof settingsByKey.get("bestseller_source_url") === "string" ? settingsByKey.get("bestseller_source_url") as string : "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers";
   const catalogAutoEnabled = settingsByKey.get("catalog_auto_update_enabled") === true;
   const catalogAutoTime = typeof settingsByKey.get("catalog_auto_update_time") === "string" ? settingsByKey.get("catalog_auto_update_time") as string : "06:00";
-  const catalogAutoLastRunRaw = typeof settingsByKey.get("catalog_auto_update_last_finished_at") === "string" ? settingsByKey.get("catalog_auto_update_last_finished_at") as string : "";
+  const catalogAutoLastRunRaw = typeof settingsByKey.get("catalog_auto_update_last_started_at") === "string" ? settingsByKey.get("catalog_auto_update_last_started_at") as string : "";
   const catalogAutoLastStatus = typeof settingsByKey.get("catalog_auto_update_last_status") === "string" ? settingsByKey.get("catalog_auto_update_last_status") as string : "";
   const catalogAutoLastMessage = typeof settingsByKey.get("catalog_auto_update_last_message") === "string" ? settingsByKey.get("catalog_auto_update_last_message") as string : "";
   const formatLastCheck = (value: string | null | undefined) =>
@@ -211,15 +212,9 @@ export default async function AdminPage({
           </div>
         </div>
 
-        {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
-        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
-        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
-        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lampo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
-        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lampo: scansione catalogo bloccata; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
-        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
-        {params.bestseller_import === "success" ? <p className="adminNotice">Bestseller: {params.bestseller_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
-        {params.bestseller_import === "price-only" ? <p className="adminNotice">Bestseller: scansione catalogo non disponibile; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
-        {params.bestseller_import === "blocked" ? <p className="adminError">Amazon ha bloccato Bestseller e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
+        <CatalogImportNotice catalog="haul" status={params.haul_import} count={params.haul_count} />
+        <CatalogImportNotice catalog="offerte-lambo" status={params.lambo_import} count={params.lambo_count} />
+        <CatalogImportNotice catalog="bestseller" status={params.bestseller_import} count={params.bestseller_count} />
         {params.auto_schedule === "saved" ? <p className="adminNotice">Orario dell&apos;aggiornamento automatico salvato.</p> : null}
         {params.auto_schedule === "invalid" ? <p className="adminError">Inserisci un orario valido.</p> : null}
         {params.auto_schedule === "error" ? <p className="adminError">Non è stato possibile salvare lo scheduler automatico.</p> : null}
@@ -229,7 +224,9 @@ export default async function AdminPage({
 
         <CatalogVerificationRunner
           catalog={
-            params.lambo_import === "success" || params.lambo_import === "price-only"
+            params.haul_import === "success" || params.haul_import === "price-only"
+              ? "haul"
+              : params.lambo_import === "success" || params.lambo_import === "price-only"
               ? "offerte-lambo"
               : params.bestseller_import === "success" || params.bestseller_import === "price-only"
                 ? "bestseller"
