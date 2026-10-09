@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       .filter((product) => !excludedAsins.has(product.asin))
       .filter((product) => isRelevantProduct(product.title, semanticQuery));
 
-    const candidateLimit = Math.min(24, Math.max(TARGET_PRODUCTS * 2, TARGET_PRODUCTS + excludedAsins.size));
+    const candidateLimit = Math.min(32, Math.max(TARGET_PRODUCTS * 3, TARGET_PRODUCTS + excludedAsins.size));
     products = await enrichMissingProductData(products.slice(0, candidateLimit));
 
     if (mode === "more") {
@@ -172,10 +172,10 @@ export async function POST(request: NextRequest) {
           + (product.source === "amazon-api" || product.source === "amazon-search" || product.source === "catalogo" ? 1 : 0);
         return score(b) - score(a);
       })
-      .filter((product) => product.imageUrl || product.currentPrice != null)
+      .filter((product) => product.imageUrl && product.currentPrice != null)
       .filter((product) => requestedMaxPrice == null
         ? true
-        : product.currentPrice != null && product.currentPrice <= requestedMaxPrice)
+        : product.currentPrice <= requestedMaxPrice)
       .slice(0, TARGET_PRODUCTS);
 
     if (!products.length) {
