@@ -290,6 +290,28 @@ export default async function AdminPage({
         </div>
       </section>
 
+      <section className="adminPanel catalogManagerPanel">
+        <div className="compactPanelHead">
+          <div>
+            <h2>Cataloghi</h2>
+            <p>Ogni scheda pubblica ha il proprio catalogo indipendente. Puoi controllare quanti prodotti contiene e svuotare solo quello che ti interessa.</p>
+          </div>
+        </div>
+
+        {params.catalog_clear === "success" ? (
+          <p className="adminNotice">
+            Catalogo {params.catalog === "haul" ? "HAUL" : params.catalog === "offerte-lampo" ? "Offerte Lampo" : params.catalog === "bestseller" ? "Bestseller" : ""} svuotato senza modificare gli altri cataloghi.
+          </p>
+        ) : null}
+        {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
+
+        <div className="catalogManagerGrid">
+          <AdminCatalogCard catalog="haul" label="HAUL" count={Number(stats?.haul_count ?? 0)} />
+          <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={Number(stats?.lambo_count ?? 0)} />
+          <AdminCatalogCard catalog="bestseller" label="Bestseller" count={Number(stats?.bestseller_count ?? 0)} />
+        </div>
+      </section>
+
       <section className="adminPanel">
         <div className="compactPanelHead">
           <div>
@@ -381,28 +403,6 @@ export default async function AdminPage({
             </table>
           </div>
         </details>
-      </section>
-
-      <section className="adminPanel catalogManagerPanel">
-        <div className="compactPanelHead">
-          <div>
-            <h2>Cataloghi</h2>
-            <p>Ogni scheda pubblica ha il proprio catalogo indipendente. Puoi controllare quanti prodotti contiene e svuotare solo quello che ti interessa.</p>
-          </div>
-        </div>
-
-        {params.catalog_clear === "success" ? (
-          <p className="adminNotice">
-            Catalogo {params.catalog === "haul" ? "HAUL" : params.catalog === "offerte-lampo" ? "Offerte Lampo" : params.catalog === "bestseller" ? "Bestseller" : ""} svuotato senza modificare gli altri cataloghi.
-          </p>
-        ) : null}
-        {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
-
-        <div className="catalogManagerGrid">
-          <AdminCatalogCard catalog="haul" label="HAUL" count={Number(stats?.haul_count ?? 0)} />
-          <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={Number(stats?.lambo_count ?? 0)} />
-          <AdminCatalogCard catalog="bestseller" label="Bestseller" count={Number(stats?.bestseller_count ?? 0)} />
-        </div>
       </section>
 
       <section className="adminPanel">
