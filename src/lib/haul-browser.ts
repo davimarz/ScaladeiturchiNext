@@ -793,14 +793,41 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               .join(" · ")
               .slice(0, 1400) || null;
 
-            const currentText =
+            let currentText =
               document.querySelector<HTMLElement>(".priceToPay .a-offscreen, .apexPriceToPay .a-offscreen")?.textContent ||
               document.querySelector<HTMLElement>("#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price) .a-offscreen")?.textContent ||
               document.querySelector<HTMLElement>("#corePrice_feature_div .a-price:not(.a-text-price) .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>(".reinventPricePriceToPayMargin .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("[data-a-color='price'] .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("#priceblock_ourprice, #priceblock_dealprice, #price_inside_buybox")?.textContent ||
               null;
-            const listText =
+            let listText =
               document.querySelector<HTMLElement>(".basisPrice .a-offscreen, .a-text-price .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("[data-a-strike='true'] .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("#listPrice")?.textContent ||
               null;
+
+            if (!currentText) {
+              for (const script of Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'))) {
+                try {
+                  const parsed = JSON.parse(script.textContent || "null");
+                  const items = Array.isArray(parsed) ? parsed : [parsed];
+                  for (const item of items) {
+                    if (!item || typeof item !== "object") continue;
+                    const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+                    for (const offer of offers) {
+                      if (!offer || typeof offer !== "object") continue;
+                      const price = offer.price ?? offer.lowPrice;
+                      if (price != null) {
+                        currentText = String(price);
+                        break;
+                      }
+                    }
+                    if (currentText) break;
+                  }
+                } catch {}
+              }
+            }
 
             const currentPrice = parseMoney(currentText);
             let listPrice = parseMoney(listText);
