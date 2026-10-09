@@ -4,7 +4,7 @@ import { isSameOrigin } from "../../../../../lib/admin-request";
 import { isAmazonDealsUrl, parseHaulHtml } from "../../../../../lib/haul-import";
 import { fetchAmazonSearchWithFullScroll } from "../../../../../lib/haul-browser";
 import { supabaseAdminFetch } from "../../../../../lib/supabase/admin";
-import { markCatalogVerificationPending } from "../../../../../lib/catalog-sync";
+import { markCatalogVerificationPending, syncCatalogBatchByMembership } from "../../../../../lib/catalog-sync";
 import { needsProductTitleEnrichment } from "../../../../../lib/amazon-page-offer";
 
 export const runtime = "nodejs";
@@ -120,7 +120,8 @@ export async function POST(request: NextRequest) {
     console.warn("offerte-lambo-import-browser", message);
     try {
       await markCatalogVerificationPending("offerte-lambo");
-      return finish("price-only");
+      const enrichment = await syncCatalogBatchByMembership("offerte-lambo", 6);
+      return finish("price-only", undefined, enrichment.productsSeen, enrichment.productsChanged, enrichment.productsUnchanged, enrichment.productsFailed, enrichment.imagesRecovered, enrichment.imagesMissing);
     } catch (fallbackError) {
       console.warn("offerte-lambo-verification-fallback", fallbackError instanceof Error ? fallbackError.message : fallbackError);
       if (/HTTP 403|HTTP 429|HTTP 503|blocked|captcha|robot/i.test(message)) return finish("blocked");
@@ -132,7 +133,8 @@ export async function POST(request: NextRequest) {
   if (!parsed.length) {
     try {
       await markCatalogVerificationPending("offerte-lambo");
-      return finish("price-only", 0);
+      const enrichment = await syncCatalogBatchByMembership("offerte-lambo", 6);
+      return finish("price-only", 0, enrichment.productsSeen, enrichment.productsChanged, enrichment.productsUnchanged, enrichment.productsFailed, enrichment.imagesRecovered, enrichment.imagesMissing);
     } catch {
       return finish("empty");
     }
@@ -210,7 +212,8 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify([{ key: "offerte_lambo_source_url", value: sourceUrl }]),
     });
     await markCatalogVerificationPending("offerte-lambo");
-    return finish("success", rows.length);
+    const enrichment = await syncCatalogBatchByMembership("offerte-lambo", 6);
+    return finish("success", rows.length, enrichment.productsSeen, enrichment.productsChanged, enrichment.productsUnchanged, enrichment.productsFailed, enrichment.imagesRecovered, enrichment.imagesMissing);
   } catch (error) {
     console.error("offerte-lambo-import-save", error instanceof Error ? error.message : error);
     return finish("save-error");
