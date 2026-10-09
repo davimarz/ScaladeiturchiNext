@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     const searchTotalTokens = 0;
     const searchErrors: string[] = [];
 
-    if (products.length < 4) {
+    if (products.length < 4 || products.filter((product) => product.currentPrice != null).length < 4) {
       try {
         const creators = await searchAmazonCreators(query, 8);
         products = mergeProducts(products, creators);
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < 4) {
+    if (products.length < 4 || products.filter((product) => product.currentPrice != null).length < 4) {
       try {
         const fallback = await searchAmazonFallback(query, 8);
         products = mergeProducts(products, fallback);
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < 4) {
+    if (products.length < 4 || products.filter((product) => product.currentPrice != null).length < 4) {
       try {
         const external = await searchAmazonViaBrave(query, 8);
         products = mergeProducts(products, external);
