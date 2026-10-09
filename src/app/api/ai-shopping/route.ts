@@ -174,8 +174,7 @@ export async function POST(request: NextRequest) {
       })
       .filter((product) => product.imageUrl && product.currentPrice != null)
       .filter((product) => requestedMaxPrice == null
-        ? true
-        : product.currentPrice <= requestedMaxPrice)
+        || (product.currentPrice != null && product.currentPrice <= requestedMaxPrice))
       .slice(0, TARGET_PRODUCTS);
 
     if (!products.length) {
