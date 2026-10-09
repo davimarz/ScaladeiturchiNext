@@ -7,7 +7,7 @@ import { isGenericAmazonImage } from '../src/lib/amazon-input.ts';
 function load(file, dependencies = {}) {
   const exports = {};
   const source = ts.transpileModule(readFileSync(new URL('../src/lib/' + file + '.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(source, { exports, URL, console, AbortSignal, require(name) {
+  vm.runInNewContext(source, { exports, URL, console, AbortSignal, setTimeout, clearTimeout, process: {arch:"x64",env:{}}, require(name) {
     if (name === 'server-only') return {};
     if (Object.hasOwn(dependencies, name)) return dependencies[name];
     throw new Error('Unexpected import ' + name);
@@ -85,4 +85,18 @@ test('verification summary accounts for catalogues larger than a database respon
  });
  const result=await sync.catalogVerificationSummary('bestseller');
  assert.equal(result.total,1002);assert.equal(result.complete,1000);assert.equal(result.remaining,1);assert.equal(result.incomplete,1);assert.equal(calls.length,2);
+});
+
+test('a browser page failure does not discard successful snapshots from earlier pages', async () => {
+ let pages=0,closed=0;
+ const browser={ async newPage() {
+  if(++pages>3) throw new Error('Browser page unavailable');
+  return { async setUserAgent(){},async setExtraHTTPHeaders(){},async goto(){return {status:()=>200};},async evaluate(){return {...good,currency:'EUR'};},async close(){} };
+ },async close(){closed++;},process(){return null;},async disconnect(){} };
+ const reader=load('haul-browser',{
+  '@sparticuz/chromium-min':{default:{args:[],async executablePath(){return '/tmp/catalog-test-chromium';}}},
+  'puppeteer-core':{async launch(){return browser;}},
+ });
+ const result=await reader.fetchAmazonProductSnapshotsWithBrowser(['B012345678','B087654321','B011111111','B022222222','B033333333','B044444444']);
+ assert.equal(result.size,3);assert.equal(result.get('B012345678').currentPrice,20);assert.equal(closed,1);
 });

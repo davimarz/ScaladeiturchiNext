@@ -1,4 +1,15 @@
 import "server-only";
+import type { Browser } from "puppeteer-core";
+
+async function closeCatalogBrowser(browser: Browser) {
+  const timer = setTimeout(() => {
+    browser.process()?.kill("SIGKILL");
+    void browser.disconnect();
+  }, 5000);
+  try { await browser.close(); }
+  catch { /* The deadline may have already stopped this task’s browser. */ }
+  finally { clearTimeout(timer); }
+}
 
 const MAX_SCROLLS = 60;
 const STABLE_ROUNDS_TO_STOP = 5;
@@ -69,6 +80,8 @@ async function fetchAmazonWithFullScroll(
     defaultViewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(150000),
   });
 
   try {
@@ -471,7 +484,7 @@ async function fetchAmazonWithFullScroll(
     const mergedProducts = [...productMap.values()];
     return { html, asinCount: discoveredAsins.length, scrolls, products: mergedProducts, asins: discoveredAsins };
   } finally {
-    await browser.close();
+    await closeCatalogBrowser(browser);
   }
 }
 
@@ -510,6 +523,8 @@ export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(150000),
   });
 
   const results = new Map<string, string>();
@@ -591,7 +606,7 @@ export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
     }
     return results;
   } finally {
-    await browser.close();
+    await closeCatalogBrowser(browser);
   }
 }
 
@@ -614,6 +629,8 @@ export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(150000),
   });
 
   const results = new Map<string, string>();
@@ -707,7 +724,7 @@ export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
     }
     return results;
   } finally {
-    await browser.close();
+    await closeCatalogBrowser(browser);
   }
 }
 
@@ -741,14 +758,17 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(120000),
   });
 
   try {
     for (let offset = 0; offset < uniqueAsins.length; offset += 3) {
       const batch = uniqueAsins.slice(offset, offset + 3);
       const snapshots = await Promise.all(batch.map(async (asin) => {
-        const page = await browser.newPage();
+        let page: Awaited<ReturnType<Browser["newPage"]>> | undefined;
         try {
+          page = await browser.newPage();
           await page.setUserAgent(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
           );
@@ -920,7 +940,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
           console.warn("amazon-product-snapshot", asin, error instanceof Error ? error.message : String(error));
           return [asin, null] as const;
         } finally {
-          await page.close().catch(() => undefined);
+          await page?.close().catch(() => undefined);
         }
       }));
 
@@ -929,7 +949,10 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
       }
     }
     return results;
+  } catch (error) {
+    console.warn("amazon-snapshot-batch", error instanceof Error ? error.message : String(error));
+    return results;
   } finally {
-    await browser.close();
+    await closeCatalogBrowser(browser);
   }
 }

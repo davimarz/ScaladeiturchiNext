@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
+import { readServiceJson } from "../lib/service-json";
 
 type Product = {
   asin: string;
@@ -60,13 +61,14 @@ export default function AIShoppingAssistant() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ query: text }),
+        signal: AbortSignal.timeout(240000),
       });
-      const data = await response.json() as { answer?: string; products?: Product[]; error?: string };
+      const data = await readServiceJson<{ answer?: string; products?: Product[]; error?: string }>(response, "Ricerca temporaneamente non disponibile. Riprova tra poco.");
       if (!response.ok) throw new Error(data.error || "Ricerca non disponibile.");
       setAnswer(data.answer || "");
       setProducts(data.products || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ricerca non disponibile.");
+      setError(err instanceof Error && err.name === "TimeoutError" ? "La ricerca ha impiegato troppo tempo. Riprova tra poco." : err instanceof Error ? err.message : "Ricerca non disponibile.");
     } finally {
       setLoading(false);
     }
@@ -90,8 +92,9 @@ export default function AIShoppingAssistant() {
           excludeAsins: products.map((product) => product.asin),
           mode: "more",
         }),
+        signal: AbortSignal.timeout(240000),
       });
-      const data = await response.json() as { products?: Product[]; error?: string };
+      const data = await readServiceJson<{ products?: Product[]; error?: string }>(response, "Ricerca temporaneamente non disponibile. Riprova tra poco.");
       if (!response.ok) throw new Error(data.error || "Ricerca non disponibile.");
 
       const incoming = data.products || [];
@@ -105,7 +108,7 @@ export default function AIShoppingAssistant() {
         return [...current, ...incoming.filter((product) => !seen.has(product.asin))];
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ricerca non disponibile.");
+      setError(err instanceof Error && err.name === "TimeoutError" ? "La ricerca ha impiegato troppo tempo. Riprova tra poco." : err instanceof Error ? err.message : "Ricerca non disponibile.");
     } finally {
       setMoreLoading(false);
     }

@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     const DISCOVERY_TARGET = Math.min(32, TARGET_PRODUCTS + excludedAsins.size);
     const intent = await interpretShoppingQuery(query);
     const semanticQuery = intent.canonicalQuery;
-    const searchQueries = intent.searchQueries;
+    const searchQueries = intent.searchQueries.slice(0, 3);
     const requestedMaxPrice = maxPriceFromQuery(query);
     const local = await searchLocalCatalog(semanticQuery, DISCOVERY_TARGET).catch(() => []);
     let products = local;
@@ -113,31 +113,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Always re-scan Amazon search pages after discovery, even when we already have 8 products.
-    // This reuses the HAUL/Offerte Lampo HTML parser to fill price, list price and discount
-    // on matching ASINs without changing the discovered product set/order.
-    try {
-      for (const candidateQuery of searchQueries) {
-        const amazonParsed = await searchAmazonFallback(candidateQuery, DISCOVERY_TARGET);
-        products = mergeProducts(products, amazonParsed);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      searchErrors.push("Amazon price enrichment: " + message);
-      console.info("ai-shopping-amazon-price-enrichment", message);
-    }
-
     products = products
       .filter((product) => !excludedAsins.has(product.asin))
       .filter((product) => isRelevantProduct(product.title, semanticQuery));
 
     const candidateLimit = Math.min(18, Math.max(TARGET_PRODUCTS * 2, TARGET_PRODUCTS + Math.min(excludedAsins.size, 10)));
-    products = await enrichMissingProductData(products.slice(0, candidateLimit));
-
-    if (mode === "more") {
-      products = await enrichAmazonProductsViaBraveByAsin(products);
-      products = await enrichMissingProductData(products);
-    }
+    products = products.slice(0, candidateLimit);
+    if (mode === "more") products = await enrichAmazonProductsViaBraveByAsin(products);
+    products = await enrichMissingProductData(products);
 
     const plausiblePrices = products
       .map((product) => product.currentPrice)
