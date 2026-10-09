@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       .filter((product) => !excludedAsins.has(product.asin))
       .filter((product) => isRelevantProduct(product.title, semanticQuery));
 
-    const candidateLimit = Math.min(32, Math.max(TARGET_PRODUCTS * 3, TARGET_PRODUCTS + excludedAsins.size));
+    const candidateLimit = Math.min(18, Math.max(TARGET_PRODUCTS * 2, TARGET_PRODUCTS + Math.min(excludedAsins.size, 10)));
     products = await enrichMissingProductData(products.slice(0, candidateLimit));
 
     if (mode === "more") {
