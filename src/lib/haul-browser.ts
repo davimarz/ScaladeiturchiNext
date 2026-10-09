@@ -870,7 +870,9 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             return { title, description, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
           }, asin).catch(() => null);
 
-          if (snapshot && (snapshot.currentPrice != null || snapshot.imageUrl)) return [asin, snapshot] as const;
+          if (snapshot && snapshot.currentPrice != null && snapshot.imageUrl) {
+            return [asin, snapshot] as const;
+          }
 
           await page.goto("https://www.amazon.it/s?k=" + encodeURIComponent(asin), {
             waitUntil: "domcontentloaded",
@@ -900,7 +902,17 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             return { title, description, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
           }, asin).catch(() => null);
 
-          return [asin, fallback] as const;
+          if (!snapshot) return [asin, fallback] as const;
+          if (!fallback) return [asin, snapshot] as const;
+          return [asin, {
+            title: snapshot.title || fallback.title,
+            description: snapshot.description || fallback.description,
+            imageUrl: snapshot.imageUrl || fallback.imageUrl,
+            currentPrice: snapshot.currentPrice ?? fallback.currentPrice,
+            listPrice: snapshot.listPrice ?? fallback.listPrice,
+            discountPercent: snapshot.discountPercent ?? fallback.discountPercent,
+            currency: "EUR" as const,
+          }] as const;
         } finally {
           await page.close().catch(() => undefined);
         }
