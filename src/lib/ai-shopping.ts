@@ -298,16 +298,27 @@ export async function searchAmazonWithGeminiGrounding(query: string, limit = 8):
   return { products, inputTokens, outputTokens, totalTokens, model };
 }
 export function mergeProducts(...groups: ShoppingProduct[][]) {
-  const seen = new Set<string>();
-  const merged: ShoppingProduct[] = [];
+  const merged = new Map<string, ShoppingProduct>();
   for (const group of groups) {
     for (const product of group) {
-      if (seen.has(product.asin)) continue;
-      seen.add(product.asin);
-      merged.push(product);
+      const existing = merged.get(product.asin);
+      if (!existing) {
+        merged.set(product.asin, product);
+        continue;
+      }
+
+      // Preserve the first source's ranking while filling missing verified fields.
+      merged.set(product.asin, {
+        ...existing,
+        imageUrl: existing.imageUrl || product.imageUrl,
+        currentPrice: existing.currentPrice ?? product.currentPrice,
+        listPrice: existing.listPrice ?? product.listPrice,
+        discountPercent: existing.discountPercent ?? product.discountPercent,
+        features: existing.features?.length ? existing.features : product.features,
+      });
     }
   }
-  return merged;
+  return [...merged.values()];
 }
 
 export type GeminiAnswer = {
