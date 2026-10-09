@@ -203,6 +203,93 @@ export default async function AdminPage({
         </div>
       </section>
 
+      <section className="adminPanel compactImportPanel">
+        <div className="compactPanelHead">
+          <div>
+            <h2>Aggiornamento rapido Amazon</h2>
+            <p>Un solo clic avvia browser, scroll, rilevamento prodotti e importazione.</p>
+          </div>
+        </div>
+
+        {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
+        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
+        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
+        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lampo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
+        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lampo: scansione catalogo bloccata; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
+        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
+        {params.bestseller_import === "success" ? <p className="adminNotice">Bestseller: {params.bestseller_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
+        {params.bestseller_import === "price-only" ? <p className="adminNotice">Bestseller: scansione catalogo non disponibile; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
+        {params.bestseller_import === "blocked" ? <p className="adminError">Amazon ha bloccato Bestseller e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
+        {params.auto_schedule === "saved" ? <p className="adminNotice">Orario dell&apos;aggiornamento automatico salvato.</p> : null}
+        {params.auto_schedule === "invalid" ? <p className="adminError">Inserisci un orario valido.</p> : null}
+        {params.auto_schedule === "error" ? <p className="adminError">Non è stato possibile salvare lo scheduler automatico.</p> : null}
+        {params.source === "saved" ? <p className="adminNotice">Link del catalogo salvato. Verrà usato dai prossimi aggiornamenti manuali e automatici.</p> : null}
+        {params.source === "invalid" ? <p className="adminError">Il link inserito non è valido per il catalogo selezionato.</p> : null}
+        {params.source === "error" ? <p className="adminError">Non è stato possibile salvare il link del catalogo.</p> : null}
+
+        <CatalogVerificationRunner
+          catalog={
+            params.lambo_import === "success" || params.lambo_import === "price-only"
+              ? "offerte-lambo"
+              : params.bestseller_import === "success" || params.bestseller_import === "price-only"
+                ? "bestseller"
+                : null
+          }
+        />
+
+        <CatalogAutoSchedule
+          enabled={catalogAutoEnabled}
+          time={catalogAutoTime}
+          lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""}
+          lastStatus={catalogAutoLastStatus}
+          lastMessage={catalogAutoLastMessage}
+        />
+
+        <div className="quickImportGrid">
+          <form action="/api/admin/haul/import" method="post" className="quickImportCard">
+            <input type="hidden" name="return_to" value="/admin" />
+            <div className="quickImportMeta">
+              <strong>HAUL</strong>
+              <span>Ultimo controllo: {formatLastCheck(stats?.haul_last_price)}</span>
+            </div>
+            <div className="quickImportControls">
+              <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required />
+              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="haul" className="quickImportSaveButton">Salva link</button>
+              <AdminUpdateButton idleLabel="Aggiorna HAUL" />
+            </div>
+            <Link href="/admin/haul" className="quickImportLink">Opzioni avanzate</Link>
+          </form>
+
+          <form action="/api/admin/offerte-lambo/import" method="post" className="quickImportCard">
+            <input type="hidden" name="return_to" value="/admin" />
+            <div className="quickImportMeta">
+              <strong>Offerte Lambo</strong>
+              <span>Ultimo controllo: {formatLastCheck(stats?.lambo_last_price)}</span>
+            </div>
+            <div className="quickImportControls">
+              <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lambo" required />
+              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="offerte-lambo" className="quickImportSaveButton">Salva link</button>
+              <AdminUpdateButton idleLabel="Aggiorna Offerte" />
+            </div>
+            <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
+          </form>
+
+          <form action="/api/admin/bestseller/import" method="post" className="quickImportCard">
+            <input type="hidden" name="return_to" value="/admin" />
+            <div className="quickImportMeta">
+              <strong>Bestseller</strong>
+              <span>Ultimo controllo: {formatLastCheck(stats?.bestseller_last_price)}</span>
+            </div>
+            <div className="quickImportControls">
+              <input name="bestseller_url" type="url" defaultValue={savedBestsellerUrl} aria-label="URL Amazon Bestseller" required />
+              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="bestseller" className="quickImportSaveButton">Salva link</button>
+              <AdminUpdateButton idleLabel="Aggiorna Bestseller" />
+            </div>
+            <Link href="/admin/bestseller" className="quickImportLink">Opzioni avanzate</Link>
+          </form>
+        </div>
+      </section>
+
       <section className="adminPanel">
         <div className="compactPanelHead">
           <div>
@@ -294,93 +381,6 @@ export default async function AdminPage({
             </table>
           </div>
         </details>
-      </section>
-
-      <section className="adminPanel compactImportPanel">
-        <div className="compactPanelHead">
-          <div>
-            <h2>Aggiornamento rapido Amazon</h2>
-            <p>Un solo clic avvia browser, scroll, rilevamento prodotti e importazione.</p>
-          </div>
-        </div>
-
-        {params.haul_import === "success" ? <p className="adminNotice">HAUL: {params.haul_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
-        {params.haul_import === "price-only" ? <p className="adminNotice">HAUL: scansione catalogo non disponibile; controllo prezzi completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate.</p> : null}
-        {params.haul_import === "blocked" ? <p className="adminError">Amazon ha bloccato HAUL e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
-        {params.lambo_import === "success" ? <p className="adminNotice">Offerte Lampo: {params.lambo_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
-        {params.lambo_import === "price-only" ? <p className="adminNotice">Offerte Lampo: scansione catalogo bloccata; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
-        {params.lambo_import === "blocked" ? <p className="adminError">Amazon ha bloccato Offerte Lambo e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
-        {params.bestseller_import === "success" ? <p className="adminNotice">Bestseller: {params.bestseller_count ?? "0"} prodotti importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
-        {params.bestseller_import === "price-only" ? <p className="adminNotice">Bestseller: scansione catalogo non disponibile; controllo completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
-        {params.bestseller_import === "blocked" ? <p className="adminError">Amazon ha bloccato Bestseller e non è stato possibile completare l&apos;aggiornamento automatico.</p> : null}
-        {params.auto_schedule === "saved" ? <p className="adminNotice">Orario dell&apos;aggiornamento automatico salvato.</p> : null}
-        {params.auto_schedule === "invalid" ? <p className="adminError">Inserisci un orario valido.</p> : null}
-        {params.auto_schedule === "error" ? <p className="adminError">Non è stato possibile salvare lo scheduler automatico.</p> : null}
-        {params.source === "saved" ? <p className="adminNotice">Link del catalogo salvato. Verrà usato dai prossimi aggiornamenti manuali e automatici.</p> : null}
-        {params.source === "invalid" ? <p className="adminError">Il link inserito non è valido per il catalogo selezionato.</p> : null}
-        {params.source === "error" ? <p className="adminError">Non è stato possibile salvare il link del catalogo.</p> : null}
-
-        <CatalogVerificationRunner
-          catalog={
-            params.lambo_import === "success" || params.lambo_import === "price-only"
-              ? "offerte-lambo"
-              : params.bestseller_import === "success" || params.bestseller_import === "price-only"
-                ? "bestseller"
-                : null
-          }
-        />
-
-        <CatalogAutoSchedule
-          enabled={catalogAutoEnabled}
-          time={catalogAutoTime}
-          lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""}
-          lastStatus={catalogAutoLastStatus}
-          lastMessage={catalogAutoLastMessage}
-        />
-
-        <div className="quickImportGrid">
-          <form action="/api/admin/haul/import" method="post" className="quickImportCard">
-            <input type="hidden" name="return_to" value="/admin" />
-            <div className="quickImportMeta">
-              <strong>HAUL</strong>
-              <span>Ultimo controllo: {formatLastCheck(stats?.haul_last_price)}</span>
-            </div>
-            <div className="quickImportControls">
-              <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required />
-              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="haul" className="quickImportSaveButton">Salva link</button>
-              <AdminUpdateButton idleLabel="Aggiorna HAUL" />
-            </div>
-            <Link href="/admin/haul" className="quickImportLink">Opzioni avanzate</Link>
-          </form>
-
-          <form action="/api/admin/offerte-lambo/import" method="post" className="quickImportCard">
-            <input type="hidden" name="return_to" value="/admin" />
-            <div className="quickImportMeta">
-              <strong>Offerte Lambo</strong>
-              <span>Ultimo controllo: {formatLastCheck(stats?.lambo_last_price)}</span>
-            </div>
-            <div className="quickImportControls">
-              <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lambo" required />
-              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="offerte-lambo" className="quickImportSaveButton">Salva link</button>
-              <AdminUpdateButton idleLabel="Aggiorna Offerte" />
-            </div>
-            <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
-          </form>
-
-          <form action="/api/admin/bestseller/import" method="post" className="quickImportCard">
-            <input type="hidden" name="return_to" value="/admin" />
-            <div className="quickImportMeta">
-              <strong>Bestseller</strong>
-              <span>Ultimo controllo: {formatLastCheck(stats?.bestseller_last_price)}</span>
-            </div>
-            <div className="quickImportControls">
-              <input name="bestseller_url" type="url" defaultValue={savedBestsellerUrl} aria-label="URL Amazon Bestseller" required />
-              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="bestseller" className="quickImportSaveButton">Salva link</button>
-              <AdminUpdateButton idleLabel="Aggiorna Bestseller" />
-            </div>
-            <Link href="/admin/bestseller" className="quickImportLink">Opzioni avanzate</Link>
-          </form>
-        </div>
       </section>
 
       <section className="adminPanel catalogManagerPanel">
