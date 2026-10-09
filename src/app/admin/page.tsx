@@ -91,6 +91,7 @@ export default async function AdminPage({
     catalog_clear?: string;
     catalog?: string;
     auto_schedule?: string;
+    source?: string;
   }>;
 }) {
   const cookieStore = await cookies();
@@ -141,7 +142,7 @@ export default async function AdminPage({
   const settingsByKey = new Map(settings.map((row) => [row.key, row.value]));
   const stats = catalogStats[0];
   const savedHaulUrl = typeof settingsByKey.get("haul_source_url") === "string" ? settingsByKey.get("haul_source_url") as string : "https://www.amazon.it/haul/store?ref_=nav_cs_hul_disb";
-  const savedLamboUrl = typeof settingsByKey.get("offerte_lambo_source_url") === "string" ? settingsByKey.get("offerte_lambo_source_url") as string : "https://www.amazon.it/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno";
+  const savedLamboUrl = typeof settingsByKey.get("offerte_lambo_source_url") === "string" ? settingsByKey.get("offerte_lambo_source_url") as string : "https://www.amazon.it/gp/goldbox/?ie=UTF8&ref_=topnav_storetab_gb";
   const savedBestsellerUrl = typeof settingsByKey.get("bestseller_source_url") === "string" ? settingsByKey.get("bestseller_source_url") as string : "https://www.amazon.it/gp/bestsellers/?ref_=nav_cs_bestsellers";
   const catalogAutoEnabled = settingsByKey.get("catalog_auto_update_enabled") === true;
   const catalogAutoTime = typeof settingsByKey.get("catalog_auto_update_time") === "string" ? settingsByKey.get("catalog_auto_update_time") as string : "06:00";
@@ -315,6 +316,9 @@ export default async function AdminPage({
         {params.auto_schedule === "saved" ? <p className="adminNotice">Orario dell&apos;aggiornamento automatico salvato.</p> : null}
         {params.auto_schedule === "invalid" ? <p className="adminError">Inserisci un orario valido.</p> : null}
         {params.auto_schedule === "error" ? <p className="adminError">Non è stato possibile salvare lo scheduler automatico.</p> : null}
+        {params.source === "saved" ? <p className="adminNotice">Link del catalogo salvato. Verrà usato dai prossimi aggiornamenti manuali e automatici.</p> : null}
+        {params.source === "invalid" ? <p className="adminError">Il link inserito non è valido per il catalogo selezionato.</p> : null}
+        {params.source === "error" ? <p className="adminError">Non è stato possibile salvare il link del catalogo.</p> : null}
 
         <CatalogVerificationRunner
           catalog={
@@ -343,6 +347,7 @@ export default async function AdminPage({
             </div>
             <div className="quickImportControls">
               <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required />
+              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="haul" className="quickImportSaveButton">Salva link</button>
               <AdminUpdateButton idleLabel="Aggiorna HAUL" />
             </div>
             <Link href="/admin/haul" className="quickImportLink">Opzioni avanzate</Link>
@@ -356,6 +361,7 @@ export default async function AdminPage({
             </div>
             <div className="quickImportControls">
               <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lambo" required />
+              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="offerte-lambo" className="quickImportSaveButton">Salva link</button>
               <AdminUpdateButton idleLabel="Aggiorna Offerte" />
             </div>
             <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
@@ -369,6 +375,7 @@ export default async function AdminPage({
             </div>
             <div className="quickImportControls">
               <input name="bestseller_url" type="url" defaultValue={savedBestsellerUrl} aria-label="URL Amazon Bestseller" required />
+              <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="bestseller" className="quickImportSaveButton">Salva link</button>
               <AdminUpdateButton idleLabel="Aggiorna Bestseller" />
             </div>
             <Link href="/admin/bestseller" className="quickImportLink">Opzioni avanzate</Link>
