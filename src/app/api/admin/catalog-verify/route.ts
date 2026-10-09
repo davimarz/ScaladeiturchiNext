@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   const remainingRows = await supabaseAdminFetch<Array<{ asin: string }>>(
     "products?active=eq.true&" + membershipFilter +
-    "&or=(current_price.is.null,image_url.is.null)&select=asin&limit=1000",
+    "&or=(current_price.is.null,image_url.is.null,description.is.null)&select=asin&limit=1000",
   );
 
   return NextResponse.json({
