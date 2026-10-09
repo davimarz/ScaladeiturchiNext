@@ -23,9 +23,14 @@ export async function markCatalogVerificationPending(catalog: Catalog) {
 }
 export async function catalogVerificationSummary(catalog: Catalog) {
   const { membership, prefix } = catalogConfig[catalog];
-  const products = await supabaseAdminFetch<Array<{ status: string }>>(
-    `products?active=eq.true&${membership}=eq.true&select=status:${prefix}_verification_status&limit=1000`,
-  );
+  const products: Array<{ status: string }> = [];
+  for (let offset = 0; ; offset += 1000) {
+    const page = await supabaseAdminFetch<Array<{ status: string }>>(
+      `products?active=eq.true&${membership}=eq.true&select=status:${prefix}_verification_status&order=id.asc&limit=1000&offset=${offset}`,
+    );
+    products.push(...page);
+    if (page.length < 1000) break;
+  }
   return { total: products.length, remaining: products.filter(p => p.status === "pending").length,
     complete: products.filter(p => p.status === "verified").length, incomplete: products.filter(p => p.status === "failed").length };
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { catalogLimit } from "../../../lib/product-validation";
 import { supabaseAdminFetch } from "../../../lib/supabase/admin";
+import { needsProductTitleEnrichment } from "../../../lib/amazon-page-offer";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,9 @@ async function getCatalog(request: NextRequest) {
 
   // ASIN has a unique constraint. Different ASINs may share a picture (size/colour variants).
   const rows = await supabaseAdminFetch<ProductRow[]>(`products?${filters.join("&")}`);
-  const products = rows.slice(0, limit);
+  const products = rows.slice(0, limit).map(product => ({ ...product,
+    title: needsProductTitleEnrichment(product.title) ? "Prodotto Amazon " + product.asin : product.title,
+  }));
   const hasMore = rows.length > limit;
 
   let haulCategories: string[] = [];

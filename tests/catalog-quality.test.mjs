@@ -66,6 +66,7 @@ test('catalogue pagination returns a continuation without losing different ASIN 
  vm.runInNewContext(source, { exports, URL, console, require(name) {
    if (name === 'next/server') return { NextResponse: { json: (body, init) => ({ body, status: init?.status || 200 }) } };
    if (name.includes('product-validation')) return { catalogLimit: () => 2 };
+   if (name.includes('amazon-page-offer')) return { needsProductTitleEnrichment: () => false };
    if (name.includes('supabase/admin')) return { async supabaseAdminFetch(path) { calls.push(path); if (fail) throw new Error('Database unavailable'); return [ { id:'a', asin:'B012345678', image_url:good.imageUrl }, { id:'b', asin:'B087654321', image_url:good.imageUrl }, { id:'c', asin:'B011111111' } ]; } };
    throw new Error('Unexpected import ' + name);
  }});
@@ -74,4 +75,14 @@ test('catalogue pagination returns a continuation without losing different ASIN 
  assert.match(calls[0], /offset=2/); assert.match(calls[0], /limit=3/); assert.equal(response.body.products[0].image_url, response.body.products[1].image_url);
  fail = true;
  assert.equal((await exports.GET({ nextUrl:new URL('https://example.com/api/catalog') })).status, 503);
+});
+
+test('verification summary accounts for catalogues larger than a database response page', async () => {
+ const calls=[];
+ const sync=load('catalog-sync', {
+  './amazon-page-offer':{}, './haul-browser':{}, './catalog-config':config, './catalog-product':quality,
+  './supabase/admin':{ async supabaseAdminFetch(path) { calls.push(path); return path.endsWith('offset=0') ? Array.from({length:1000},()=>({status:'verified'})) : [{status:'pending'},{status:'failed'}]; } },
+ });
+ const result=await sync.catalogVerificationSummary('bestseller');
+ assert.equal(result.total,1002);assert.equal(result.complete,1000);assert.equal(result.remaining,1);assert.equal(result.incomplete,1);assert.equal(calls.length,2);
 });
