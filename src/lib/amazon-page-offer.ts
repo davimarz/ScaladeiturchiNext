@@ -1,4 +1,5 @@
 import "server-only";
+
 import { extractAmazonProductImage } from "./amazon-input";
 
 const AMAZON_HOSTS = new Set(["amazon.it", "www.amazon.it"]);
@@ -62,13 +63,15 @@ function cleanProductTitle(value: string) {
 function isUsefulProductTitle(value: string) {
   const normalized = value.toLowerCase();
   return value.length > 3 &&
-    !/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|amazon\.it\s*$/i.test(normalized);
+    !/^scegli (?:il paese|paese)|^accedi|^amazon\.it\s*:|^robot check|^pagina non trovata|mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|amazon\.it\s*$/i.test(normalized);
 }
 
 export function needsProductTitleEnrichment(value: string) {
   const title = value.replace(/\s+/g, " ").trim();
-  if (!title) return true;
-  if (/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|la gamma di classi energetiche|sponsorizzato|sponsored|^Prodotto Amazon\s+[A-Z0-9]{10}$/i.test(title)) return true;
+  if (!title)
+    return true;
+  if (/^scegli (?:il paese|paese)|^accedi|^amazon\.it\s*:|^robot check|^pagina non trovata|mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|la gamma di classi energetiche|sponsorizzato|sponsored|^Prodotto Amazon\s+[A-Z0-9]{10}$/i.test(title))
+    return true;
   const meaningfulWords = title.split(/\s+/).filter((word) => word !== "&" && word.length > 0);
   return meaningfulWords.length <= 3 && title.length <= 32 && !/\d/.test(title);
 }
@@ -199,7 +202,6 @@ export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetc
   const snapshot = await fetchAmazonProductSnapshot(asin, fetcher);
   return snapshot.offer;
 }
-
 
 export async function fetchAmazonSearchTitle(asin: string, fetcher: typeof fetch = fetch) {
   if (!/^[A-Z0-9]{10}$/i.test(asin)) return null;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type PublicTab = "haul" | "offerte" | "bestseller" | "ai" | "cerca";
+type PublicTab = "haul" | "offerte" | "bestseller" | "ai" | "cerca" | "home";
 
 export default function PublicTabs({ active }: { active: PublicTab }) {
   return (

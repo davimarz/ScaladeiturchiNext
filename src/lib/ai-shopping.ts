@@ -1,8 +1,13 @@
 import "server-only";
+
 import { parseHaulHtml } from "./haul-import";
+
 import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
+
 import { supabaseAdminFetch } from "./supabase/admin";
+
 import { isRelevantProduct, maxPriceFromQuery, queryTokens, titleRelevance } from "./ai-relevance";
+
 import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
 
 export type ShoppingProduct = {
@@ -16,9 +21,12 @@ export type ShoppingProduct = {
   affiliateUrl: string;
   source: "catalogo" | "amazon-api" | "amazon-search" | "brave-search";
   features?: string[];
+  priceVerifiedAt?: string | null;
+  description?: string | null;
 };
 
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
+
 const MARKETPLACE = "www.amazon.it";
 
 function affiliateUrl(asin: string) {
@@ -33,7 +41,6 @@ function affiliateSearchUrl(asin: string) {
   url.searchParams.set("tag", PARTNER_TAG);
   return url.toString();
 }
-
 
 export type ShoppingIntent = {
   canonicalQuery: string;
@@ -127,36 +134,36 @@ export async function searchLocalCatalog(query: string, limit = 8): Promise<Shop
     discount_percent: number | null;
     currency: string;
     affiliate_url: string;
+    price_verified_at: string | null;
+    description: string | null;
     in_haul: boolean;
     in_offerte_lambo: boolean;
     in_bestseller: boolean;
-  }>>(
-    "products?active=eq.true&or=(in_haul.eq.true,in_offerte_lambo.eq.true,in_bestseller.eq.true)&select=asin,title,image_url,current_price,list_price,discount_percent,currency,affiliate_url,in_haul,in_offerte_lambo,in_bestseller&limit=500",
-  );
-
+  }>>("products?active=eq.true&or=(in_haul.eq.true,in_offerte_lambo.eq.true,in_bestseller.eq.true)&select=asin,title,image_url,current_price,list_price,discount_percent,currency,affiliate_url,price_verified_at,description,in_haul,in_offerte_lambo,in_bestseller&limit=500");
   const tokens = queryTokens(query);
   const maxPrice = maxPriceFromQuery(query);
-
   return rows
     .filter((row) => maxPrice == null || row.current_price == null || row.current_price <= maxPrice)
     .map((row) => {
-      const relevance = titleRelevance(row.title, tokens);
-      return { row, matches: relevance.matches, score: relevance.score + (row.current_price != null ? 1 : 0) + (row.image_url ? 0.5 : 0) };
-    })
+    const relevance = titleRelevance(row.title, tokens);
+    return { row, matches: relevance.matches, score: relevance.score + (row.current_price != null ? 1 : 0) + (row.image_url ? 0.5 : 0) };
+  })
     .filter(({ row }) => isRelevantProduct(row.title, query))
     .sort((a, b) => b.score - a.score || (a.row.current_price ?? Infinity) - (b.row.current_price ?? Infinity))
     .slice(0, limit)
     .map(({ row }) => ({
-      asin: row.asin,
-      title: row.title,
-      imageUrl: row.image_url,
-      currentPrice: row.current_price,
-      listPrice: row.list_price,
-      discountPercent: row.discount_percent,
-      currency: row.currency || "EUR",
-      affiliateUrl: row.affiliate_url || affiliateSearchUrl(row.asin),
-      source: "catalogo" as const,
-    }));
+    asin: row.asin,
+    title: row.title,
+    imageUrl: row.image_url,
+    currentPrice: row.current_price,
+    listPrice: row.list_price,
+    discountPercent: row.discount_percent,
+    currency: row.currency || "EUR",
+    affiliateUrl: row.affiliate_url || affiliateSearchUrl(row.asin),
+    source: "catalogo" as const,
+    priceVerifiedAt: row.price_verified_at,
+    description: row.description,
+  }));
 }
 
 type CreatorItem = {
@@ -207,7 +214,7 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
   const response = await fetch("https://creatorsapi.amazon/catalog/v1/searchItems", {
     method: "POST",
     cache: "no-store",
-    signal: AbortSignal.timeout(18_000),
+    signal: AbortSignal.timeout(18000),
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
@@ -228,42 +235,43 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
       ],
     }),
   });
-
   const body = await response.json().catch(() => ({})) as {
-    searchResult?: { items?: CreatorItem[] };
-    errors?: Array<{ code?: string; message?: string }>;
+    searchResult?: {
+      items?: CreatorItem[];
+    };
+    errors?: Array<{
+      code?: string;
+      message?: string;
+    }>;
   };
   if (!response.ok) {
     const code = body.errors?.[0]?.code || String(response.status);
     throw new Error("Amazon Creators API " + code);
   }
-
   return (body.searchResult?.items ?? []).flatMap((item) => {
     const asin = item.asin?.toUpperCase();
     const title = item.itemInfo?.title?.displayValue?.trim();
-    if (!asin || !/^[A-Z0-9]{10}$/.test(asin) || !title) return [];
-
+    if (!asin || !/^[A-Z0-9]{10}$/.test(asin) || !title)
+      return [];
     const listing = item.offersV2?.listings?.[0];
     const currentPrice = listing?.price?.money?.amount ?? null;
     const listPrice = listing?.savingBasis?.money?.amount ?? null;
-    const discountPercent = listing?.savings?.percentage ?? (
-      currentPrice != null && listPrice != null && listPrice > currentPrice
-        ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
-        : null
-    );
-
+    const discountPercent = listing?.savings?.percentage ?? (currentPrice != null && listPrice != null && listPrice > currentPrice
+      ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
+      : null);
     return [{
-      asin,
-      title,
-      imageUrl: item.images?.primary?.large?.url ?? item.images?.primary?.medium?.url ?? null,
-      currentPrice,
-      listPrice,
-      discountPercent,
-      currency: listing?.price?.money?.currency ?? "EUR",
-      affiliateUrl: affiliateUrl(asin),
-      source: "amazon-api" as const,
-      features: item.itemInfo?.features?.displayValues?.slice(0, 6) ?? [],
-    }];
+        asin,
+        title,
+        imageUrl: item.images?.primary?.large?.url ?? item.images?.primary?.medium?.url ?? null,
+        currentPrice,
+        listPrice,
+        discountPercent,
+        currency: listing?.price?.money?.currency ?? "EUR",
+        affiliateUrl: affiliateUrl(asin),
+        source: "amazon-api" as const,
+        priceVerifiedAt: currentPrice != null ? new Date().toISOString() : null,
+        features: item.itemInfo?.features?.displayValues?.slice(0, 6) ?? [],
+      }];
   }).filter((product) => isRelevantProduct(product.title, query)).slice(0, limit);
 }
 
@@ -271,13 +279,12 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
   const url = new URL("https://www.amazon.it/s");
   const keywords = queryTokens(query).join(" ") || query;
   url.searchParams.set("k", keywords.slice(0, 180));
-
   let html = "";
   try {
     const response = await fetch(url.toString(), {
       redirect: "follow",
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(20000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
         "accept-language": "it-IT,it;q=0.9,en;q=0.7",
@@ -290,41 +297,41 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
         html = candidate;
       }
     }
-  } catch {}
-
+  }
+  catch { }
   if (!html) {
     const result = await fetchAmazonKeywordSearchWithFullScroll(url.toString());
     html = result.html;
   }
-
   return parseHaulHtml(html)
     .filter((product) => isRelevantProduct(product.title, query))
     .slice(0, limit)
     .map((product) => ({
-      asin: product.asin,
-      title: product.title,
-      imageUrl: product.imageUrl,
-      currentPrice: product.currentPrice,
-      listPrice: product.listPrice,
-      discountPercent: product.discountPercent,
-      currency: "EUR",
-      affiliateUrl: affiliateUrl(product.asin),
-      source: "amazon-search" as const,
-    }));
+    asin: product.asin,
+    title: product.title,
+    imageUrl: product.imageUrl,
+    currentPrice: product.currentPrice,
+    listPrice: product.listPrice,
+    discountPercent: product.discountPercent,
+    currency: "EUR",
+    affiliateUrl: affiliateUrl(product.asin),
+    source: "amazon-search" as const,
+    priceVerifiedAt: product.currentPrice != null ? new Date().toISOString() : null,
+  }));
 }
 
 export async function enrichMissingProductData(products: ShoppingProduct[]): Promise<ShoppingProduct[]> {
   const missing = products.filter((product) => product.currentPrice == null || !product.imageUrl);
-  if (!missing.length) return products;
-
+  if (!missing.length)
+    return products;
   const enrichedByAsin = new Map<string, ShoppingProduct>();
-
   // Accuracy-first: use the rendered Amazon product page first.
   try {
     const browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(missing.map((product) => product.asin));
     for (const product of missing) {
       const snapshot = browserSnapshots.get(product.asin);
-      if (!snapshot) continue;
+      if (!snapshot)
+        continue;
       enrichedByAsin.set(product.asin, {
         ...product,
         affiliateUrl: (snapshot.title || snapshot.imageUrl || snapshot.currentPrice != null)
@@ -335,19 +342,21 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
           : product.title,
         imageUrl: snapshot.imageUrl || product.imageUrl,
         currentPrice: snapshot.currentPrice ?? product.currentPrice,
-        listPrice: snapshot.listPrice ?? product.listPrice,
-        discountPercent: snapshot.discountPercent ?? product.discountPercent,
+        priceVerifiedAt: snapshot.currentPrice != null ? new Date().toISOString() : product.priceVerifiedAt,
+        description: snapshot.description || product.description,
+        listPrice: snapshot.currentPrice != null ? snapshot.listPrice ?? null : product.listPrice,
+        discountPercent: snapshot.currentPrice != null ? snapshot.discountPercent ?? null : product.discountPercent,
         currency: snapshot.currency ?? product.currency,
       });
     }
-  } catch (error) {
+  }
+  catch (error) {
     console.info("ai-shopping-browser-enrichment", error instanceof Error ? error.message : String(error));
   }
-
   let enriched = products.map((product) => enrichedByAsin.get(product.asin) ?? product);
   const stillMissing = enriched.filter((product) => product.currentPrice == null || !product.imageUrl);
-  if (!stillMissing.length) return enriched;
-
+  if (!stillMissing.length)
+    return enriched;
   // Fallback only for data the browser could not verify.
   for (let offset = 0; offset < stillMissing.length; offset += 3) {
     const batch = stillMissing.slice(offset, offset + 3);
@@ -365,18 +374,19 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
             : product.title,
           imageUrl: snapshot.imageUrl || product.imageUrl,
           currentPrice: offer?.currentPrice ?? product.currentPrice,
-          listPrice: offer?.listPrice ?? product.listPrice,
-          discountPercent: offer?.discountPercent ?? product.discountPercent,
+          priceVerifiedAt: offer?.currentPrice != null ? new Date().toISOString() : product.priceVerifiedAt,
+          listPrice: offer?.currentPrice != null ? offer.listPrice : product.listPrice,
+          discountPercent: offer?.currentPrice != null ? offer.discountPercent : product.discountPercent,
           currency: offer?.currency ?? product.currency,
         };
-      } catch {
+      }
+      catch {
         return product;
       }
     }));
-
-    for (const product of results) enrichedByAsin.set(product.asin, product);
+    for (const product of results)
+      enrichedByAsin.set(product.asin, product);
   }
-
   enriched = enriched.map((product) => enrichedByAsin.get(product.asin) ?? product);
   return enriched;
 }
@@ -384,7 +394,6 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
 export function mergeProducts(...groups: ShoppingProduct[][]) {
   const byAsin = new Map<string, ShoppingProduct>();
   const order: string[] = [];
-
   for (const group of groups) {
     for (const product of group) {
       const existing = byAsin.get(product.asin);
@@ -393,33 +402,32 @@ export function mergeProducts(...groups: ShoppingProduct[][]) {
         order.push(product.asin);
         continue;
       }
-
       const mergedProduct: ShoppingProduct = {
         ...existing,
         title: existing.title.length >= product.title.length ? existing.title : product.title,
         imageUrl: existing.imageUrl || product.imageUrl,
-        currentPrice: existing.currentPrice ?? product.currentPrice,
-        listPrice: existing.listPrice ?? product.listPrice,
-        discountPercent: existing.discountPercent ?? product.discountPercent,
+        currentPrice: existing.currentPrice,
+        listPrice: existing.listPrice,
+        discountPercent: existing.discountPercent,
+        description: existing.description || product.description,
         currency: existing.currency || product.currency,
         affiliateUrl: product.affiliateUrl || existing.affiliateUrl,
         features: [...new Set([...(existing.features ?? []), ...(product.features ?? [])])].slice(0, 6),
         source: existing.source,
       };
-
-      if (existing.currentPrice == null && product.currentPrice != null) {
+      if (product.currentPrice != null && (existing.currentPrice == null || (product.priceVerifiedAt && (!existing.priceVerifiedAt || Date.parse(product.priceVerifiedAt) > Date.parse(existing.priceVerifiedAt))))) {
         mergedProduct.currentPrice = product.currentPrice;
+        mergedProduct.priceVerifiedAt = product.priceVerifiedAt;
         mergedProduct.listPrice = product.listPrice;
         mergedProduct.discountPercent = product.discountPercent;
         mergedProduct.currency = product.currency;
         mergedProduct.source = product.source;
       }
-      if (!existing.imageUrl && product.imageUrl) mergedProduct.imageUrl = product.imageUrl;
-
+      if (!existing.imageUrl && product.imageUrl)
+        mergedProduct.imageUrl = product.imageUrl;
       byAsin.set(product.asin, mergedProduct);
     }
   }
-
   return order.map((asin) => byAsin.get(asin)).filter((product): product is ShoppingProduct => Boolean(product));
 }
 
@@ -501,7 +509,6 @@ export async function generateShoppingAnswer(query: string, products: ShoppingPr
 
   return { text, inputTokens, outputTokens, totalTokens, model };
 }
-
 
 export async function getMostSearchedQueries(limit = 4): Promise<string[]> {
   const history = await supabaseAdminFetch<Array<{ query: string; status: string }>>(

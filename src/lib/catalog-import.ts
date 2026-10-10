@@ -1,15 +1,23 @@
 import "server-only";
+
 import { supabaseAdminFetch } from "./supabase/admin";
+
 import { parseHaulHtml, isAmazonHaulUrl, isAmazonDealsUrl, isAmazonBestsellersUrl } from "./haul-import";
+
 import { fetchHaulWithFullScroll, fetchAmazonSearchWithFullScroll, fetchAmazonBestsellersWithFullScroll } from "./haul-browser";
+
 import { markCatalogVerificationPending } from "./catalog-sync";
+
 import { catalogConfig, type Catalog } from "./catalog-config";
+
 import { MANUAL_SOURCES } from "./product-validation";
+
 import { mergeCatalogData, validPrice, type CatalogData } from "./catalog-product";
 
 export function validCatalogUrl(catalog: Catalog, url: string) {
   return (catalog === "haul" ? isAmazonHaulUrl : catalog === "bestseller" ? isAmazonBestsellersUrl : isAmazonDealsUrl)(url);
 }
+
 type Existing = { asin: string; title: string; description: string | null; image_url: string | null;
   current_price: number | null; list_price: number | null; discount_percent: number | null;
   price_verified_at: string | null; category_id: string | null; featured: boolean; prime: boolean | null;
@@ -20,7 +28,8 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
   let products: ReturnType<typeof parseHaulHtml> = [];
   let scanError: string | null = null;
   try {
-    if (uploadedHtml) products = parseHaulHtml(uploadedHtml);
+    if (uploadedHtml)
+      products = parseHaulHtml(uploadedHtml);
     else {
       const scan = await (catalog === "haul" ? fetchHaulWithFullScroll : catalog === "bestseller" ? fetchAmazonBestsellersWithFullScroll : fetchAmazonSearchWithFullScroll)(sourceUrl);
       const byAsin = new Map(parseHaulHtml(scan.html).map(product => [product.asin, product]));
@@ -33,7 +42,8 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
       }
       products = [...byAsin.values()];
     }
-  } catch (error) {
+  }
+  catch (error) {
     scanError = error instanceof Error ? error.message : "Scansione Amazon non disponibile";
     console.warn("catalog-import-scan", catalog, scanError);
   }
@@ -67,10 +77,11 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
   }
   // Persist the discovery outcome; verification continues in bounded, resumable batches.
   await markCatalogVerificationPending(catalog);
-  const status = rows.length ? "success" : "price-only";
+  const status = rows.length ? "success" : scanError ? "source-unavailable" : "price-only";
   await supabaseAdminFetch("site_settings?on_conflict=key", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify([
-    { key: config.sourceKey, value: sourceUrl },
-    { key: catalog + "_last_import", value: { at: now, status, count: rows.length, error: scanError } },
-  ]) });
+      { key: config.sourceKey, value: sourceUrl },
+      { key: catalog + "_last_import", value: { at: now, status, count: rows.length, error: scanError } },
+      ...(rows.length ? [{ key: catalog + "_last_successful_import", value: { at: now, count: rows.length } }] : []),
+    ]) });
   return { status, count: rows.length, scanError };
 }

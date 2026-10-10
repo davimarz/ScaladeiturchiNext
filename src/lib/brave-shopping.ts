@@ -1,5 +1,7 @@
 import "server-only";
+
 import { isRelevantProduct, queryTokens } from "./ai-relevance";
+
 import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
 
 export type ExternalShoppingProduct = {
@@ -13,6 +15,8 @@ export type ExternalShoppingProduct = {
   affiliateUrl: string;
   source: "brave-search";
   features?: string[];
+  priceVerifiedAt?: string | null;
+  description?: string | null;
 };
 
 type BraveResult = {
@@ -82,11 +86,11 @@ async function braveWebSearch(apiKey: string, searchQuery: string) {
   return data.web?.results ?? [];
 }
 
-
 type EnrichableShoppingProduct = Omit<ExternalShoppingProduct, "source"> & { source: string };
 
 async function enrichFromBraveByAsin<T extends EnrichableShoppingProduct>(apiKey: string, product: T): Promise<T> {
-  if (product.currentPrice != null && product.imageUrl) return product;
+  if (product.currentPrice != null && product.imageUrl)
+    return product;
   try {
     const exactQueries = [
       'site:amazon.it "' + product.asin + '"',
@@ -99,18 +103,16 @@ async function enrichFromBraveByAsin<T extends EnrichableShoppingProduct>(apiKey
     let foundPrice: number | null = product.currentPrice;
     let foundListPrice: number | null = product.listPrice;
     let foundImage = product.imageUrl;
-
     for (const exactQuery of exactQueries) {
       const batch = await braveWebSearch(apiKey, exactQuery);
-
       for (const result of batch) {
         const rawUrl = result.url || "";
         const match = rawUrl.match(/amazon\.it\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
-        if (!match || match[1].toUpperCase() !== product.asin) continue;
-
+        if (!match || match[1].toUpperCase() !== product.asin)
+          continue;
         exactMatches.push(result);
-        if (!foundImage && result.thumbnail?.src) foundImage = result.thumbnail.src;
-
+        if (!foundImage && result.thumbnail?.src)
+          foundImage = result.thumbnail.src;
         const snippets = [result.description, ...(result.extra_snippets ?? [])]
           .filter((value): value is string => Boolean(value))
           .map(cleanText);
@@ -118,23 +120,19 @@ async function enrichFromBraveByAsin<T extends EnrichableShoppingProduct>(apiKey
         const prices = [...snippetText.matchAll(/(?:€\s*([0-9]{1,5}(?:[.,][0-9]{2})?)|([0-9]{1,5}(?:[.,][0-9]{2})?)\s*€)/g)]
           .map((match) => Number((match[1] || match[2] || "").replace(",", ".")))
           .filter((value) => Number.isFinite(value) && value >= 1 && value <= 9999);
-
-        if (foundPrice == null && prices.length) foundPrice = prices[0];
-        if (foundListPrice == null && foundPrice != null) {
+        if (foundPrice == null && prices.length)
+          foundPrice = prices[0];
+        if (!product.priceVerifiedAt && foundListPrice == null && foundPrice != null) {
           foundListPrice = prices.find((value) => value > foundPrice!) ?? null;
         }
       }
-
-      if (foundPrice != null && foundImage) break;
+      if (foundPrice != null && foundImage)
+        break;
     }
-
     if (exactMatches.length) {
-      const discountPercent = product.discountPercent ?? (
-        foundPrice != null && foundListPrice != null
-          ? Math.round(((foundListPrice - foundPrice) / foundListPrice) * 100)
-          : null
-      );
-
+      const discountPercent = product.discountPercent ?? (foundPrice != null && foundListPrice != null
+        ? Math.round(((foundListPrice - foundPrice) / foundListPrice) * 100)
+        : null);
       return {
         ...product,
         imageUrl: foundImage,
@@ -144,10 +142,10 @@ async function enrichFromBraveByAsin<T extends EnrichableShoppingProduct>(apiKey
         affiliateUrl: affiliateSearchUrl(product.asin),
       } as T;
     }
-  } catch {}
+  }
+  catch { }
   return product;
 }
-
 
 export async function enrichAmazonProductsViaBraveByAsin<T extends EnrichableShoppingProduct>(products: T[]): Promise<T[]> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
@@ -167,26 +165,24 @@ export async function enrichAmazonProductsViaBraveByAsin<T extends EnrichableSho
 
 export async function searchAmazonViaBrave(query: string, limit = 8, semanticQueries: string[] = [query]): Promise<ExternalShoppingProduct[]> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
-  if (!apiKey) throw new Error("Brave Search API key unavailable");
-
+  if (!apiKey)
+    throw new Error("Brave Search API key unavailable");
   const products: ExternalShoppingProduct[] = [];
   const seen = new Set<string>();
-
   const collect = (results: BraveResult[]) => {
     for (const result of results) {
       const rawUrl = result.url || "";
       const match = rawUrl.match(/amazon\.it\/(?:[^?#]*\/)?(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
-      if (!match) continue;
-
+      if (!match)
+        continue;
       const asin = match[1].toUpperCase();
-      if (seen.has(asin)) continue;
-
+      if (seen.has(asin))
+        continue;
       const title = cleanText(result.title || "")
         .replace(/\s*[-|:]\s*Amazon(?:\.it)?(?:\s*:\s*Moda)?\s*$/i, "")
         .trim();
-
-      if (!title || !isRelevantProduct(title, query)) continue;
-
+      if (!title || !isRelevantProduct(title, query))
+        continue;
       const snippets = [result.description, ...(result.extra_snippets ?? [])]
         .filter((value): value is string => Boolean(value))
         .map(cleanText)
@@ -200,7 +196,6 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
       const discountPercent = currentPrice != null && listPrice != null
         ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
         : null;
-
       seen.add(asin);
       products.push({
         asin,
@@ -214,14 +209,14 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
         source: "brave-search",
         features: snippets.slice(0, 2).map((value) => value.slice(0, 220)),
       });
-
-      if (products.length >= limit) break;
+      if (products.length >= limit)
+        break;
     }
   };
-
   const queries = [...new Set([query, ...semanticQueries].map((value) => value.trim()).filter(Boolean))].slice(0, 6);
   for (const candidate of queries) {
-    if (products.length >= limit) break;
+    if (products.length >= limit)
+      break;
     const candidateKeywords = queryTokens(candidate).join(" ") || candidate;
     const searchPatterns = [
       'site:amazon.it "' + candidateKeywords + '"',
@@ -231,13 +226,13 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
       candidateKeywords + " Amazon.it prezzo"
     ];
     for (const pattern of searchPatterns) {
-      if (products.length >= limit) break;
+      if (products.length >= limit)
+        break;
       collect(await braveWebSearch(apiKey, pattern));
     }
   }
-
-  if (!products.length) return products;
-
+  if (!products.length)
+    return products;
   const enriched = await Promise.all(products.slice(0, limit).map(async (product) => {
     let current = product;
     try {
@@ -249,13 +244,15 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
         title: snapshot.title && isRelevantProduct(snapshot.title, query) ? snapshot.title : product.title,
         imageUrl: snapshot.imageUrl || product.imageUrl,
         currentPrice: offer?.currentPrice ?? product.currentPrice,
-        listPrice: offer?.listPrice ?? product.listPrice,
-        discountPercent: offer?.discountPercent ?? product.discountPercent,
+        priceVerifiedAt: offer?.currentPrice != null ? new Date().toISOString() : product.priceVerifiedAt,
+        description: snapshot.description || product.description,
+        listPrice: offer?.currentPrice != null ? offer.listPrice : product.listPrice,
+        discountPercent: offer?.currentPrice != null ? offer.discountPercent : product.discountPercent,
         currency: offer?.currency ?? product.currency,
       };
-    } catch {}
+    }
+    catch { }
     return enrichFromBraveByAsin(apiKey, current);
   }));
-
   return enriched;
 }

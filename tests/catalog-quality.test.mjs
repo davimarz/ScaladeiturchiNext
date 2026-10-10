@@ -65,6 +65,7 @@ test('catalogue pagination returns a continuation without losing different ASIN 
  let fail = false;
  vm.runInNewContext(source, { exports, URL, console, require(name) {
    if (name === 'next/server') return { NextResponse: { json: (body, init) => ({ body, status: init?.status || 200 }) } };
+   if (name.includes('presented-catalog')) return {getPresentedCatalog:()=>assert.fail('legacy request should preserve pagination')};
    if (name.includes('product-validation')) return { catalogLimit: () => 2 };
    if (name.includes('amazon-page-offer')) return { needsProductTitleEnrichment: () => false };
    if (name.includes('supabase/admin')) return { async supabaseAdminFetch(path) { calls.push(path); if (fail) throw new Error('Database unavailable'); return [ { id:'a', asin:'B012345678', image_url:good.imageUrl }, { id:'b', asin:'B087654321', image_url:good.imageUrl }, { id:'c', asin:'B011111111' } ]; } };

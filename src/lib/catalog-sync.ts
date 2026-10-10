@@ -1,8 +1,13 @@
 import "server-only";
+
 import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
+
 import { fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
+
 import { supabaseAdminFetch } from "./supabase/admin";
+
 import { catalogConfig, type Catalog } from "./catalog-config";
+
 import { mergeCatalogData, missingCatalogData, validPrice, type CatalogData } from "./catalog-product";
 
 type ProductRow = {
@@ -10,10 +15,12 @@ type ProductRow = {
   current_price: number | null; list_price: number | null; discount_percent: number | null;
   [key: string]: string | number | null;
 };
+
 function rowData(product: ProductRow): CatalogData {
   return { title: product.title, description: product.description, imageUrl: product.image_url,
     currentPrice: product.current_price, listPrice: product.list_price, discountPercent: product.discount_percent };
 }
+
 export async function markCatalogVerificationPending(catalog: Catalog) {
   const { membership, prefix } = catalogConfig[catalog];
   await supabaseAdminFetch("products?active=eq.true&" + membership + "=eq.true", {
@@ -21,19 +28,39 @@ export async function markCatalogVerificationPending(catalog: Catalog) {
     body: JSON.stringify({ [prefix + "_verification_status"]: "pending", [prefix + "_verification_attempts"]: 0, [prefix + "_last_verification_error"]: null }),
   });
 }
+
 export async function catalogVerificationSummary(catalog: Catalog) {
   const { membership, prefix } = catalogConfig[catalog];
-  const products: Array<{ status: string }> = [];
-  for (let offset = 0; ; offset += 1000) {
-    const page = await supabaseAdminFetch<Array<{ status: string }>>(
-      `products?active=eq.true&${membership}=eq.true&select=status:${prefix}_verification_status&order=id.asc&limit=1000&offset=${offset}`,
-    );
+  type SummaryRow = {
+    status: string;
+    title: string;
+    description: string | null;
+    image_url: string | null;
+    current_price: number | null;
+    list_price: number | null;
+    discount_percent: number | null;
+    price_verified_at: string | null;
+  };
+  const products: SummaryRow[] = [];
+  for (let offset = 0;; offset += 1000) {
+    const page = await supabaseAdminFetch<SummaryRow[]>(`products?active=eq.true&${membership}=eq.true&select=status:${prefix}_verification_status,title,description,image_url,current_price,list_price,discount_percent,price_verified_at&order=id.asc&limit=1000&offset=${offset}`);
     products.push(...page);
-    if (page.length < 1000) break;
+    if (page.length < 1000)
+      break;
+  }
+  const missing = { titolo: 0, immagine: 0, descrizione: 0, prezzo: 0 };
+  for (const product of products) {
+    const fields = missingCatalogData({ title: product.title || null, description: product.description || null, imageUrl: product.image_url || null, currentPrice: product.current_price ?? null, listPrice: product.list_price ?? null, discountPercent: product.discount_percent ?? null });
+    if (!product.price_verified_at && !fields.includes("prezzo"))
+      fields.push("prezzo");
+    for (const field of fields)
+      if (field in missing)
+        missing[field as keyof typeof missing]++;
   }
   return { total: products.length, remaining: products.filter(p => p.status === "pending").length,
-    complete: products.filter(p => p.status === "verified").length, incomplete: products.filter(p => p.status === "failed").length };
+    complete: products.filter(p => p.status === "verified").length, incomplete: products.filter(p => p.status === "failed").length, missing };
 }
+
 export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
   const { membership, prefix } = catalogConfig[catalog];
   const status = prefix + "_verification_status";
@@ -87,4 +114,9 @@ export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
     if (missing.includes("immagine")) imagesMissing++;
   }
   return { checked: products.length, verified, pending, failed, imagesRecovered, imagesMissing };
+}
+
+export async function retryIncompleteCatalog(catalog: Catalog) {
+  const { membership, prefix } = catalogConfig[catalog];
+  await supabaseAdminFetch(`products?active=eq.true&${membership}=eq.true&${prefix}_verification_status=eq.failed`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ [prefix + "_verification_status"]: "pending", [prefix + "_verification_attempts"]: 0, [prefix + "_last_verification_error"]: null }) });
 }
