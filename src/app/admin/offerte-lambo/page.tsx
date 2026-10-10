@@ -25,7 +25,7 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
   return (
     <main className="adminShell">
       <section className="adminHeader">
-        <div><p className="eyebrow">AMMINISTRAZIONE</p><h1>Offerte Lambo</h1></div>
+        <div><p className="eyebrow">AMMINISTRAZIONE</p><h1>Offerte Lampo</h1></div>
         <div className="adminActions">
           <Link href="/admin">Dashboard</Link>
           <Link href="/admin/haul">HAUL</Link>
@@ -35,8 +35,8 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
       </section>
 
       <section className="adminPanel">
-        <h2>Importazione prodotti Offerte Lambo</h2>
-        <p>Prodotti Offerte Lambo attivi: {products.length}.</p>
+        <h2>Importazione prodotti Offerte Lampo</h2>
+        <p>Prodotti Offerte Lampo attivi: {products.length}.</p>
 
         <CatalogImportNotice catalog="offerte-lambo" status={params.lambo_import} count={params.lambo_count} />
 
@@ -52,7 +52,7 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
           </details>
         </form>
 
-        <p className="adminHint">Cliccando “Aggiorna Offerte” il sistema importa i prodotti trovati e aggiorna anche prezzo attuale, prezzo precedente e sconto dei prodotti Offerte Lambo già presenti.</p>
+        <p className="adminHint">Cliccando “Aggiorna Offerte” il sistema importa i prodotti trovati e aggiorna anche prezzo attuale, prezzo precedente e sconto dei prodotti Offerte Lampo già presenti.</p>
       </section>
     <CatalogVerificationRunner catalog={params.lambo_import === "success" || params.lambo_import === "price-only" ? "offerte-lambo" : null} />
     </main>

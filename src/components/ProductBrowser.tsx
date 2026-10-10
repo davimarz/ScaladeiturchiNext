@@ -133,7 +133,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
 
       {loading && <p className="catalogState">Caricamento prodotti…</p>}
       {error && <p className="catalogState">{error}</p>}
-      {!loading && !error && products.length === 0 && <p className="catalogState">Nessun prodotto disponibile al momento.</p>}
+      {!loading && !error && products.length === 0 && <p className="catalogState">Nessun prodotto trovato. Prova con un’altra parola chiave.</p>}
 
       <div className="productGrid">
         {products.map((product) => {
@@ -149,11 +149,11 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
                 <h3>{displayProductTitle(product.title)}</h3>
                 {product.description ? (
                   <details className="productDescription">
-                    <summary>Descrizione</summary>
+                    <summary>Dettagli del prodotto</summary>
                     <p>{product.description}</p>
                   </details>
                 ) : null}
-                <div className="priceRow">
+                <div className={price ? "priceRow" : "priceRow priceUnavailable"}>
                   {price ? <strong>{formatPrice(price.current, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
                   {price?.reference != null ? <del aria-label="Prezzo di riferimento">{formatPrice(price.reference, product.currency)}</del> : null}
                 </div>
@@ -164,7 +164,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
           );
         })}
       </div>
-      {hasMore ? <button type="button" className="buyButton" disabled={loading || moreLoading} onClick={loadMore}>{moreLoading ? "Caricamento…" : "Mostra altri prodotti"}</button> : null}
+      {hasMore ? <button type="button" className="buyButton catalogMoreButton" disabled={loading || moreLoading} onClick={loadMore}>{moreLoading ? "Caricamento…" : "Mostra altri prodotti"}</button> : null}
     </section>
   );
 }

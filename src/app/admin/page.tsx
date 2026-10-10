@@ -196,7 +196,7 @@ export default async function AdminPage({
         <div className="adminActions">
           <Link href="/" target="_blank" rel="noopener noreferrer">Apri il sito</Link>
           <Link href="/admin/haul">HAUL</Link>
-          <Link href="/admin/offerte-lambo">Offerte Lambo</Link>
+          <Link href="/admin/offerte-lambo">Offerte Lampo</Link>
           <Link href="/admin/bestseller">Bestseller</Link>
           <form action="/api/admin/logout" method="post">
             <button type="submit">Esci</button>
@@ -260,11 +260,11 @@ export default async function AdminPage({
           <form action="/api/admin/offerte-lambo/import" method="post" className="quickImportCard">
             <input type="hidden" name="return_to" value="/admin" />
             <div className="quickImportMeta">
-              <strong>Offerte Lambo</strong>
+              <strong>Offerte Lampo</strong>
               <span>Ultimo controllo: {formatLastCheck(stats?.lambo_last_price)}</span>
             </div>
             <div className="quickImportControls">
-              <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lambo" required />
+              <input name="lambo_url" type="url" defaultValue={savedLamboUrl} aria-label="URL Amazon Offerte Lampo" required />
               <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="offerte-lambo" className="quickImportSaveButton">Salva link</button>
               <AdminUpdateButton idleLabel="Aggiorna Offerte" />
             </div>
