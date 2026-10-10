@@ -169,7 +169,7 @@ export default function AIShoppingAssistant() {
                     {product.features.slice(0, 3).map((feature) => <li key={feature}>{feature}</li>)}
                   </ul>
                 ) : null}
-                <div className="priceRow">
+                <div className={product.currentPrice != null ? "priceRow" : "priceRow priceUnavailable"}>
                   {product.currentPrice != null ? <strong>{money(product.currentPrice, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
                   {product.listPrice != null && product.currentPrice != null && product.listPrice > product.currentPrice ? (
                     <del>{money(product.listPrice, product.currency)}</del>

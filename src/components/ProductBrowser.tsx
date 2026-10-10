@@ -114,10 +114,12 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
     startSearch(q, next);
   }
 
+  const Heading = fixedCategory ? "h1" : "h2";
+
   return (
     <section className="catalogSection" id="cerca">
       <div className="catalogHead">
-        <div><p className="eyebrow">{eyebrow}</p><h2>{heading}</h2><p className="catalogOrder">{fixedCategory === "bestseller" ? "Ordinati per posizione nella classifica Amazon." : "Ordinati dal prezzo più basso."}</p></div>
+        <div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{fixedCategory === "bestseller" ? "Ordinati per posizione nella classifica Amazon." : "Ordinati dal prezzo più basso."}</p></div>
         <form className="searchBox" onSubmit={submit}>
           <label className="srOnly" htmlFor="catalog-search">Cerca prodotti</label>
           <input id="catalog-search" type="search" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Es. cuffie, cucina, sport..." />

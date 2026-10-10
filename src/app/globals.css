@@ -7,8 +7,8 @@ button,input{font:inherit}
 .topbar{max-width:1240px;margin:auto;padding:24px 32px;display:flex;justify-content:space-between;gap:24px;align-items:center;border-bottom:1px solid var(--line)}
 .brand{display:flex;gap:13px;align-items:center}
 .brandMark{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:var(--sea);color:#fff;flex-shrink:0}
-.brand strong,.brand small{color:var(--muted);margin-top:2px;font-size:12px;letter-spacing:.025em}
-.brand small{color:var(--muted);margin-top:3px;font-size:12px}
+.brand strong,.brand small{display:block}
+.brand small{color:var(--muted);margin-top:2px;font-size:12px;letter-spacing:.025em}
 nav{display:flex;gap:26px;font-size:14px;font-weight:700}
 nav a:hover{color:var(--sea)}
 .hero{max-width:1180px;margin:auto;padding:88px 28px 72px;display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:70px;align-items:end}
@@ -34,7 +34,7 @@ h1{max-width:800px;margin:14px 0 18px;font-size:clamp(34px,5vw,60px);font-weight
 .chips button:hover,.chips button.active{border-color:var(--sea);color:var(--sea);background:#edf7f7}
 .showcase{max-width:1180px;margin:20px auto 80px;padding:0 28px}
 .sectionHead{display:flex;justify-content:space-between;gap:30px;align-items:end}
-.sectionHead h2,.catalogHead h2{font-size:clamp(28px,3vw,40px);margin:7px 0 10px;letter-spacing:-.035em;line-height:1.15;font-weight:650}
+.sectionHead h2,.catalogHead h2,.catalogHead h1{font-size:clamp(28px,3vw,40px);margin:7px 0 10px;letter-spacing:-.035em;line-height:1.15;font-weight:650}
 .sectionHead>p{max-width:330px;color:var(--muted);line-height:1.5}
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
 .cards article{background:var(--sand);padding:30px;min-height:290px;position:relative}
@@ -154,7 +154,7 @@ footer{flex-direction:column;align-items:center}
 @media(max-width:600px){.publicTabs{padding:8px 16px;gap:4px}
 .publicTabs a{flex:none;padding:10px 13px;font-size:13px;white-space:nowrap}}
 .compactCatalogPage .catalogSection{padding-top:30px;border-top:0;margin-bottom:58px}
-.compactCatalogPage .catalogHead h2{margin-bottom:10px}
+.compactCatalogPage .catalogHead h2,.compactCatalogPage .catalogHead h1{margin-bottom:10px}
 .compactCatalogPage .productGrid{margin-top:22px}
 .compactNotice{max-width:1176px;margin:0 auto 28px;padding:16px 20px;grid-template-columns:110px 1fr;gap:14px}
 .compactNotice strong{font-size:12px}
@@ -265,7 +265,7 @@ footer{flex-direction:column;align-items:center}
 .quickImportControls input{min-width:100%;flex-basis:100%}
 .quickImportSaveButton{flex:1}}
 /* Shared interaction and accessibility states. */
-.brand strong{font-size:18px;font-weight:650;letter-spacing:-.035em}
+.brand strong{color:var(--ink);font-size:18px;font-weight:650;letter-spacing:-.035em}
 .brandMark svg{width:28px;height:28px}
 .headerNote{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
 .headerNote::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--sea)}
