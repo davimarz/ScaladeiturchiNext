@@ -1,4 +1,5 @@
 import "server-only";
+import { usefulTitle } from "./catalog-presentation";
 
 import { extractAmazonProductImage } from "./amazon-input";
 
@@ -67,13 +68,7 @@ function isUsefulProductTitle(value: string) {
 }
 
 export function needsProductTitleEnrichment(value: string) {
-  const title = value.replace(/\s+/g, " ").trim();
-  if (!title)
-    return true;
-  if (/^scegli (?:il paese|paese)|^accedi|^amazon\.it\s*:|^robot check|^pagina non trovata|mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|la gamma di classi energetiche|sponsorizzato|sponsored|^Prodotto Amazon\s+[A-Z0-9]{10}$/i.test(title))
-    return true;
-  const meaningfulWords = title.split(/\s+/).filter((word) => word !== "&" && word.length > 0);
-  return meaningfulWords.length <= 3 && title.length <= 32 && !/\d/.test(title);
+  return !usefulTitle(value);
 }
 
 export function extractAmazonProductTitle(html: string) {

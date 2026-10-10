@@ -162,7 +162,7 @@ export default async function AdminPage({ searchParams, }: {
   const catalogAutoLastRunRaw = typeof settingsByKey.get("catalog_auto_update_last_started_at") === "string" ? settingsByKey.get("catalog_auto_update_last_started_at") as string : "";
   const catalogAutoLastStatus = typeof settingsByKey.get("catalog_auto_update_last_status") === "string" ? settingsByKey.get("catalog_auto_update_last_status") as string : "";
   const catalogAutoLastMessage = typeof settingsByKey.get("catalog_auto_update_last_message") === "string" ? settingsByKey.get("catalog_auto_update_last_message") as string : "";
-  const formatLastCheck = (value: string | null | undefined) => value ? new Date(value).toLocaleString("it-IT") : "Mai";
+  const formatLastCheck = (value: string | null | undefined) => value ? new Date(value).toLocaleString("it-IT", { timeZone: "Europe/Rome" }) : "Mai";
   const todayAI = aiUsage[0];
   const aiRequests = todayAI?.requests_count ?? 0;
   const aiTokens = todayAI?.total_tokens ?? 0;
@@ -394,7 +394,7 @@ export default async function AdminPage({ searchParams, }: {
        </thead>
        <tbody>
         {aiHistory.length ? aiHistory.map((item) => (<tr key={item.id}>
-          <td>{new Date(item.created_at).toLocaleString("it-IT")}</td>
+          <td>{new Date(item.created_at).toLocaleString("it-IT", { timeZone: "Europe/Rome" })}</td>
           <td>{item.query}</td>
           <td>{item.status}</td>
           <td>{item.products_count}</td>
@@ -452,7 +452,7 @@ export default async function AdminPage({ searchParams, }: {
          </td>
          <td>{product.list_price == null ? "—" : new Intl.NumberFormat("it-IT", { style: "currency", currency: product.currency }).format(product.list_price)}</td>
          <td>{product.discount_percent == null ? "—" : "−" + Math.round(product.discount_percent) + "%"}</td>
-         <td>{new Date(product.updated_at).toLocaleString("it-IT")}</td>
+         <td>{new Date(product.updated_at).toLocaleString("it-IT", { timeZone: "Europe/Rome" })}</td>
          <td>
           {MANUAL_SOURCES.some((source) => source === product.source) ? (<form action="/api/admin/products/update" method="post" className="adminForm">
             <input type="hidden" name="id" value={product.id}/>

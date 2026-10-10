@@ -15,8 +15,11 @@ export type StoreProduct = {
 };
 export const productCategories = [["tutte", "Tutte"], ["tecnologia", "Tecnologia"], ["casa", "Casa"], ["bellezza", "Bellezza"], ["tempo-libero", "Tempo libero"], ["altro", "Altri prodotti"]] as const;
 export function normalizeWords(text: string) { return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
-export function usefulTitle(title: string) {
-    return title.trim().length >= 8 && !/^(?:prodotto amazon|classe (?:energetica|di efficienza)|scegli (?:il paese|paese)|accedi|amazon\.it\s*:|pagina non trovata|sorry|robot check)/i.test(title.trim());
+export function usefulTitle(value: string) {
+    const title = value.replace(/\s+/g, " ").trim();
+    if (title.length < 8 || /^scegli (?:il paese|paese)|^accedi|^amazon\.it\s*:|^robot check|^pagina non trovata|^sorry|mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|la gamma di classi energetiche|sponsorizzato|sponsored|^prodotto amazon|^classe (?:energetica|di efficienza)/i.test(title)) return false;
+    const words = title.split(/\s+/).filter(word => word !== "&" && word.length > 0);
+    return !(words.length <= 3 && title.length <= 32 && !/\d/.test(title));
 }
 export function cleanTitle(title: string) { return title.replace(/\s+/g, " ").trim(); }
 export function shortTitle(title: string, max = 105) {
@@ -27,7 +30,7 @@ export function shortTitle(title: string, max = 105) {
     return cut.slice(0, Math.max(cut.lastIndexOf(" "), max - 18)) + "…";
 }
 export function presentable(product: StoreProduct) {
-    return usefulTitle(product.title) && /^https?:\/\//.test(product.image_url || "") && !/\/(?:11\+\+B3A2NEL|transparent-pixel|pixel\.|loading\.|no-image)/i.test(product.image_url || "") && (product.description || "").trim().length >= 20 && Number.isFinite(product.current_price) && (product.current_price || 0) > 0 && Boolean(product.price_verified_at && Number.isFinite(Date.parse(product.price_verified_at)) && Date.parse(product.price_verified_at) <= Date.now());
+    return usefulTitle(product.title) && /^https?:\/\//.test(product.image_url || "") && !/\/(?:11\+\+B3A2NEL|transparent-pixel|pixel\.|loading\.|no-image)/i.test(product.image_url || "") && (product.description || "").trim().length >= 20 && Number.isFinite(product.current_price) && (product.current_price || 0) > 0 && (product.current_price || 0) < 10000 && Boolean(product.price_verified_at && Number.isFinite(Date.parse(product.price_verified_at)) && Date.parse(product.price_verified_at) <= Date.now());
 }
 export function inferredCategory(title: string) {
     const t = normalizeWords(title);

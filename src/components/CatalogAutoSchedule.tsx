@@ -15,6 +15,12 @@ export default function CatalogAutoSchedule({
   lastStatus: string;
   lastMessage: string;
 }) {
+  const statusLabels: Record<string, string> = {
+    running: "Avvio registrato; completamento non confermato",
+    partial: "Completato con dati da verificare",
+    success: "Completato",
+    error: "Aggiornamento non riuscito",
+  };
   const [saving, setSaving] = useState(false);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -44,7 +50,7 @@ export default function CatalogAutoSchedule({
       <div className="autoScheduleStatus">
         <span>Fuso orario: Europe/Rome</span>
         <span>Ultimo avvio: {lastRun || "Mai"}</span>
-        <span>Stato: {lastStatus || "—"}</span>
+        <span>Stato: {statusLabels[lastStatus] || lastStatus || "Non registrato"}</span>
         {lastMessage ? <span>{lastMessage}</span> : null}
       </div>
     </form>

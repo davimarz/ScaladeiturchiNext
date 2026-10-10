@@ -1,3 +1,4 @@
+import { usefulTitle } from '../src/lib/catalog-presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -14,7 +15,7 @@ function load(file, dependencies = {}) {
   }});
   return exports;
 }
-const offer = load('amazon-page-offer', { './amazon-input': { extractAmazonProductImage: () => null } });
+const offer = load('amazon-page-offer', { './catalog-presentation': { usefulTitle }, './amazon-input': { extractAmazonProductImage: () => null } });
 const quality = load('catalog-product', { './amazon-input': { isGenericAmazonImage }, './amazon-page-offer': offer });
 const config = load('catalog-config');
 const good = { title: 'Cuffie bluetooth con microfono', description: 'Cuffie senza fili con microfono e custodia di ricarica.', imageUrl: 'https://m.media-amazon.com/images/I/headphones.jpg', currentPrice: 20, listPrice: 40, discountPercent: 50 };

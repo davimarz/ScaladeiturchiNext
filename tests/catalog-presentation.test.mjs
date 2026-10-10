@@ -62,3 +62,6 @@ test('AI products persist safely as local snapshots without inventing unavailabl
  const result=api.readProductSnapshots(JSON.stringify([{...product,id:'',price_verified_at:null},{...product,affiliate_url:'javascript:alert(1)'},{...product,affiliate_url:'https://www.amazon.it.malicious.test/dp/B012345678'}]));
  assert.equal(result.length,1);assert.equal(result[0].asin,product.asin);assert.equal(result[0].price_verified_at,null);assert.equal(result[0].current_price,30);
 });
+test('display and importer share the rejection of Amazon chrome and energy labels',()=>{
+ for(const title of ['La gamma di classi energetiche','Mostra visualizzazione per acquistare rapidamente','Sponsorizzato','Amazon.it: scegli paese','Prodotto Amazon B012345678'])assert.equal(presentation.usefulTitle(title),false,title);
+});

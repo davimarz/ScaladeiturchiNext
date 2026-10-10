@@ -37,7 +37,7 @@ Implementazione del 10 ottobre 2026 sul ramo `fix/ai-missing-prices`. La pubblic
 
 ## Verifiche e limiti
 
-- 69 test automatici: qualità e prezzo, ricerca e filtri, paginazione oltre 1.000 righe, copie locali e validazione degli eventi, riprova dei soli falliti, autorizzazioni admin, pipeline AI e importatori.
+- 70 test automatici: qualità e prezzo, ricerca e filtri, paginazione oltre 1.000 righe, copie locali e validazione degli eventi, riprova dei soli falliti, autorizzazioni admin, pipeline AI e importatori.
 - ESLint e build Next.js verificati. Le prove sulla Preview vengono annotate nella descrizione della PR.
 - Le categorie e le marche sono riconosciute solo quando il titolo dà elementi utili; gli altri prodotti restano in “Altri prodotti” e non ricevono una marca inventata.
 - L'indice presentato è limitato a 11.000 prodotti per catalogo e segnala il limite quando raggiunto. Il catalogo attuale è molto più piccolo.
@@ -45,3 +45,13 @@ Implementazione del 10 ottobre 2026 sul ramo `fix/ai-missing-prices`. La pubblic
 - Prezzi e immagini mancanti dipendono anche dalle risposte Amazon. HAUL ha recentemente risposto HTTP 503; Creators API ha restituito `AssociateNotEligible`. Il codice conserva i dati esistenti e mostra gli esiti, senza dichiarare recuperi non riusciti.
 - L'aggiornamento giornaliero in Production resta collegato alla versione precedentemente pubblicata: il nuovo scheduler sarà operativo sul sito principale quando questa PR sarà distribuita su `main`.
 - La scheda “Cerca” resta rimossa. La ricerca è disponibile dentro i cataloghi.
+
+## Prove nella Preview
+
+- Home con otto schede iniziali: immagini caricate e nessuna eccedenza orizzontale sul viewport desktop disponibile.
+- Offerte Lampo: filtro Oral-B, massimo 50 €, prezzo crescente restituisce tre schede a 20,47 €, 32,97 € e 36,88 €.
+- Preferiti: salvataggio conservato tra le pagine; confronto con tre prodotti e rifiuto esplicito del quarto.
+- Admin: gruppo HAUL senza descrizione apre 33 schede; conteggi dei tre cataloghi ed esiti di importazione leggibili.
+- Eventi aggregati di consultazione, filtro, ordinamento e salvataggio presenti nel database.
+- Assistente AI: richiesta con esigenza e budget, stato di attesa effettivo e invio disabilitato durante la ricerca.
+- Le regole responsive sono state controllate nel CSS; non è stata simulata una sessione reale su telefono.
