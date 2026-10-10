@@ -71,3 +71,11 @@ test('the catalogue filter panel has one unambiguous completeness control',()=>{
  assert.doesNotMatch(source,/Solo con prezzo rilevato|product_category|productCategories|priced/);
  assert.doesNotMatch(source,/>Categoria</);
 });
+test('the last AI request can be restored safely while corrupted or unsafe sessions are ignored',()=>{
+ const session=load('src/lib/ai-search-session.ts');
+ const valid=JSON.stringify({version:1,query:'cuffie bluetooth sotto 40 euro',answer:'Ecco i risultati.',savedAt:100,products:[{asin:'B012345678',title:'Cuffie Sony',imageUrl:'https://m.media-amazon.com/images/I/test.jpg',currentPrice:30,listPrice:40,discountPercent:25,currency:'EUR',affiliateUrl:'https://www.amazon.it/dp/B012345678',source:'catalogo',priceVerifiedAt:'2026-10-10T10:00:00Z'}],noMoreProducts:false});
+ const restored=session.readAiSearchSession(valid);
+ assert.equal(restored.query,'cuffie bluetooth sotto 40 euro');assert.equal(restored.products.length,1);assert.equal(restored.products[0].currentPrice,30);
+ assert.equal(session.readAiSearchSession('not-json'),null);
+ assert.equal(session.readAiSearchSession(JSON.stringify({...JSON.parse(valid),products:[{...JSON.parse(valid).products[0],affiliateUrl:'javascript:alert(1)'}]})),null);
+});

@@ -12,20 +12,7 @@ import { recordInterest } from "../lib/interest-events";
 
 import { readServiceJson } from "../lib/service-json";
 
-type Product = {
-  asin: string;
-  title: string;
-  imageUrl: string | null;
-  currentPrice: number | null;
-  listPrice: number | null;
-  discountPercent: number | null;
-  currency: string;
-  affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search" | "brave-search";
-  features?: string[];
-  priceVerifiedAt?: string | null;
-  description?: string | null;
-};
+import { aiSearchSessionKey, readAiSearchSession, serializeAiSearchSession, type AiSearchProduct as Product } from "../lib/ai-search-session";
 
 const examples = ["Cuffie Bluetooth per telefonare sotto 40 €", "Una friggitrice ad aria per due persone entro 80 €", "Uno zaino leggero per escursioni sotto 35 €", "Un rasoio elettrico sotto 50 €"];
 
@@ -49,6 +36,28 @@ export default function AIShoppingAssistant() {
   const [lastQuery, setLastQuery] = useState("");
   const [noMoreProducts, setNoMoreProducts] = useState(false);
   const [error, setError] = useState("");
+  const [sessionReady, setSessionReady] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = readAiSearchSession(sessionStorage.getItem(aiSearchSessionKey) || "");
+      if (saved) {
+        setQuery(saved.query);
+        setLastQuery(saved.query);
+        setAnswer(saved.answer);
+        setProducts(saved.products);
+        setNoMoreProducts(saved.noMoreProducts);
+        setNow(saved.savedAt);
+      }
+    }
+    finally { setSessionReady(true); }
+  }, []);
+  useEffect(() => {
+    if (!sessionReady || !lastQuery) return;
+    try {
+      sessionStorage.setItem(aiSearchSessionKey, serializeAiSearchSession({ query: lastQuery, answer, products, noMoreProducts, savedAt: now }));
+    }
+    catch { /* The search still works when browser storage is unavailable. */ }
+  }, [sessionReady, lastQuery, answer, products, noMoreProducts, now]);
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/ai-suggestions", { signal: controller.signal })
@@ -82,6 +91,8 @@ export default function AIShoppingAssistant() {
     setProducts([]);
     setNoMoreProducts(false);
     setLastQuery(text);
+    try { sessionStorage.removeItem(aiSearchSessionKey); }
+    catch { /* The new request still replaces the visible result. */ }
     try {
       const response = await fetch("/api/ai-shopping", {
         method: "POST",
@@ -173,6 +184,7 @@ export default function AIShoppingAssistant() {
 
    {loading || moreLoading ? <p className="aiMessage" role="status">Ricerca e verifica dei dati in corso · {elapsed} secondi. {elapsed >= 45 ? "Le fonti stanno impiegando più tempo. Puoi attendere senza inviare di nuovo la richiesta." : "Sto consultando le fonti disponibili."}</p> : null}
    {error ? <p className="adminError aiMessage" role="alert">{error}</p> : null}
+   {!loading && lastQuery && (answer || products.length > 0) ? <p className="aiLastRequest"><strong>Ultima richiesta:</strong> {lastQuery}</p> : null}
    {answer ? <div className="aiAnswer"><strong>Risposta</strong><p>{answer}</p></div> : null}
 
    {!loading && products.length > 0 ? (<div className="aiProductGrid">
