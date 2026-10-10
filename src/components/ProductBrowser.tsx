@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-import { productCategories, type StoreProduct } from "../lib/catalog-presentation";
+import { type StoreProduct } from "../lib/catalog-presentation";
 
 import { recordInterest } from "../lib/interest-events";
 
@@ -10,16 +10,14 @@ import StoreProductCard from "./StoreProductCard";
 
 type Options = {
   q: string;
-  product_category: string;
   min: string;
   max: string;
   brand: string;
   sort: string;
   incomplete: boolean;
-  priced: boolean;
 };
 
-const defaults: Options = { q: "", product_category: "tutte", min: "", max: "", brand: "", sort: "default", incomplete: false, priced: false };
+const defaults: Options = { q: "", min: "", max: "", brand: "", sort: "default", incomplete: false };
 
 type Result = {
   products: StoreProduct[];
@@ -49,7 +47,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   const latest = useRef(0);
   const asinKey = asins?.join(",");
   function parameters(options: Options, offset = 0) {
-    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), offset: String(offset), category: fixedCategory || "tutte", q: options.q, product_category: options.product_category, min: options.min, max: options.max, brand: options.brand, sort: options.sort, incomplete: options.incomplete ? "1" : "0", priced: options.priced ? "1" : "0" });
+    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), offset: String(offset), category: fixedCategory || "tutte", q: options.q, min: options.min, max: options.max, brand: options.brand, sort: options.sort, incomplete: options.incomplete ? "1" : "0" });
     if (asinKey !== undefined)
       params.set("asins", asinKey);
     if (excludeCategories)
@@ -59,7 +57,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     const controller = new AbortController(), requestId = ++latest.current;
-    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), category: fixedCategory || "tutte", q: selected.q, product_category: selected.product_category, min: selected.min, max: selected.max, brand: selected.brand, sort: selected.sort, incomplete: selected.incomplete ? "1" : "0", priced: selected.priced ? "1" : "0" });
+    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), category: fixedCategory || "tutte", q: selected.q, min: selected.min, max: selected.max, brand: selected.brand, sort: selected.sort, incomplete: selected.incomplete ? "1" : "0" });
     if (asinKey !== undefined)
       params.set("asins", asinKey);
     if (excludeCategories)
@@ -126,12 +124,11 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   return <section className="catalogSection" id="catalogo" aria-busy={loading || moreLoading}>
   <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p></div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
   <details className="catalogFilters"><summary>Filtri e ordinamento</summary><form onSubmit={submit} className="filterFields">
-   <label>Categoria<select value={draft.product_category} onChange={e => setDraft({ ...draft, product_category: e.target.value })}>{productCategories.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
    <label>Marca<select value={draft.brand} onChange={e => setDraft({ ...draft, brand: e.target.value })}><option value="">Tutte le marche</option>{meta.brands.map(brand => <option key={brand}>{brand}</option>)}</select></label>
    <label>Prezzo minimo (€)<input type="number" min="0" step="0.01" value={draft.min} onChange={e => setDraft({ ...draft, min: e.target.value })}/></label><label>Prezzo massimo (€)<input type="number" min={draft.min || "0"} step="0.01" value={draft.max} onChange={e => setDraft({ ...draft, max: e.target.value })}/></label>
    <label>Ordina per<select value={draft.sort} onChange={e => setDraft({ ...draft, sort: e.target.value })}><option value="default">{fixedCategory === "bestseller" ? "Classifica Amazon" : "Completezza dei dati"}</option><option value="price-asc">Prezzo crescente</option><option value="price-desc">Prezzo decrescente</option><option value="discount">Sconto maggiore</option></select></label>
-   <label className="checkFilter"><input type="checkbox" checked={draft.incomplete} onChange={e => setDraft({ ...draft, incomplete: e.target.checked })}/>Mostra anche prodotti incompleti</label><label className="checkFilter"><input type="checkbox" checked={draft.priced} onChange={e => setDraft({ ...draft, priced: e.target.checked })}/>Solo con prezzo rilevato</label>
-   <button type="submit">Applica filtri</button><button type="button" className="secondaryButton" onClick={() => { setDraft(defaults); apply(defaults); }}>Azzera filtri</button>
+   <label className="checkFilter"><input type="checkbox" checked={draft.incomplete} onChange={e => setDraft({ ...draft, incomplete: e.target.checked })}/><span><strong>Mostra anche prodotti incompleti</strong><small>Normalmente sono mostrati solo prodotti con foto, descrizione e prezzo rilevato.</small></span></label>
+   <div className="filterActions"><button type="button" className="secondaryButton" onClick={() => { setDraft(defaults); apply(defaults); }}>Azzera filtri</button><button type="submit">Applica filtri</button></div>
   </form></details>
   <p className="catalogResults" role="status">{loading ? "Caricamento prodotti…" : `${meta.total} prodotti trovati · ${products.length} mostrati`}{!loading && !selected.incomplete && meta.incomplete > 0 ? ` · ${meta.incomplete} incompleti esclusi` : ""}</p>
   {!loading && !selected.incomplete && meta.incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draft, incomplete: true }; setDraft(next); apply(next); }}>Includi i prodotti incompleti</button> : null}

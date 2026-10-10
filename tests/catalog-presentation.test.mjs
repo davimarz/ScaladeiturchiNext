@@ -65,3 +65,9 @@ test('AI products persist safely as local snapshots without inventing unavailabl
 test('display and importer share the rejection of Amazon chrome and energy labels',()=>{
  for(const title of ['La gamma di classi energetiche','Mostra visualizzazione per acquistare rapidamente','Sponsorizzato','Amazon.it: scegli paese','Prodotto Amazon B012345678'])assert.equal(presentation.usefulTitle(title),false,title);
 });
+test('the catalogue filter panel has one unambiguous completeness control',()=>{
+ const source=readFileSync(new URL('../src/components/ProductBrowser.tsx',import.meta.url),'utf8');
+ assert.match(source,/Mostra anche prodotti incompleti/);
+ assert.doesNotMatch(source,/Solo con prezzo rilevato|product_category|productCategories|priced/);
+ assert.doesNotMatch(source,/>Categoria</);
+});

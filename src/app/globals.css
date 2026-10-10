@@ -316,12 +316,13 @@ button:disabled{cursor:wait;opacity:.6}
 .homePortals strong { font-size:20px; }.homePortals span { line-height:1.5; font-size:14px; color:#586b78; }.homePortals .aiPortal { background:#e8f5f3; border-color:#83aaa7; }
 .catalogFilters { margin:20px 0; border:1px solid #d7e1e6; background:white; border-radius:12px; padding:0 16px; }
 .catalogFilters>summary { cursor:pointer; padding:15px 0; font-weight:650; min-height:48px; }
-.filterFields { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; padding:0 0 20px; }
+.filterFields { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; padding:0 0 20px; }
 .filterFields label { display:flex; flex-direction:column; gap:8px; font-size:14px; font-weight:600; }
 .filterFields input,.filterFields select { min-width:0; width:100%; padding:12px; min-height:46px; border:1px solid #b7c8d0; border-radius:8px; background:white; color:#183548; font:inherit; }
-.filterFields .checkFilter { flex-direction:row; align-items:center; line-height:1.4; }.checkFilter input { width:20px; min-height:20px; height:20px; accent-color:#086b6c; flex-shrink:0; }
+.filterFields .checkFilter { grid-column:1/-1; flex-direction:row; align-items:flex-start; gap:12px; padding:13px 14px; border:1px solid #d7e1e6; border-radius:10px; background:#f5f9f9; line-height:1.4; }.checkFilter input { width:20px; min-height:20px; height:20px; margin-top:1px; accent-color:#086b6c; flex-shrink:0; }.checkFilter span{display:grid;gap:3px}.checkFilter strong{font-size:14px}.checkFilter small{font-size:12px;font-weight:400;color:#586b78}
 .filterFields button,.textButton,.productTools button,.productTools a,.comparisonTable button { min-height:44px; padding:10px 12px; border:1px solid #b7c8d0; border-radius:8px; background:#fff; color:#183548; font:inherit; font-size:14px; cursor:pointer; }
 .filterFields button[type=submit] { background:#086b6c; color:white; border-color:#086b6c; }.catalogResults { font-size:14px; color:#586b78; }.textButton { margin-bottom:20px; }
+.filterActions{grid-column:1/-1;display:flex;justify-content:flex-end;gap:10px}.filterActions button{min-width:132px}
 .catalogOrder { max-width:650px; line-height:1.6; }.catalogDisclaimer,.savedNotice { line-height:1.6; color:#586b78; font-size:14px; margin:24px 0; }
 .descriptionPreview { font-size:14px; color:#586b78; line-height:1.5; min-height:63px; margin:0; }
 .productCard h3 { min-height:66px; line-height:1.45; }.productDescription { margin:10px 0; }.productDescription summary { min-height:44px; display:list-item; padding-top:10px; cursor:pointer; }.productDescription p { overflow-wrap:anywhere; }
@@ -332,4 +333,4 @@ button:disabled{cursor:wait;opacity:.6}
 .catalogVerifyRunner .catalogComplete{color:#176445;font-weight:650}
 button:disabled { cursor:wait; opacity:.65; } button[aria-pressed=true] { text-decoration:underline; text-underline-offset:4px; }
 @media(max-width:800px) { .homePortals { grid-template-columns:repeat(2,minmax(0,1fr)); }.filterFields { grid-template-columns:repeat(2,minmax(0,1fr)); }.interestGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }.topbar { gap:16px; flex-wrap:wrap; }.shoppingLinks { margin-left:0; } }
-@media(max-width:480px) { .homeWelcome { padding:0 16px; margin-top:24px; }.homePortals { gap:10px; }.homePortals a { padding:14px; }.homePortals strong { font-size:18px; }.filterFields { grid-template-columns:1fr; }.shoppingLinks a { padding:10px; }.productTools { gap:8px; }.productTools button,.productTools a { flex:1 1 40%; justify-content:center; }.catalogHead { align-items:stretch; }.catalogFilters { padding:0 12px; } }
+@media(max-width:480px) { .homeWelcome { padding:0 16px; margin-top:24px; }.homePortals { gap:10px; }.homePortals a { padding:14px; }.homePortals strong { font-size:18px; }.filterFields { grid-template-columns:1fr; }.filterActions{display:grid;grid-template-columns:1fr}.filterActions button{width:100%}.shoppingLinks a { padding:10px; }.productTools { gap:8px; }.productTools button,.productTools a { flex:1 1 40%; justify-content:center; }.catalogHead { align-items:stretch; }.catalogFilters { padding:0 12px; } }
