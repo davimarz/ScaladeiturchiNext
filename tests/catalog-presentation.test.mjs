@@ -67,9 +67,11 @@ test('display and importer share the rejection of Amazon chrome and energy label
 });
 test('the catalogue filter panel has one unambiguous completeness control',()=>{
  const source=readFileSync(new URL('../src/components/ProductBrowser.tsx',import.meta.url),'utf8');
- assert.match(source,/Mostra anche prodotti incompleti/);
- assert.doesNotMatch(source,/Solo con prezzo rilevato|product_category|productCategories|priced/);
- assert.doesNotMatch(source,/>Categoria</);
+ const aiSource=readFileSync(new URL('../src/components/AIShoppingAssistant.tsx',import.meta.url),'utf8');
+ const controls=readFileSync(new URL('../src/components/CatalogFilterPanel.tsx',import.meta.url),'utf8');
+ for(const label of ['Marca','Prezzo minimo','Prezzo massimo','Prezzo crescente','Prezzo decrescente','Sconto maggiore','Mostra anche prodotti incompleti'])assert.match(controls,new RegExp(label));
+ assert.match(source,/CatalogFilterPanel/);assert.match(aiSource,/CatalogFilterPanel/);
+ assert.doesNotMatch(source+aiSource+controls,/Solo con prezzo rilevato|product_category|productCategories|priced|>Categoria</);
 });
 test('the last AI request can be restored safely while corrupted or unsafe sessions are ignored',()=>{
  const session=load('src/lib/ai-search-session.ts');
@@ -78,4 +80,17 @@ test('the last AI request can be restored safely while corrupted or unsafe sessi
  assert.equal(restored.query,'cuffie bluetooth sotto 40 euro');assert.equal(restored.products.length,1);assert.equal(restored.products[0].currentPrice,30);
  assert.equal(session.readAiSearchSession('not-json'),null);
  assert.equal(session.readAiSearchSession(JSON.stringify({...JSON.parse(valid),products:[{...JSON.parse(valid).products[0],affiliateUrl:'javascript:alert(1)'}]})),null);
+});
+test('AI results support the same brand, price, completeness and ordering filters as catalogues',()=>{
+ const filters=load('src/lib/ai-product-filters.ts',{'./catalog-presentation':presentation});
+ const base={asin:'B012345678',title:'Sony cuffie Bluetooth con microfono',imageUrl:'https://m.media-amazon.com/images/I/sony.jpg',description:'Cuffie Bluetooth complete con microfono integrato.',features:[],currentPrice:30,listPrice:60,discountPercent:50,currency:'EUR',affiliateUrl:'https://www.amazon.it/dp/B012345678',source:'catalogo',priceVerifiedAt:'2026-01-01T12:00:00Z'};
+ const products=[base,{...base,asin:'B087654321',title:'JBL cuffie wireless con custodia',currentPrice:20,listPrice:40},{...base,asin:'B099999999',title:'Bose cuffie wireless con custodia',currentPrice:10,imageUrl:null,description:null}];
+ const defaults=filters.defaultAiProductFilters;
+ assert.deepEqual(filters.filterAiProducts(products,defaults).map(p=>p.asin),['B012345678','B087654321']);
+ assert.deepEqual(filters.filterAiProducts(products,{...defaults,sort:'price-asc'}).map(p=>p.asin),['B087654321','B012345678']);
+ assert.deepEqual(filters.filterAiProducts(products,{...defaults,brand:'Sony'}).map(p=>p.asin),['B012345678']);
+ assert.deepEqual(filters.filterAiProducts(products,{...defaults,min:'25',max:'35'}).map(p=>p.asin),['B012345678']);
+ assert.deepEqual(filters.filterAiProducts(products,{...defaults,incomplete:true,sort:'price-asc'}).map(p=>p.asin),['B099999999','B087654321','B012345678']);
+ assert.deepEqual(Array.from(filters.aiProductBrands(products)),['Bose','JBL','Sony']);
+ assert.equal(filters.incompleteAiProductCount(products),1);
 });

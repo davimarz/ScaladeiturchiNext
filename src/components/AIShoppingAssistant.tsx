@@ -1,8 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import StoreProductCard from "./StoreProductCard";
+
+import CatalogFilterPanel from "./CatalogFilterPanel";
 
 import { queryTokens, maxPriceFromQuery } from "../lib/ai-relevance";
 
@@ -13,6 +15,8 @@ import { recordInterest } from "../lib/interest-events";
 import { readServiceJson } from "../lib/service-json";
 
 import { aiSearchSessionKey, readAiSearchSession, serializeAiSearchSession, type AiSearchProduct as Product } from "../lib/ai-search-session";
+
+import { aiProductBrands, defaultAiProductFilters, filterAiProducts, incompleteAiProductCount, type AiProductFilters } from "../lib/ai-product-filters";
 
 const examples = ["Cuffie Bluetooth per telefonare sotto 40 €", "Una friggitrice ad aria per due persone entro 80 €", "Uno zaino leggero per escursioni sotto 35 €", "Un rasoio elettrico sotto 50 €"];
 
@@ -37,6 +41,11 @@ export default function AIShoppingAssistant() {
   const [noMoreProducts, setNoMoreProducts] = useState(false);
   const [error, setError] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<AiProductFilters>(defaultAiProductFilters);
+  const [selectedFilters, setSelectedFilters] = useState<AiProductFilters>(defaultAiProductFilters);
+  const brands = useMemo(() => aiProductBrands(products), [products]);
+  const incomplete = useMemo(() => incompleteAiProductCount(products), [products]);
+  const displayedProducts = useMemo(() => filterAiProducts(products, selectedFilters), [products, selectedFilters]);
   useEffect(() => {
     try {
       const saved = readAiSearchSession(sessionStorage.getItem(aiSearchSessionKey) || "");
@@ -91,6 +100,8 @@ export default function AIShoppingAssistant() {
     setProducts([]);
     setNoMoreProducts(false);
     setLastQuery(text);
+    setDraftFilters(defaultAiProductFilters);
+    setSelectedFilters(defaultAiProductFilters);
     try { sessionStorage.removeItem(aiSearchSessionKey); }
     catch { /* The new request still replaces the visible result. */ }
     try {
@@ -161,6 +172,16 @@ export default function AIShoppingAssistant() {
       setMoreLoading(false);
     }
   }
+  function applyFilters(event: FormEvent) {
+    event.preventDefault();
+    setSelectedFilters({ ...draftFilters });
+    recordInterest(draftFilters.sort !== selectedFilters.sort ? "sort" : "filter", "ai");
+  }
+  function resetFilters() {
+    setDraftFilters(defaultAiProductFilters);
+    setSelectedFilters(defaultAiProductFilters);
+    recordInterest("filter", "ai");
+  }
   return (<section className="aiShopping" aria-busy={loading || moreLoading}>
    <div className="aiShoppingIntro">
     <p className="eyebrow">ASSISTENTE SHOPPING</p>
@@ -187,9 +208,17 @@ export default function AIShoppingAssistant() {
    {!loading && lastQuery && (answer || products.length > 0) ? <p className="aiLastRequest"><strong>Ultima richiesta:</strong> {lastQuery}</p> : null}
    {answer ? <div className="aiAnswer"><strong>Risposta</strong><p>{answer}</p></div> : null}
 
-   {!loading && products.length > 0 ? (<div className="aiProductGrid">
-     {products.map((product) => <StoreProductCard key={product.asin} now={now} catalog="ai" reason={recommendation(product, lastQuery)} product={{ id: "", asin: product.asin, title: product.title, image_url: product.imageUrl, description: product.description || product.features?.join(" · ") || null, current_price: product.currentPrice, list_price: product.listPrice, discount_percent: product.discountPercent, currency: product.currency, affiliate_url: product.affiliateUrl, price_verified_at: product.priceVerifiedAt || null }}/>)}
+   {!loading && products.length > 0 ? <>
+    <CatalogFilterPanel className="aiResultFilters" value={draftFilters} brands={brands} defaultSortLabel="Pertinenza AI" onChange={setDraftFilters} onSubmit={applyFilters} onReset={resetFilters}/>
+    <p className="catalogResults" role="status">{displayedProducts.length} prodotti mostrati su {products.length}{!selectedFilters.incomplete && incomplete > 0 ? ` · ${incomplete} incompleti esclusi` : ""}</p>
+    {!selectedFilters.incomplete && incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draftFilters, incomplete: true }; setDraftFilters(next); setSelectedFilters(next); recordInterest("filter", "ai"); }}>Includi i prodotti incompleti</button> : null}
+   </> : null}
+
+   {!loading && displayedProducts.length > 0 ? (<div className="aiProductGrid">
+     {displayedProducts.map((product) => <StoreProductCard key={product.asin} now={now} catalog="ai" reason={recommendation(product, lastQuery)} product={{ id: "", asin: product.asin, title: product.title, image_url: product.imageUrl, description: product.description || product.features?.join(" · ") || null, current_price: product.currentPrice, list_price: product.listPrice, discount_percent: product.discountPercent, currency: product.currency, affiliate_url: product.affiliateUrl, price_verified_at: product.priceVerifiedAt || null }}/>)}
     </div>) : null}
+
+   {!loading && products.length > 0 && displayedProducts.length === 0 ? <div className="catalogState aiFilteredEmpty"><p>Nessun prodotto corrisponde ai filtri selezionati.</p><button type="button" onClick={resetFilters}>Azzera filtri</button></div> : null}
 
    {!loading && products.length > 0 ? (<div className="aiMoreWrap">
      <button type="button" className="aiMoreButton" onClick={findMore} disabled={moreLoading || noMoreProducts}>

@@ -8,13 +8,10 @@ import { recordInterest } from "../lib/interest-events";
 
 import StoreProductCard from "./StoreProductCard";
 
-type Options = {
+import CatalogFilterPanel, { type CatalogFilterValues } from "./CatalogFilterPanel";
+
+type Options = CatalogFilterValues & {
   q: string;
-  min: string;
-  max: string;
-  brand: string;
-  sort: string;
-  incomplete: boolean;
 };
 
 const defaults: Options = { q: "", min: "", max: "", brand: "", sort: "default", incomplete: false };
@@ -123,13 +120,7 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   const Heading = fixedCategory || asins ? "h1" : "h2";
   return <section className="catalogSection" id="catalogo" aria-busy={loading || moreLoading}>
   <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p></div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
-  <details className="catalogFilters"><summary>Filtri e ordinamento</summary><form onSubmit={submit} className="filterFields">
-   <label>Marca<select value={draft.brand} onChange={e => setDraft({ ...draft, brand: e.target.value })}><option value="">Tutte le marche</option>{meta.brands.map(brand => <option key={brand}>{brand}</option>)}</select></label>
-   <label>Prezzo minimo (€)<input type="number" min="0" step="0.01" value={draft.min} onChange={e => setDraft({ ...draft, min: e.target.value })}/></label><label>Prezzo massimo (€)<input type="number" min={draft.min || "0"} step="0.01" value={draft.max} onChange={e => setDraft({ ...draft, max: e.target.value })}/></label>
-   <label>Ordina per<select value={draft.sort} onChange={e => setDraft({ ...draft, sort: e.target.value })}><option value="default">{fixedCategory === "bestseller" ? "Classifica Amazon" : "Completezza dei dati"}</option><option value="price-asc">Prezzo crescente</option><option value="price-desc">Prezzo decrescente</option><option value="discount">Sconto maggiore</option></select></label>
-   <label className="checkFilter"><input type="checkbox" checked={draft.incomplete} onChange={e => setDraft({ ...draft, incomplete: e.target.checked })}/><span><strong>Mostra anche prodotti incompleti</strong><small>Normalmente sono mostrati solo prodotti con foto, descrizione e prezzo rilevato.</small></span></label>
-   <div className="filterActions"><button type="button" className="secondaryButton" onClick={() => { setDraft(defaults); apply(defaults); }}>Azzera filtri</button><button type="submit">Applica filtri</button></div>
-  </form></details>
+  <CatalogFilterPanel value={draft} brands={meta.brands} defaultSortLabel={fixedCategory === "bestseller" ? "Classifica Amazon" : "Completezza dei dati"} onChange={(filters) => setDraft({ ...draft, ...filters })} onSubmit={submit} onReset={() => { setDraft(defaults); apply(defaults); }}/>
   <p className="catalogResults" role="status">{loading ? "Caricamento prodotti…" : `${meta.total} prodotti trovati · ${products.length} mostrati`}{!loading && !selected.incomplete && meta.incomplete > 0 ? ` · ${meta.incomplete} incompleti esclusi` : ""}</p>
   {!loading && !selected.incomplete && meta.incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draft, incomplete: true }; setDraft(next); apply(next); }}>Includi i prodotti incompleti</button> : null}
   {meta.truncated ? <p role="status">Catalogo molto ampio: la ricerca riguarda i primi 11.000 prodotti. Scegli un catalogo specifico per restringerla.</p> : null}
