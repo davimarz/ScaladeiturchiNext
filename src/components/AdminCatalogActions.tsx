@@ -14,15 +14,15 @@ export default function AdminCatalogActions() {
         method="post"
         className="adminDangerZone"
         onSubmit={(event) => {
-          if (!window.confirm("Confermi di voler eliminare definitivamente TUTTI i prodotti dal catalogo?")) {
+          if (!window.confirm("Confermi di voler eliminare definitivamente tutti i prodotti MANUALI?")) {
             event.preventDefault();
           }
         }}
       >
-        <strong>Gestione catalogo</strong>
-        <p>Svuota elimina tutti i prodotti, senza toccare categorie, configurazione Amazon o impostazioni.</p>
-        <input name="confirm" placeholder={'Scrivi "SVUOTA CATALOGO"'} aria-label="Conferma svuota catalogo" required />
-        <button type="submit" className="dangerButton">Svuota catalogo</button>
+        <strong>Gestione prodotti manuali</strong>
+        <p>Svuota elimina solo i prodotti aggiunti manualmente. HAUL, Offerte Lampo e Bestseller non vengono modificati.</p>
+        <input name="confirm" placeholder={'Scrivi "SVUOTA MANUALI"'} aria-label="Conferma svuota catalogo" required />
+        <button type="submit" className="dangerButton">Svuota manuali</button>
       </form>
 
       <form

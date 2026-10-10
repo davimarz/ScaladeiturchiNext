@@ -13,7 +13,7 @@ test("retains an older observation while marking it as historical",()=>{
  assert.equal(price.fresh,false);assert.equal(price.current,41.94);assert.equal(price.discount,24);
 });
 test("does not display missing, unverified, invalid or future prices",()=>{
- for(const patch of [{current_price:null},{current_price:NaN},{current_price:-1},{price_verified_at:null},{price_verified_at:"invalid"},{price_verified_at:new Date(now+1).toISOString()}]){
+ for(const patch of [{current_price:null},{current_price:NaN},{current_price:-1},{current_price:0},{price_verified_at:null},{price_verified_at:"invalid"},{price_verified_at:new Date(now+1).toISOString()}]){
   assert.equal(getProductPrice({...product,...patch},now),null);
  }
 });
@@ -21,4 +21,11 @@ test("does not invent savings from equal, lower or invalid reference prices",()=
  for(const list_price of [null,41.94,30,NaN,Infinity]){
   const price=getProductPrice({...product,list_price},now);assert.equal(price.reference,null);assert.equal(price.discount,null);
  }
+});
+
+test('shows an observed discount without inventing a reference price', () => {
+ const price=getProductPrice({...product,list_price:null,discount_percent:25},now);
+ assert.equal(price.discount,25);assert.equal(price.reference,null);
+ for(const discount_percent of [0,-1,100,NaN,Infinity]) assert.equal(getProductPrice({...product,list_price:null,discount_percent},now).discount,null);
+ assert.equal(getProductPrice({...product,list_price:30,discount_percent:25},now).discount,null);
 });

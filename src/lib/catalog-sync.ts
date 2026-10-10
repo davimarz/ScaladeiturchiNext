@@ -1,294 +1,122 @@
 import "server-only";
-import { getAmazonItems, searchAmazonItems } from "./amazon/client";
-import { fetchAmazonProductSnapshot, fetchAmazonSearchTitle, needsProductTitleEnrichment } from "./amazon-page-offer";
+
+import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
+
+import { fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
+
 import { supabaseAdminFetch } from "./supabase/admin";
-import { fetchAmazonProductImagesWithBrowser, fetchAmazonProductTitlesWithBrowser } from "./haul-browser";
-import { isGenericAmazonImage } from "./amazon-input";
 
-type OfferListing = {
-  price?: {
-    money?: { amount?: number; currency?: string };
-    savingBasis?: { money?: { amount?: number } };
-    savings?: { percentage?: number };
-  };
+import { catalogConfig, type Catalog } from "./catalog-config";
+
+import { mergeCatalogData, missingCatalogData, validPrice, type CatalogData } from "./catalog-product";
+
+type ProductRow = {
+  asin: string; title: string; description: string | null; image_url: string | null;
+  current_price: number | null; list_price: number | null; discount_percent: number | null;
+  [key: string]: string | number | null;
 };
 
-type AmazonCatalogItem = {
-  asin: string;
-  detailPageURL?: string;
-  images?: { primary?: { medium?: { url?: string } } };
-  itemInfo?: { title?: { displayValue?: string } };
-  offersV2?: { listings?: OfferListing[] };
-};
-
-const feeds = [
-  { slug: "tecnologia", name: "Tecnologia", query: "accessori tecnologia" },
-  { slug: "casa", name: "Casa", query: "casa cucina offerte" },
-  { slug: "bellezza", name: "Bellezza", query: "bellezza cura persona" },
-  { slug: "tempo-libero", name: "Tempo libero", query: "sport tempo libero" },
-] as const;
-
-function mapProduct(item: AmazonCatalogItem, categoryId: string) {
-  if (!item.detailPageURL) return null;
-
-  const listing = item.offersV2?.listings?.[0];
-  const price = listing?.price;
-  const now = new Date().toISOString();
-
-  return {
-    asin: item.asin,
-    title: item.itemInfo?.title?.displayValue ?? item.asin,
-    category_id: categoryId,
-    image_url: item.images?.primary?.medium?.url ?? null,
-    amazon_url: item.detailPageURL,
-    affiliate_url: item.detailPageURL,
-    current_price: price?.money?.amount ?? null,
-    list_price: price?.savingBasis?.money?.amount ?? null,
-    currency: price?.money?.currency ?? "EUR",
-    discount_percent: price?.savings?.percentage ?? null,
-    prime: null,
-    source: "amazon-creators-api",
-    price_verified_at: price?.money?.amount ? now : null,
-    active: true,
-    updated_at: now,
-  };
+function rowData(product: ProductRow): CatalogData {
+  return { title: product.title, description: product.description, imageUrl: product.image_url,
+    currentPrice: product.current_price, listPrice: product.list_price, discountPercent: product.discount_percent };
 }
 
-function isCreatorsEligibilityError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return /AssociateNotEligible|eligibility requirements|Amazon Creators API failed:\s*403/i.test(message);
+export async function markCatalogVerificationPending(catalog: Catalog) {
+  const { membership, prefix } = catalogConfig[catalog];
+  await supabaseAdminFetch("products?active=eq.true&" + membership + "=eq.true", {
+    method: "PATCH", headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ [prefix + "_verification_status"]: "pending", [prefix + "_verification_attempts"]: 0, [prefix + "_last_verification_error"]: null }),
+  });
 }
 
-async function syncExistingFromAmazonPages(filter = "") {
-  const suffix = filter ? "&" + filter : "";
-  const existing = await supabaseAdminFetch<Array<{
-    asin: string;
+export async function catalogVerificationSummary(catalog: Catalog) {
+  const { membership, prefix } = catalogConfig[catalog];
+  type SummaryRow = {
+    status: string;
+    title: string;
+    description: string | null;
+    image_url: string | null;
     current_price: number | null;
     list_price: number | null;
     discount_percent: number | null;
-    image_url: string | null;
-    title: string;
-  }>>(
-    "products?active=eq.true" + suffix + "&select=asin,current_price,list_price,discount_percent,image_url,title&order=updated_at.asc&limit=500",
-  );
-
-  let changed = 0;
-  let unchanged = 0;
-  let failed = 0;
-  let imagesRecovered = 0;
-  let imagesMissing = 0;
-
-  const weakTitleProducts = existing.filter((product) => needsProductTitleEnrichment(product.title));
-  if (weakTitleProducts.length) {
-    try {
-      const browserTitles = await fetchAmazonProductTitlesWithBrowser(weakTitleProducts.map((product) => product.asin));
-      for (let offset = 0; offset < weakTitleProducts.length; offset += 8) {
-        const batch = weakTitleProducts.slice(offset, offset + 8);
-        await Promise.all(batch.map(async (product) => {
-          const title = browserTitles.get(product.asin);
-          if (!title || needsProductTitleEnrichment(title)) return;
-          product.title = title;
-          await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-            method: "PATCH",
-            headers: { Prefer: "return=minimal" },
-            body: JSON.stringify({ title, updated_at: new Date().toISOString() }),
-          });
-        }));
-      }
-    } catch (error) {
-      console.warn("amazon-title-prerepair", error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  const weakImageProducts = existing.filter((product) => isGenericAmazonImage(product.image_url));
-  if (weakImageProducts.length) {
-    try {
-      const browserImages = await fetchAmazonProductImagesWithBrowser(weakImageProducts.map((product) => product.asin));
-      for (let offset = 0; offset < weakImageProducts.length; offset += 8) {
-        const batch = weakImageProducts.slice(offset, offset + 8);
-        await Promise.all(batch.map(async (product) => {
-          const imageUrl = browserImages.get(product.asin);
-          if (!imageUrl || isGenericAmazonImage(imageUrl)) return;
-          product.image_url = imageUrl;
-          imagesRecovered++;
-          await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-            method: "PATCH",
-            headers: { Prefer: "return=minimal" },
-            body: JSON.stringify({ image_url: imageUrl, updated_at: new Date().toISOString() }),
-          });
-        }));
-      }
-    } catch (error) {
-      console.warn("amazon-image-prerepair", error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  for (let offset = 0; offset < existing.length; offset += 12) {
-    const batch = existing.slice(offset, offset + 12);
-    const results = await Promise.allSettled(
-      batch.map(async (product) => {
-        let snapshot: Awaited<ReturnType<typeof fetchAmazonProductSnapshot>> | null = null;
-        try {
-          snapshot = await fetchAmazonProductSnapshot(product.asin);
-        } catch {
-          snapshot = null;
-        }
-        const offer = snapshot?.offer ?? null;
-        const imageNeedsRepair = isGenericAmazonImage(product.image_url);
-        const recoveredImage = imageNeedsRepair && snapshot?.imageUrl && !isGenericAmazonImage(snapshot.imageUrl) ? snapshot.imageUrl : null;
-        let recoveredTitle = snapshot?.title && snapshot.title !== product.title ? snapshot.title : null;
-        const genericExistingTitle = needsProductTitleEnrichment(product.title);
-        if (!recoveredTitle && genericExistingTitle) {
-          const searchTitle = await fetchAmazonSearchTitle(product.asin);
-          if (searchTitle && searchTitle !== product.title && searchTitle.length > product.title.length) {
-            recoveredTitle = searchTitle;
-          }
-        }
-
-        if (!offer && !recoveredImage && !recoveredTitle) {
-          return { status: "failed" as const, imageRecovered: false, imageMissing: isGenericAmazonImage(product.image_url) };
-        }
-
-        const hasChanged = offer ? (
-          product.current_price !== offer.currentPrice ||
-          product.list_price !== offer.listPrice ||
-          product.discount_percent !== offer.discountPercent
-        ) : false;
-
-        const now = new Date().toISOString();
-        const payload: Record<string, unknown> = {};
-        if (offer) {
-          payload.current_price = offer.currentPrice;
-          payload.list_price = offer.listPrice;
-          payload.discount_percent = offer.discountPercent;
-          payload.currency = offer.currency;
-          payload.price_verified_at = now;
-        }
-        if (recoveredImage) payload.image_url = recoveredImage;
-        if (recoveredTitle) payload.title = recoveredTitle;
-        if (hasChanged || recoveredImage || recoveredTitle) payload.updated_at = now;
-
-        await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
-          method: "PATCH",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify(payload),
-        });
-
-        return {
-          status: offer ? (hasChanged ? "changed" as const : "unchanged" as const) : "failed" as const,
-          imageRecovered: Boolean(recoveredImage),
-          imageMissing: isGenericAmazonImage(product.image_url) && isGenericAmazonImage(snapshot?.imageUrl),
-        };
-      }),
-    );
-
-    for (const result of results) {
-      if (result.status === "rejected") {
-        failed++;
-        continue;
-      }
-      if (result.value.status === "changed") changed++;
-      else if (result.value.status === "unchanged") unchanged++;
-      else failed++;
-
-      if (result.value.imageRecovered) imagesRecovered++;
-      if (result.value.imageMissing) imagesMissing++;
-    }
-  }
-
-  return {
-    productsSeen: existing.length,
-    productsUpdated: changed,
-    productsChanged: changed,
-    productsUnchanged: unchanged,
-    productsFailed: failed,
-    imagesRecovered,
-    imagesMissing,
+    price_verified_at: string | null;
   };
+  const products: SummaryRow[] = [];
+  for (let offset = 0;; offset += 1000) {
+    const page = await supabaseAdminFetch<SummaryRow[]>(`products?active=eq.true&${membership}=eq.true&select=status:${prefix}_verification_status,title,description,image_url,current_price,list_price,discount_percent,price_verified_at&order=id.asc&limit=1000&offset=${offset}`);
+    products.push(...page);
+    if (page.length < 1000)
+      break;
+  }
+  const missing = { titolo: 0, immagine: 0, descrizione: 0, prezzo: 0 };
+  for (const product of products) {
+    const fields = missingCatalogData({ title: product.title || null, description: product.description || null, imageUrl: product.image_url || null, currentPrice: product.current_price ?? null, listPrice: product.list_price ?? null, discountPercent: product.discount_percent ?? null });
+    if (!product.price_verified_at && !fields.includes("prezzo"))
+      fields.push("prezzo");
+    for (const field of fields)
+      if (field in missing)
+        missing[field as keyof typeof missing]++;
+  }
+  return { total: products.length, remaining: products.filter(p => p.status === "pending").length,
+    complete: products.filter(p => p.status === "verified").length, incomplete: products.filter(p => p.status === "failed").length, missing };
 }
 
-async function syncViaCreatorsApi() {
-  const categories = await supabaseAdminFetch<Array<{ id: string; slug: string }>>(
-    "categories?on_conflict=slug",
-    {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify(feeds.map((feed, index) => ({
-        slug: feed.slug,
-        name: feed.name,
-        sort_order: index + 1,
-        active: true,
-      }))),
-    },
+export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
+  const { membership, prefix } = catalogConfig[catalog];
+  const status = prefix + "_verification_status";
+  const attemptsColumn = prefix + "_verification_attempts";
+  const products = await supabaseAdminFetch<ProductRow[]>(
+    `products?active=eq.true&${membership}=eq.true&${status}=eq.pending&select=asin,title,description,image_url,current_price,list_price,discount_percent,${attemptsColumn},${prefix}_verified_at&order=${attemptsColumn}.asc,updated_at.asc&limit=${Math.max(1, Math.min(limit, 6))}`,
   );
-
-  const categoryBySlug = new Map(categories.map((category) => [category.slug, category.id]));
-  let seen = 0;
-  let updated = 0;
-
-  for (const feed of feeds) {
-    const categoryId = categoryBySlug.get(feed.slug);
-    if (!categoryId) continue;
-
-    const result = await searchAmazonItems(feed.query, 10);
-    const items = result.items as AmazonCatalogItem[];
-    seen += items.length;
-
-    const rows = items
-      .map((item) => mapProduct(item, categoryId))
-      .filter((row): row is NonNullable<typeof row> => row !== null);
-
-    if (!rows.length) continue;
-
-    await supabaseAdminFetch("products?on_conflict=asin", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify(rows),
-    });
-    updated += rows.length;
+  if (!products.length) return { checked: 0, verified: 0, pending: 0, failed: 0, imagesRecovered: 0, imagesMissing: 0 };
+  const snapshots = new Map<string, Partial<CatalogData>>();
+  // Cheap reader first; one Chromium batch only for observations still incomplete.
+  await Promise.allSettled(products.map(async product => {
+    const direct = await fetchAmazonProductSnapshot(product.asin);
+    snapshots.set(product.asin, { title: direct.title, description: direct.description, imageUrl: direct.imageUrl,
+      currentPrice: direct.offer?.currentPrice ?? null, listPrice: direct.offer?.listPrice ?? null, discountPercent: direct.offer?.discountPercent ?? null });
+  }));
+  const browserTargets = products.filter(p => missingCatalogData(mergeCatalogData(rowData(p), snapshots.get(p.asin) || {})).length > 0 || !validPrice(snapshots.get(p.asin)?.currentPrice));
+  if (browserTargets.length) {
+    try {
+      const browser = await fetchAmazonProductSnapshotsWithBrowser(browserTargets.map(p => p.asin));
+      for (const [asin, snapshot] of browser) {
+        const direct = snapshots.get(asin);
+        snapshots.set(asin, mergeCatalogData({ title: direct?.title ?? null, description: direct?.description ?? null,
+          imageUrl: direct?.imageUrl ?? null, currentPrice: direct?.currentPrice ?? null,
+          listPrice: direct?.listPrice ?? null, discountPercent: direct?.discountPercent ?? null }, snapshot));
+      }
+    } catch (error) { console.warn("catalog-browser-batch", error instanceof Error ? error.message : String(error)); }
   }
-
-  const existing = await supabaseAdminFetch<Array<{ asin: string; category_id: string | null }>>(
-    "products?active=eq.true&select=asin,category_id&order=updated_at.asc&limit=500",
-  );
-  const categoryByAsin = new Map(existing.map((product) => [product.asin, product.category_id]));
-
-  for (let offset = 0; offset < existing.length; offset += 10) {
-    const ids = existing.slice(offset, offset + 10).map((product) => product.asin);
-    const result = await getAmazonItems(ids);
-    const rows = (result.items as AmazonCatalogItem[])
-      .map((item) => mapProduct(item, categoryByAsin.get(item.asin) ?? ""))
-      .filter((row): row is NonNullable<typeof row> => row !== null)
-      .map((row) => ({ ...row, category_id: row.category_id || null }));
-    seen += result.items.length;
-    if (!rows.length) continue;
-
-    await supabaseAdminFetch("products?on_conflict=asin", {
-      method: "POST",
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify(rows),
+  let verified = 0, pending = 0, failed = 0, imagesRecovered = 0, imagesMissing = 0;
+  // Persist each product before continuing; a later timeout cannot discard earlier work.
+  for (const product of products) {
+    const observation = snapshots.get(product.asin) || {};
+    const data = mergeCatalogData(rowData(product), observation);
+    const missing = missingCatalogData(data);
+    const freshPrice = validPrice(observation.currentPrice);
+    const complete = missing.length === 0 && freshPrice;
+    const attempts = Number(product[attemptsColumn] || 0) + 1;
+    const nextStatus = complete ? "verified" : attempts >= 3 ? "failed" : "pending";
+    const now = new Date().toISOString();
+    await supabaseAdminFetch(`products?asin=eq.${encodeURIComponent(product.asin)}`, {
+      method: "PATCH", headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ title: data.title, description: data.description, image_url: data.imageUrl,
+        current_price: data.currentPrice, list_price: data.listPrice, discount_percent: data.discountPercent,
+        price_verified_at: freshPrice ? now : undefined, currency: "EUR", updated_at: now,
+        [status]: nextStatus, [attemptsColumn]: attempts,
+        [prefix + "_verified_at"]: complete ? now : undefined,
+        [prefix + "_last_verification_error"]: complete ? null : "Dati mancanti o non riletti: " + [...missing, ...(!freshPrice ? ["prezzo aggiornato"] : [])].join(", "),
+      }),
     });
-    updated += rows.length;
+    if (complete) verified++; else if (nextStatus === "failed") failed++; else pending++;
+    if (data.imageUrl && data.imageUrl !== product.image_url) imagesRecovered++;
+    if (missing.includes("immagine")) imagesMissing++;
   }
-
-  return { productsSeen: seen, productsUpdated: updated };
+  return { checked: products.length, verified, pending, failed, imagesRecovered, imagesMissing };
 }
 
-export async function syncAmazonCatalog() {
-  try {
-    return await syncViaCreatorsApi();
-  } catch (error) {
-    if (!isCreatorsEligibilityError(error)) throw error;
-    console.warn("amazon-creators-api-fallback", error instanceof Error ? error.message : String(error));
-    return syncExistingFromAmazonPages();
-  }
-}
-
-export async function syncCatalogPricesByMembership(membership: "haul" | "offerte-lambo" | "bestseller") {
-  const filter = membership === "haul"
-    ? "in_haul=eq.true"
-    : membership === "offerte-lambo"
-      ? "in_offerte_lambo=eq.true"
-      : "in_bestseller=eq.true";
-  return syncExistingFromAmazonPages(filter);
+export async function retryIncompleteCatalog(catalog: Catalog) {
+  const { membership, prefix } = catalogConfig[catalog];
+  await supabaseAdminFetch(`products?active=eq.true&${membership}=eq.true&${prefix}_verification_status=eq.failed`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ [prefix + "_verification_status"]: "pending", [prefix + "_verification_attempts"]: 0, [prefix + "_last_verification_error"]: null }) });
 }

@@ -1,13 +1,38 @@
 import "server-only";
+import type { Browser } from "puppeteer-core";
+
+async function closeCatalogBrowser(browser: Browser) {
+  const timer = setTimeout(() => {
+    browser.process()?.kill("SIGKILL");
+    void browser.disconnect();
+  }, 5000);
+  try { await browser.close(); }
+  catch { /* The deadline may have already stopped this task’s browser. */ }
+  finally { clearTimeout(timer); }
+}
 
 const MAX_SCROLLS = 60;
 const STABLE_ROUNDS_TO_STOP = 5;
 const WAIT_AFTER_SCROLL_MS = 1100;
 
+export type BrowserListingProduct = {
+  asin: string;
+  title: string;
+  imageUrl: string | null;
+  currentPrice: number | null;
+  listPrice: number | null;
+  discountPercent: number | null;
+  haulCategory: string | null;
+  description?: string | null;
+  bestsellerRank?: number | null;
+};
+
 export type HaulBrowserResult = {
   html: string;
   asinCount: number;
   scrolls: number;
+  products: BrowserListingProduct[];
+  asins: string[];
 };
 
 let cachedExecutablePath: string | null = null;
@@ -22,9 +47,10 @@ async function getChromiumExecutablePath() {
   if (!executablePathPromise) {
     executablePathPromise = (async () => {
       const chromium = (await import("@sparticuz/chromium-min")).default;
-      const host = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-      if (!host) throw new Error("Vercel Chromium pack URL is unavailable");
-      const packUrl = `https://${host}/chromium-pack.tar`;
+      const architecture = process.arch === "arm64" ? "arm64" : "x64";
+      const defaultPackUrl =
+        `https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.${architecture}.tar`;
+      const packUrl = process.env.CHROMIUM_PACK_URL || defaultPackUrl;
       const executablePath = await chromium.executablePath(packUrl);
       cachedExecutablePath = executablePath;
       return executablePath;
@@ -54,6 +80,8 @@ async function fetchAmazonWithFullScroll(
     defaultViewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(150000),
   });
 
   try {
@@ -72,12 +100,7 @@ async function fetchAmazonWithFullScroll(
       Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
     });
 
-    const candidateUrls = mode === "search"
-      ? [
-          url,
-          "https://www.amazon.it/s?k=offerte+lampo+del+giorno",
-        ]
-      : [url];
+    const candidateUrls = [url];
 
     let loaded = false;
     let lastStatus = 0;
@@ -95,7 +118,31 @@ async function fetchAmazonWithFullScroll(
         lastStatus === 429 ||
         lastStatus === 503 ||
         /robot check|captcha|inserisci i caratteri|sorry|automated access/i.test(title + "\n" + bodyText);
+
       if (!blocked && lastStatus < 400) {
+        if (mode === "search") {
+          await sleep(1600);
+          const initialAsins = await page.evaluate(() => {
+            const asins = new Set<string>();
+            for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+              const asin = (element.dataset.asin || "").trim().toUpperCase();
+              if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+            }
+            for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+              const href = link.href || "";
+              const match =
+                href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+                href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
+              if (match) asins.add(match[1].toUpperCase());
+            }
+            return asins.size;
+          }).catch(() => 0);
+
+          if (initialAsins < 1 && attempt < candidateUrls.length - 1) {
+            continue;
+          }
+        }
+
         loaded = true;
         break;
       }
@@ -122,8 +169,11 @@ async function fetchAmazonWithFullScroll(
           const asin = (element.dataset.asin || "").trim().toUpperCase();
           if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
         }
-        for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
-          const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+        for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+          const href = link.href || "";
+          const match =
+            href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+            href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
           if (match) asins.add(match[1].toUpperCase());
         }
         return asins.size;
@@ -170,8 +220,11 @@ async function fetchAmazonWithFullScroll(
         const asin = clean(marker.dataset.asin).toUpperCase();
         if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
       }
-      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/"]'))) {
-        const match = link.href.match(/\/dp\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+        const href = link.href || "";
+        const match =
+          href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+          href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
         if (match) asins.add(match[1].toUpperCase());
       }
 
@@ -185,7 +238,14 @@ async function fetchAmazonWithFullScroll(
           candidates.push({ text: text.slice(0, 300), score });
         };
 
-        const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/dp/' + asin + '"]'));
+        const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]")).filter((link) => {
+          const href = link.href || "";
+          return href.includes("/dp/" + asin) ||
+            href.includes("/gp/product/" + asin) ||
+            href.includes("/gp/aw/d/" + asin) ||
+            href.includes("asin=" + asin) ||
+            href.includes("ASIN=" + asin);
+        });
         for (const link of links) {
           add(link.getAttribute("aria-label"), 120);
           add(link.getAttribute("title"), 115);
@@ -246,7 +306,42 @@ async function fetchAmazonWithFullScroll(
       throw new Error("Amazon blocked the browser session");
     }
 
-    const finalCount = await countAsins();
+    const discoveredAsins = await page.evaluate(() => {
+      const asins = new Set<string>();
+      const add = (value: string | null | undefined) => {
+        const asin = (value || "").trim().toUpperCase();
+        if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+      };
+
+      for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+        add(element.dataset.asin);
+      }
+
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+        const href = link.href || "";
+        const match =
+          href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+          href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
+        if (match) add(match[1]);
+      }
+
+      const html = document.documentElement.innerHTML;
+      const patterns = [
+        /["']asin["']\s*:\s*["']([A-Z0-9]{10})["']/gi,
+        /["']ASIN["']\s*:\s*["']([A-Z0-9]{10})["']/g,
+        /%22asin%22%3A%22([A-Z0-9]{10})%22/gi,
+        /\/dp\/([A-Z0-9]{10})(?:[/?#"'&]|$)/gi,
+        /\/gp\/product\/([A-Z0-9]{10})(?:[/?#"'&]|$)/gi,
+      ];
+      for (const pattern of patterns) {
+        let match: RegExpExecArray | null;
+        while ((match = pattern.exec(html)) !== null) add(match[1]);
+      }
+
+      return [...asins];
+    }).catch(() => []);
+
+    const finalCount = discoveredAsins.length;
     if (!Number.isFinite(finalCount) || finalCount < 1) {
       throw new Error(mode === "search"
         ? "No Amazon search products found after browser scrolling"
@@ -255,9 +350,141 @@ async function fetchAmazonWithFullScroll(
           : "No HAUL products found after browser scrolling");
     }
 
-    return { html, asinCount: finalCount, scrolls };
+    const products = await page.evaluate(() => {
+      const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
+      const money = (value: string | null | undefined) => {
+        const text = clean(value).replace(/\s/g, "").replace(/€/g, "");
+        if (!text) return null;
+        const normalized = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+        const number = Number(normalized);
+        return Number.isFinite(number) && number > 0 && number < 10000 ? number : null;
+      };
+      const validImage = (value: string | null | undefined) => {
+        const url = clean(value);
+        if (!/^https:\/\/(?:m\.media-amazon\.com|images-(?:na|eu|fe)\.ssl-images-amazon\.com)\//i.test(url)) return null;
+        if (/transparent-pixel|\/pixel\.|\/loading\.|\/no-image|11\+\+B3A2NEL/i.test(url)) return null;
+        return url;
+      };
+      const results = new Map<string, {
+        asin: string;
+        title: string;
+        imageUrl: string | null;
+        currentPrice: number | null;
+        listPrice: number | null;
+        discountPercent: number | null;
+        haulCategory: null;
+      }>();
+
+      const asins = new Set<string>();
+      for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+        const asin = clean(element.dataset.asin).toUpperCase();
+        if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+      }
+      for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+        const href = link.href || "";
+        const match =
+          href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i) ||
+          href.match(/[?&](?:asin|ASIN)=([A-Z0-9]{10})(?:[&#]|$)/);
+        if (match) asins.add(match[1].toUpperCase());
+      }
+
+      for (const asin of asins) {
+        const marker = Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))
+          .find((element) => clean(element.dataset.asin).toUpperCase() === asin);
+        const link = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]")).find((candidate) => {
+          const href = candidate.href || "";
+          return href.includes("/dp/" + asin) ||
+            href.includes("/gp/product/" + asin) ||
+            href.includes("/gp/aw/d/" + asin) ||
+            href.includes("asin=" + asin) ||
+            href.includes("ASIN=" + asin);
+        }) || null;
+        let card = marker || link?.closest<HTMLElement>("[data-component-type='s-search-result'], article, li, div") || link?.parentElement;
+        // A nested marker often contains only the image/link. Expand within this ASIN's card.
+        while (card?.parentElement && card.parentElement !== document.body) {
+          const parent = card.parentElement;
+          const ids = new Set(Array.from(parent.querySelectorAll<HTMLElement>("[data-asin]"))
+            .map(el => clean(el.dataset.asin).toUpperCase()).filter(id => /^[A-Z0-9]{10}$/.test(id)));
+          for (const anchor of Array.from(parent.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+            const id = anchor.href.match(/\/dp\/([A-Z0-9]{10})/i)?.[1];
+            if (id) ids.add(id.toUpperCase());
+          }
+          if ([...ids].some(id => id !== asin)) break;
+          card = parent;
+        }
+        if (!card) continue;
+
+        const title =
+          clean(marker?.dataset.sdtTitle) ||
+          clean(card.querySelector<HTMLElement>("h2 span")?.innerText) ||
+          clean(card.querySelector<HTMLElement>(".a-text-normal")?.innerText) ||
+          clean(card.querySelector<HTMLImageElement>("img")?.alt) ||
+          ("Prodotto Amazon " + asin);
+
+        const image = card.querySelector<HTMLImageElement>("img");
+        let imageUrl =
+          validImage(image?.getAttribute("data-old-hires")) ||
+          validImage(image?.getAttribute("data-src")) ||
+          validImage(image?.currentSrc) ||
+          validImage(image?.src);
+
+        if (!imageUrl && image?.getAttribute("srcset")) {
+          const candidates = image.getAttribute("srcset")!.split(",")
+            .map((part) => validImage(part.trim().split(/\s+/)[0]))
+            .filter((value): value is string => Boolean(value));
+          imageUrl = candidates.at(-1) || null;
+        }
+
+        const offscreen = card.querySelector<HTMLElement>(".a-price:not(.a-text-price) .a-offscreen")?.textContent;
+        const whole = card.querySelector<HTMLElement>(".a-price-whole")?.textContent;
+        const fraction = card.querySelector<HTMLElement>(".a-price-fraction")?.textContent || "00";
+        const currentPrice = offscreen ? money(offscreen) : whole ? money(clean(whole).replace(/[.,]$/, "") + "," + clean(fraction)) : null;
+
+        const listPrice = money(
+          card.querySelector<HTMLElement>(".a-text-price .a-offscreen")?.textContent ||
+          card.querySelector<HTMLElement>("[data-a-strike='true'] .a-offscreen")?.textContent ||
+          null
+        );
+
+        const cardText = clean(card.innerText);
+        const explicitDiscount = cardText.match(/-\s*([0-9]{1,2})\s*%/)?.[1];
+        let discountPercent = explicitDiscount ? Number(explicitDiscount) : null;
+        if (discountPercent == null && currentPrice != null && listPrice != null && listPrice > currentPrice) {
+          discountPercent = Math.round(((listPrice - currentPrice) / listPrice) * 100);
+        }
+
+        results.set(asin, {
+          asin,
+          title: title.slice(0, 300),
+          imageUrl,
+          currentPrice,
+          listPrice: listPrice != null && currentPrice != null && listPrice > currentPrice ? listPrice : null,
+          discountPercent: discountPercent != null && discountPercent > 0 && discountPercent < 100 ? discountPercent : null,
+          haulCategory: null,
+        });
+      }
+
+      return [...results.values()];
+    }).catch(() => []);
+
+    const productMap = new Map(products.map((product) => [product.asin, product]));
+    for (const asin of discoveredAsins) {
+      if (productMap.has(asin)) continue;
+      productMap.set(asin, {
+        asin,
+        title: "Prodotto Amazon " + asin,
+        imageUrl: null,
+        currentPrice: null,
+        listPrice: null,
+        discountPercent: null,
+        haulCategory: null,
+      });
+    }
+
+    const mergedProducts = [...productMap.values()];
+    return { html, asinCount: discoveredAsins.length, scrolls, products: mergedProducts, asins: discoveredAsins };
   } finally {
-    await browser.close();
+    await closeCatalogBrowser(browser);
   }
 }
 
@@ -296,6 +523,8 @@ export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(150000),
   });
 
   const results = new Map<string, string>();
@@ -313,7 +542,7 @@ export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
             waitUntil: "domcontentloaded",
             timeout: 20_000,
           });
-          if (!response || [403, 429, 503].includes(response.status())) return [asin, null] as const;
+          if (!response || response.status() >= 400) return [asin, null] as const;
 
           const data = await page.evaluate(() => {
             const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
@@ -377,7 +606,7 @@ export async function fetchAmazonProductTitlesWithBrowser(asins: string[]) {
     }
     return results;
   } finally {
-    await browser.close();
+    await closeCatalogBrowser(browser);
   }
 }
 
@@ -400,6 +629,8 @@ export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
     defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(150000),
   });
 
   const results = new Map<string, string>();
@@ -419,7 +650,7 @@ export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
             waitUntil: "domcontentloaded",
             timeout: 20_000,
           });
-          if (!response || [403, 429, 503].includes(response.status())) return [asin, null] as const;
+          if (!response || response.status() >= 400) return [asin, null] as const;
 
           const image = await page.evaluate(() => {
             const candidates: string[] = [];
@@ -493,6 +724,235 @@ export async function fetchAmazonProductImagesWithBrowser(asins: string[]) {
     }
     return results;
   } finally {
-    await browser.close();
+    await closeCatalogBrowser(browser);
+  }
+}
+
+
+export type AmazonBrowserSnapshot = {
+  title: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  currentPrice: number | null;
+  listPrice: number | null;
+  discountPercent: number | null;
+  currency: "EUR";
+};
+
+export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
+  const uniqueAsins = [...new Set(asins.map((asin) => asin.trim().toUpperCase()).filter((asin) => /^[A-Z0-9]{10}$/.test(asin)))];
+  const results = new Map<string, AmazonBrowserSnapshot>();
+  if (!uniqueAsins.length) return results;
+
+  const chromium = (await import("@sparticuz/chromium-min")).default;
+  const puppeteer = await import("puppeteer-core");
+  chromium.setGraphicsMode = false;
+
+  const args = [...chromium.args];
+  if (!args.includes("--disable-blink-features=AutomationControlled")) {
+    args.push("--disable-blink-features=AutomationControlled");
+  }
+
+  const browser = await puppeteer.launch({
+    args,
+    defaultViewport: { width: 1280, height: 900, deviceScaleFactor: 1 },
+    executablePath: await getChromiumExecutablePath(),
+    headless: true,
+    protocolTimeout: 15000,
+    signal: AbortSignal.timeout(120000),
+  });
+
+  try {
+    for (let offset = 0; offset < uniqueAsins.length; offset += 3) {
+      const batch = uniqueAsins.slice(offset, offset + 3);
+      const snapshots = await Promise.all(batch.map(async (asin) => {
+        let page: Awaited<ReturnType<Browser["newPage"]>> | undefined;
+        try {
+          page = await browser.newPage();
+          await page.setUserAgent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+          );
+          await page.setExtraHTTPHeaders({ "accept-language": "it-IT,it;q=0.9,en;q=0.7" });
+
+          const response = await page.goto("https://www.amazon.it/dp/" + asin, {
+            waitUntil: "domcontentloaded",
+            timeout: 20_000,
+          });
+          if (!response || response.status() >= 400) return [asin, null] as const;
+
+          const snapshot = await page.evaluate((targetAsin) => {
+            const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
+            const parseMoney = (value: string | null | undefined) => {
+              const text = clean(value).replace(/€/g, "").replace(/\s/g, "");
+              if (!text) return null;
+              const normalized = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+              const amount = Number(normalized.replace(/[^0-9.-]/g, ""));
+              return Number.isFinite(amount) && amount > 0 ? amount : null;
+            };
+
+            const pageAsin =
+              (document.querySelector<HTMLInputElement>("#ASIN")?.value ||
+               document.querySelector<HTMLInputElement>('input[name="ASIN"]')?.value || "").toUpperCase();
+            if (pageAsin && pageAsin !== targetAsin) return null;
+
+            const title =
+              clean(document.querySelector<HTMLElement>("#productTitle")?.innerText) ||
+              clean(document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content).replace(/\s*:\s*Amazon\.it.*$/i, "") ||
+              null;
+
+            const descriptionCandidates: string[] = [];
+            const addDescription = (value: string | null | undefined) => {
+              const text = clean(value);
+              if (text.length >= 12) descriptionCandidates.push(text);
+            };
+            for (const item of Array.from(document.querySelectorAll<HTMLElement>("#feature-bullets li span.a-list-item"))) {
+              addDescription(item.innerText || item.textContent);
+            }
+            addDescription(document.querySelector<HTMLElement>("#productDescription")?.innerText);
+            addDescription(document.querySelector<HTMLElement>("#aplus_feature_div")?.innerText);
+            const description = descriptionCandidates
+              .filter((value, index, values) => values.indexOf(value) === index)
+              .slice(0, 6)
+              .join(" · ")
+              .slice(0, 1400) || null;
+
+            let currentText =
+              document.querySelector<HTMLElement>(".priceToPay .a-offscreen, .apexPriceToPay .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("#corePriceDisplay_desktop_feature_div .a-price:not(.a-text-price) .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("#corePrice_feature_div .a-price:not(.a-text-price) .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>(".reinventPricePriceToPayMargin .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("[data-a-color='price'] .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("#priceblock_ourprice, #priceblock_dealprice, #price_inside_buybox")?.textContent ||
+              null;
+            const listText =
+              document.querySelector<HTMLElement>(".basisPrice .a-offscreen, .a-text-price .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("[data-a-strike='true'] .a-offscreen")?.textContent ||
+              document.querySelector<HTMLElement>("#listPrice")?.textContent ||
+              null;
+
+            if (!currentText) {
+              for (const script of Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'))) {
+                try {
+                  const parsed = JSON.parse(script.textContent || "null");
+                  const items = Array.isArray(parsed) ? parsed : [parsed];
+                  for (const item of items) {
+                    if (!item || typeof item !== "object") continue;
+                    const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
+                    for (const offer of offers) {
+                      if (!offer || typeof offer !== "object") continue;
+                      const price = offer.price ?? offer.lowPrice;
+                      if (price != null) {
+                        currentText = String(price);
+                        break;
+                      }
+                    }
+                    if (currentText) break;
+                  }
+                } catch {}
+              }
+            }
+
+            const currentPrice = parseMoney(currentText);
+            let listPrice = parseMoney(listText);
+            if (currentPrice != null && listPrice != null && listPrice <= currentPrice) listPrice = null;
+
+            const discountText =
+              document.querySelector<HTMLElement>(".savingsPercentage, .reinventPriceSavingsPercentageMargin")?.textContent || "";
+            const discountMatch = discountText.match(/([0-9]{1,2})\s*%/);
+            let discountPercent = discountMatch ? Number(discountMatch[1]) : null;
+            if (discountPercent == null && currentPrice != null && listPrice != null) {
+              discountPercent = Math.round(((listPrice - currentPrice) / listPrice) * 100);
+            }
+
+            const imageCandidates: string[] = [];
+            const addImage = (value: string | null | undefined) => {
+              const url = clean(value);
+              if (url) imageCandidates.push(url);
+            };
+            const main = document.querySelector<HTMLImageElement>("#landingImage, #imgBlkFront, #mainImage, #ebooksImgBlkFront");
+            if (main) {
+              addImage(main.getAttribute("data-old-hires"));
+              addImage(main.getAttribute("data-hires"));
+              addImage(main.currentSrc);
+              addImage(main.src);
+              const dynamic = main.getAttribute("data-a-dynamic-image");
+              if (dynamic) {
+                try {
+                  const parsed = JSON.parse(dynamic);
+                  Object.keys(parsed).forEach(addImage);
+                } catch {}
+              }
+            }
+            addImage(document.querySelector<HTMLMetaElement>('meta[property="og:image"]')?.content);
+
+            const imageUrl = imageCandidates.find((value) =>
+              /^https:\/\/(?:m\.media-amazon\.com|images-(?:na|eu|fe)\.ssl-images-amazon\.com)\//i.test(value) &&
+              !/transparent-pixel|\/pixel\.|\/loading\.|\/no-image|11\+\+B3A2NEL/i.test(value)
+            ) || null;
+
+            return { title, description, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
+          }, asin).catch(() => null);
+
+          if (snapshot && snapshot.currentPrice != null && snapshot.imageUrl && snapshot.description) {
+            return [asin, snapshot] as const;
+          }
+
+          await page.goto("https://www.amazon.it/s?k=" + encodeURIComponent(asin), {
+            waitUntil: "domcontentloaded",
+            timeout: 15_000,
+          }).catch(() => null);
+
+          const fallback = await page.evaluate((targetAsin) => {
+            const card = document.querySelector<HTMLElement>('[data-asin="' + targetAsin + '"]');
+            if (!card) return null;
+            const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
+            const parseMoney = (value: string | null | undefined) => {
+              const text = clean(value).replace(/€/g, "").replace(/\s/g, "");
+              if (!text) return null;
+              const normalized = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+              const amount = Number(normalized.replace(/[^0-9.-]/g, ""));
+              return Number.isFinite(amount) && amount > 0 ? amount : null;
+            };
+            const title = clean(card.querySelector<HTMLElement>("h2 span")?.innerText || card.querySelector<HTMLImageElement>("img")?.alt) || null;
+            const description = null; // Listing chrome is not a product description.
+            const imageUrl = card.querySelector<HTMLImageElement>("img")?.currentSrc || card.querySelector<HTMLImageElement>("img")?.src || null;
+            const currentPrice = parseMoney(card.querySelector<HTMLElement>(".a-price:not(.a-text-price) .a-offscreen")?.textContent);
+            let listPrice = parseMoney(card.querySelector<HTMLElement>(".a-text-price .a-offscreen")?.textContent);
+            if (currentPrice != null && listPrice != null && listPrice <= currentPrice) listPrice = null;
+            const discountPercent = currentPrice != null && listPrice != null
+              ? Math.round(((listPrice - currentPrice) / listPrice) * 100)
+              : null;
+            return { title, description, imageUrl, currentPrice, listPrice, discountPercent, currency: "EUR" as const };
+          }, asin).catch(() => null);
+
+          if (!snapshot) return [asin, fallback] as const;
+          if (!fallback) return [asin, snapshot] as const;
+          return [asin, {
+            title: snapshot.title || fallback.title,
+            description: snapshot.description || fallback.description,
+            imageUrl: snapshot.imageUrl || fallback.imageUrl,
+            currentPrice: snapshot.currentPrice ?? fallback.currentPrice,
+            listPrice: snapshot.currentPrice != null ? snapshot.listPrice : fallback.listPrice,
+            discountPercent: snapshot.currentPrice != null ? snapshot.discountPercent : fallback.discountPercent,
+            currency: "EUR" as const,
+          }] as const;
+        } catch (error) {
+          console.warn("amazon-product-snapshot", asin, error instanceof Error ? error.message : String(error));
+          return [asin, null] as const;
+        } finally {
+          await page?.close().catch(() => undefined);
+        }
+      }));
+
+      for (const [asin, snapshot] of snapshots) {
+        if (snapshot) results.set(asin, snapshot);
+      }
+    }
+    return results;
+  } catch (error) {
+    console.warn("amazon-snapshot-batch", error instanceof Error ? error.message : String(error));
+    return results;
+  } finally {
+    await closeCatalogBrowser(browser);
   }
 }

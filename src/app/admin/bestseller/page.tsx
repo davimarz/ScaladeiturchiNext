@@ -1,3 +1,5 @@
+import CatalogImportNotice from "../../../components/CatalogImportNotice";
+import CatalogVerificationRunner from "../../../components/CatalogVerificationRunner";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -49,12 +51,7 @@ export default async function AdminBestsellerPage({
         <h2>Importazione prodotti Bestseller</h2>
         <p>Prodotti Bestseller attivi: {products.length}.</p>
 
-        {params.bestseller_import === "success" ? <p className="adminNotice">Bestseller: {params.bestseller_count ?? "0"} importati/aggiornati · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} prezzi cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati · {params.images_recovered ?? "0"} immagini recuperate · {params.images_missing ?? "0"} ancora mancanti.</p> : null}
-        {params.bestseller_import === "price-only" ? <p className="adminNotice">Bestseller: scansione catalogo non disponibile; controllo prodotti esistenti completato · {params.price_seen ?? "0"} controllati · {params.price_updated ?? "0"} cambiati · {params.price_unchanged ?? "0"} invariati · {params.price_failed ?? "0"} non leggibili/bloccati.</p> : null}
-        {params.bestseller_import === "blocked" ? <p className="adminError">Amazon ha bloccato la scansione automatica Bestseller. Puoi usare le opzioni avanzate e caricare il file HTML salvato dal browser.</p> : null}
-        {params.bestseller_import === "empty" ? <p className="adminError">Non sono stati trovati prodotti riconoscibili nella pagina Bestseller.</p> : null}
-        {params.bestseller_import === "invalid-url" ? <p className="adminError">Inserisci un URL Amazon Bestseller valido.</p> : null}
-        {params.bestseller_import === "invalid-file" ? <p className="adminError">Il file deve essere HTML e non superare 40 MB.</p> : null}
+        <CatalogImportNotice catalog="bestseller" status={params.bestseller_import} count={params.bestseller_count} />
 
         <form action="/api/admin/bestseller/import" method="post" encType="multipart/form-data" className="compactImportForm">
           <div className="quickImportControls">
@@ -70,6 +67,7 @@ export default async function AdminBestsellerPage({
 
         <p className="adminHint">Cliccando “Aggiorna Bestseller” il sistema importa i prodotti trovati e aggiorna titolo, immagine, prezzo attuale, prezzo precedente e sconto dei prodotti Bestseller già presenti.</p>
       </section>
+    <CatalogVerificationRunner catalog={params.bestseller_import === "success" || params.bestseller_import === "price-only" ? "bestseller" : null} />
     </main>
   );
 }

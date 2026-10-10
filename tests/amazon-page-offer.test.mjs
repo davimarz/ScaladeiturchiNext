@@ -1,3 +1,4 @@
+import { usefulTitle } from "../src/lib/catalog-presentation.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -18,6 +19,7 @@ function loadParser() {
     AbortSignal,
     console,
     require(name) {
+      if (name === "./catalog-presentation") return { usefulTitle };
       if (name === "server-only") return {};
       if (name === "./amazon-input") return { extractAmazonProductImage: () => null };
       throw new Error("Unexpected import " + name);
