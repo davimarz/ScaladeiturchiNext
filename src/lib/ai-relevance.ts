@@ -54,6 +54,7 @@ export function titleRelevance(title: string, tokens: string[]) {
 }
 
 export function isRelevantProduct(title: string, query: string) {
+  if (isUnrequestedAccessory(title, query)) return false;
   const tokens = queryTokens(query);
   if (!tokens.length) return true;
 
@@ -82,4 +83,21 @@ export function maxPriceFromQuery(query: string) {
   if (!matches.length) return null;
   const value = Number(matches.at(-1)?.[1].replace(",", "."));
   return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+// A compatible accessory can contain every search term while being the wrong product.
+export function isUnrequestedAccessory(title: string, query: string) {
+  const requested = normalizedWords(query).join(" ");
+  const offered = normalizedWords(title).join(" ");
+  const kinds = [
+    { device: /\bspazzolin[oi]\b/, accessory: /\b(?:testin[ae]|ricambi|replacement|brush heads)\b/ },
+    { device: /\b(?:smartphone|telefono|cellulare)\b/, accessory: /\b(?:cover|custodia|custodie|pellicola|protezione|caricabatterie|caricatore)\b/ },
+    { device: /\b(?:cuffie|auricolari|headphones|earbuds)\b/, accessory: /\b(?:custodia|custodie|cuscinetti|ricambio|replacement)\b/ },
+  ];
+  return kinds.some(({device,accessory}) => {
+    if (!device.test(requested) || accessory.test(requested)) return false;
+    const accessoryPosition = offered.search(accessory);
+    const devicePosition = offered.search(device);
+    return accessoryPosition >= 0 && (devicePosition < 0 || accessoryPosition < devicePosition);
+  });
 }

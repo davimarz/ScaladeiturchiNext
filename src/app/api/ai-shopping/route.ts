@@ -9,7 +9,7 @@ import {
   interpretShoppingQuery,
 } from "../../../lib/ai-shopping";
 import { enrichAmazonProductsViaBraveByAsin, searchAmazonViaBrave } from "../../../lib/brave-shopping";
-import { isRelevantProduct, maxPriceFromQuery } from "../../../lib/ai-relevance";
+import { isRelevantProduct, isUnrequestedAccessory, maxPriceFromQuery } from "../../../lib/ai-relevance";
 import {
   finalizeAIUsage,
   markAIExhausted,
@@ -131,6 +131,7 @@ export async function POST(request: NextRequest) {
       : null;
 
     products = products
+      .filter((product) => !isUnrequestedAccessory(product.title, query))
       .map((product) => {
         const tooHighAbsolute = product.currentPrice != null && product.currentPrice > 9999;
         const tooHighRelative = product.currentPrice != null

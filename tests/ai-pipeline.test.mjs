@@ -17,7 +17,7 @@ test('AI avoids re-scanning complete results and enriches each search only once'
    async generateShoppingAnswer(){return {text:'Otto cuffie sotto 50 euro',inputTokens:1,outputTokens:1,totalTokens:2};},
   };
   if(name.includes('brave-shopping'))return {async searchAmazonViaBrave(){calls.push('brave-search');return[];},async enrichAmazonProductsViaBraveByAsin(items){calls.push('brave-enrich');return items;}};
-  if(name.includes('ai-relevance'))return {isRelevantProduct:()=>true,maxPriceFromQuery:()=>50};
+  if(name.includes('ai-relevance'))return {isRelevantProduct:()=>true,isUnrequestedAccessory:()=>false,maxPriceFromQuery:()=>50};
   if(name.includes('ai-usage'))return {async reserveAIUsage(){return {allowed:true,usageDay:'2026-10-09'};},async finalizeAIUsage(){},async recordAIQuery(){},async releaseAIUsage(){},async markAIExhausted(){}};
   throw new Error('Unexpected import '+name);
  }});
