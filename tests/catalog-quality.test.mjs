@@ -89,6 +89,13 @@ test('verification summary accounts for catalogues larger than a database respon
  assert.equal(result.total,1002);assert.equal(result.complete,1000);assert.equal(result.remaining,1);assert.equal(result.incomplete,1);assert.equal(calls.length,2);
 });
 
+test('the admin only offers a retry when that catalogue has pending or failed products', () => {
+ const ui=load('catalog-verification',{});
+ assert.equal(ui.catalogHasAnomalies({remaining:0,incomplete:0}),false);
+ assert.equal(ui.catalogHasAnomalies({remaining:1,incomplete:0}),true);
+ assert.equal(ui.catalogHasAnomalies({remaining:0,incomplete:1}),true);
+});
+
 test('a browser page failure does not discard successful snapshots from earlier pages', async () => {
  let pages=0,closed=0;
  const browser={ async newPage() {
