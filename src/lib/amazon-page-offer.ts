@@ -61,6 +61,23 @@ function cleanProductTitle(value: string) {
     .slice(0, 300);
 }
 
+function productStructuredData(html: string) {
+  const products: Record<string, unknown>[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!value || typeof value !== "object") return;
+    const item = value as Record<string, unknown>;
+    const type = item["@type"];
+    if (type === "Product" || (Array.isArray(type) && type.includes("Product"))) products.push(item);
+    if (item["@graph"]) visit(item["@graph"]);
+    if (item.itemListElement) visit(item.itemListElement);
+  };
+  for (const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try { visit(JSON.parse(match[1])); } catch { /* Ignore malformed structured data and continue with the page DOM. */ }
+  }
+  return products;
+}
+
 function isUsefulProductTitle(value: string) {
   const normalized = value.toLowerCase();
   return value.length > 3 &&
@@ -72,8 +89,10 @@ export function needsProductTitleEnrichment(value: string) {
 }
 
 export function extractAmazonProductTitle(html: string) {
+  const structuredTitle = productStructuredData(html).map(item => typeof item.name === "string" ? item.name : "").find(isUsefulProductTitle);
   const candidates = [
     html.match(/id=["']productTitle["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
+    structuredTitle,
     html.match(/<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1],
     html.match(/<meta\b[^>]*name=["']title["'][^>]*content=["']([^"']+)["']/i)?.[1],
     html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1],
@@ -88,10 +107,12 @@ export function extractAmazonProductTitle(html: string) {
 }
 
 export function extractAmazonProductDescription(html: string) {
+  const structured = productStructuredData(html).map(item => typeof item.description === "string" ? item.description : "");
   const sections = [
     html.match(/id=["']feature-bullets["'][^>]*>([\s\S]*?)(?:<\/ul>|<\/section>)/i)?.[1],
     html.match(/id=["']productDescription["'][^>]*>([\s\S]*?)(?:<\/div>|<\/section>)/i)?.[1],
     html.match(/<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)?.[1],
+    ...structured,
   ];
   const description = sections.filter(Boolean).map(value => decodeEntities(value!)
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
