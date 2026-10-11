@@ -49,6 +49,7 @@ export default function CatalogVerificationRunner({ catalog, scope }: {
       const initial = state.complete;
       setProgress(previous => ({ ...previous, [current]: state }));
       let passes = 0;
+      let busyRetries = 0;
       let retry = retryFailed && catalogHasAnomalies(state);
       while ((state.remaining > 0 || retry) && passes < 150) {
         const result = await fetch("/api/admin/catalog-verify", {
@@ -58,10 +59,17 @@ export default function CatalogVerificationRunner({ catalog, scope }: {
           signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(240000)]) : AbortSignal.timeout(240000),
         });
         const data = await readServiceJson<Progress & { ok?: boolean; busy?: boolean; error?: string; checked?: number }>(result, "Verifica interrotta. I dati salvati sono conservati.");
-        if (result.status === 409 && data.busy)
-          throw new Error(catalogConfig[current].label + ": un aggiornamento è già in corso. Riprova al termine.");
+        if (result.status === 409 && data.busy) {
+          if (++busyRetries > 48)
+            throw new Error(catalogConfig[current].label + ": il browser Amazon è ancora occupato. Puoi riprendere la verifica.");
+          setMessages(previous => ({ ...previous, [current]: "Browser Amazon occupato: verifica in attesa, i dati salvati sono conservati." }));
+          await new Promise(resolve => setTimeout(resolve, 4000));
+          if (signal?.aborted) return;
+          continue;
+        }
         if (!result.ok || !data.ok)
           throw new Error(data.error || "Verifica non disponibile.");
+        busyRetries = 0;
         retry = false;
         passes++;
         checked += data.checked || 0;
@@ -97,6 +105,8 @@ export default function CatalogVerificationRunner({ catalog, scope }: {
             throw new Error("Impossibile leggere lo stato dei cataloghi.");
           const state = await readServiceJson<Progress>(response, "Stato temporaneamente non disponibile.");
           setProgress(previous => ({ ...previous, [current]: state }));
+          if (state.remaining > 0)
+            await runCatalog(current, false, controller.signal);
         }
         catch (error) {
           if (!(error instanceof Error && error.name === "AbortError"))
@@ -116,13 +126,16 @@ export default function CatalogVerificationRunner({ catalog, scope }: {
       if (!state) return <div className="catalogHealthRow" key={current}><strong>{catalogConfig[current].label}</strong><span>Caricamento stato…</span></div>;
       const last = state.lastImport;
       const success = state.lastSuccessfulImport || (last?.status === "success" ? last : null);
+      const importError = last?.error && /Target closed|detached Frame|Protocol error/i.test(last.error)
+        ? "Il browser Amazon si è interrotto durante la scansione"
+        : last?.error ? last.error.slice(0, 160) : null;
       const hasAnomalies = catalogHasAnomalies(state);
       const isRunning = Boolean(running[current]);
       return <div className="catalogHealthRow" key={current} aria-busy={isRunning}>
         <strong>{catalogConfig[current].label}: {state.complete}/{state.total} completi {isRunning ? "· verifica in corso…" : ""}</strong>
         <span>{state.remaining} da verificare · {state.incomplete} non completati</span>
         <div className="healthLinks">{Object.entries(state.missing || {}).map(([field, count]) => <Link key={field} href={`/admin/catalog-review?catalog=${current}&missing=${field}`}>{count} senza {field}{field === "prezzo" ? " rilevato" : ""}</Link>)}</div>
-        <p className="healthImportStatus">Importazione: {last ? last.error || last.status === "source-unavailable" ? "Fonte non disponibile; dati conservati" : last.status === "success" ? `${last.count} prodotti rilevati il ${new Date(last.at).toLocaleString("it-IT", { timeZone: "Europe/Rome" })}` : "Nessun nuovo prodotto rilevato" : "Non ancora registrata"}.<br />Ultima importazione riuscita: {success ? new Date(success.at).toLocaleString("it-IT", { timeZone: "Europe/Rome" }) : "Non registrata"}.<br />Verifica: {isRunning ? "in corso" : state.remaining ? "da riprendere" : state.incomplete ? "parziale" : "completa"}.</p>
+        <p className="healthImportStatus">Importazione: {last ? importError ? `${importError}; dati conservati` : last.status === "source-unavailable" ? "Fonte non disponibile; dati conservati" : last.status === "success" ? `${last.count} prodotti rilevati il ${new Date(last.at).toLocaleString("it-IT", { timeZone: "Europe/Rome" })}` : "Nessun nuovo prodotto rilevato" : "Non ancora registrata"}.<br />Ultima importazione riuscita: {success ? new Date(success.at).toLocaleString("it-IT", { timeZone: "Europe/Rome" }) : "Non registrata"}.<br />Verifica: {isRunning ? "in corso" : state.remaining ? "da riprendere" : state.incomplete ? "parziale" : "completa"}.</p>
         {hasAnomalies ? <button type="button" disabled={isRunning} onClick={() => void runCatalog(current, true)}>{isRunning ? `Verifica ${catalogConfig[current].label} in corso…` : `Riprova le anomalie di ${catalogConfig[current].label}`}</button> : <span className="catalogComplete">✓ Nessuna anomalia da riprovare</span>}
         {messages[current] ? <span role="status">{messages[current]}</span> : null}
       </div>;
