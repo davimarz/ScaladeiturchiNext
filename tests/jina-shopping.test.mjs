@@ -40,3 +40,47 @@ Price, product page[€359.84€359.84 RRP: €613.93 RRP: €613.93€613.93](h
   assert.match(products[0].description, /AutoWash/);
   assert.match(products[0].imageUrl, /m\.media-amazon\.com/);
 });
+
+test("Jina search preserves gender and broadens bag queries through complete Amazon searches", async () => {
+  const exports = {};
+  const calls = [];
+  const source = ts.transpileModule(
+    readFileSync(new URL("../src/lib/jina-shopping.ts", import.meta.url), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+  ).outputText;
+  vm.runInNewContext(source, {
+    exports,
+    URL,
+    process: { env: {} },
+    AbortSignal: { timeout: () => undefined },
+    fetch: async (url) => {
+      const amazon = new URL(url.slice("https://r.jina.ai/".length));
+      const query = amazon.searchParams.get("k");
+      calls.push(query);
+      const heading = query === "borsa donna"
+        ? "Women Shoulder Handbag Faux Leather Crossbody Tote"
+        : "Women's Tote Shoulder Bag";
+      return {
+        ok: true,
+        async text() {
+          return `[![Image 1: ${heading}](https://m.media-amazon.com/images/I/bag.jpg)](https://www.amazon.it/-/en/Borsa/dp/B0BAG00001/ref=sr_1_1)\n\n## [${heading}](https://www.amazon.it/-/en/Borsa/dp/B0BAG00001/ref=sr_1_1)\n\nPrice, product page[€39.99](https://www.amazon.it/-/en/Borsa/dp/B0BAG00001/ref=sr_1_1)`;
+        },
+      };
+    },
+    require(name) {
+      if (name.includes("ai-relevance")) {
+        return {
+          isRelevantProduct: () => true,
+          queryTokens: () => ["borsa"],
+        };
+      }
+      throw new Error("Unexpected import " + name);
+    },
+  });
+
+  const products = await exports.searchAmazonViaJina("borsa da donna", 2);
+  assert.ok(calls.includes("borsa donna"), "base Amazon search keeps the audience qualifier");
+  assert.ok(calls.includes("handbag women"), "search includes an English handbag variant");
+  assert.equal(products.length, 1);
+  assert.equal(products[0].currentPrice, 39.99);
+});
