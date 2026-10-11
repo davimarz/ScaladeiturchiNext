@@ -54,7 +54,7 @@ export default async function AdminOfferteLamboPage({ searchParams }: { searchPa
 
         <p className="adminHint">Cliccando “Aggiorna Offerte” il sistema importa i prodotti trovati e aggiorna anche prezzo attuale, prezzo precedente e sconto dei prodotti Offerte Lampo già presenti.</p>
       </section>
-    <CatalogVerificationRunner catalog={params.lambo_import === "success" || params.lambo_import === "price-only" ? "offerte-lambo" : null} />
+    <CatalogVerificationRunner catalog={params.lambo_import === "success" || params.lambo_import === "partial" || params.lambo_import === "price-only" ? "offerte-lambo" : null} />
     </main>
   );
 }
