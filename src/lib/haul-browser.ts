@@ -105,7 +105,9 @@ async function fetchAmazonWithFullScroll(
       Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
     });
 
-    const candidateUrls = [url];
+    // A single retry covers transient 503 responses without spinning through
+    // alternative storefronts or mixing products from another catalogue.
+    const candidateUrls = [url, url];
 
     let loaded = false;
     let lastStatus = 0;
@@ -125,9 +127,8 @@ async function fetchAmazonWithFullScroll(
         /robot check|captcha|inserisci i caratteri|sorry|automated access/i.test(title + "\n" + bodyText);
 
       if (!blocked && lastStatus < 400) {
-        if (mode === "search") {
-          await sleep(1600);
-          const initialAsins = await page.evaluate(() => {
+        await sleep(1600);
+        const initialAsins = await page.evaluate(() => {
             const asins = new Set<string>();
             for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
               const asin = (element.dataset.asin || "").trim().toUpperCase();
@@ -141,11 +142,10 @@ async function fetchAmazonWithFullScroll(
               if (match) asins.add(match[1].toUpperCase());
             }
             return asins.size;
-          }).catch(() => 0);
+        }).catch(() => 0);
 
-          if (initialAsins < 1 && attempt < candidateUrls.length - 1) {
-            continue;
-          }
+        if (initialAsins < 1 && attempt < candidateUrls.length - 1) {
+          continue;
         }
 
         loaded = true;
