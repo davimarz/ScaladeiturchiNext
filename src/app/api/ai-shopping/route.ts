@@ -9,6 +9,7 @@ import {
   interpretShoppingQuery,
 } from "../../../lib/ai-shopping";
 import { enrichAmazonProductsViaBraveByAsin, searchAmazonViaBrave } from "../../../lib/brave-shopping";
+import { searchAmazonViaJina } from "../../../lib/jina-shopping";
 import { isRelevantProduct, isUnrequestedAccessory, maxPriceFromQuery } from "../../../lib/ai-relevance";
 import {
   finalizeAIUsage,
@@ -86,6 +87,20 @@ export async function POST(request: NextRequest) {
       && Boolean(product.imageUrl)
       && product.currentPrice != null
     ).length;
+
+    if (usableProductCount() < DISCOVERY_TARGET) {
+      for (const candidateQuery of searchQueries.slice(0, 2)) {
+        if (usableProductCount() >= DISCOVERY_TARGET) break;
+        try {
+          const jina = await searchAmazonViaJina(candidateQuery, DISCOVERY_TARGET);
+          products = mergeProducts(products, jina);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Jina Amazon: " + message);
+          console.info("ai-shopping-jina-fallback", message);
+        }
+      }
+    }
 
     if (usableProductCount() < DISCOVERY_TARGET) {
       for (const candidateQuery of searchQueries) {

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-function loadRoute({intent,local=[],creators=async()=>[],fallback=async()=>[],braveSearch=async()=>[],enrich=async items=>items,braveEnrich=async items=>items,relevant=()=>true}) {
+function loadRoute({intent,local=[],creators=async()=>[],jina=async()=>[],fallback=async()=>[],braveSearch=async()=>[],enrich=async items=>items,braveEnrich=async items=>items,relevant=()=>true}) {
  const exports={};
  const source=ts.transpileModule(readFileSync(new URL('../src/app/api/ai-shopping/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  vm.runInNewContext(source,{exports,console,require(name){
@@ -19,6 +19,7 @@ function loadRoute({intent,local=[],creators=async()=>[],fallback=async()=>[],br
    async generateShoppingAnswer(){return {text:'Risultati trovati',inputTokens:1,outputTokens:1,totalTokens:2};},
   };
   if(name.includes('brave-shopping'))return {searchAmazonViaBrave:braveSearch,enrichAmazonProductsViaBraveByAsin:braveEnrich};
+  if(name.includes('jina-shopping'))return {searchAmazonViaJina:jina};
   if(name.includes('ai-relevance'))return {isRelevantProduct:relevant,isUnrequestedAccessory:()=>false,maxPriceFromQuery:()=>null};
   if(name.includes('ai-usage'))return {async reserveAIUsage(){return {allowed:true,usageDay:'2026-10-11'};},async finalizeAIUsage(){},async recordAIQuery(){},async releaseAIUsage(){},async markAIExhausted(){}};
   throw new Error('Unexpected import '+name);
@@ -40,6 +41,7 @@ test('AI avoids re-scanning complete results and enriches each search only once'
    async generateShoppingAnswer(){return {text:'Otto cuffie sotto 50 euro',inputTokens:1,outputTokens:1,totalTokens:2};},
   };
   if(name.includes('brave-shopping'))return {async searchAmazonViaBrave(){calls.push('brave-search');return[];},async enrichAmazonProductsViaBraveByAsin(items){calls.push('brave-enrich');return items;}};
+  if(name.includes('jina-shopping'))return {async searchAmazonViaJina(){calls.push('jina-search');return[];}};
   if(name.includes('ai-relevance'))return {isRelevantProduct:()=>true,isUnrequestedAccessory:()=>false,maxPriceFromQuery:()=>50};
   if(name.includes('ai-usage'))return {async reserveAIUsage(){return {allowed:true,usageDay:'2026-10-09'};},async finalizeAIUsage(){},async recordAIQuery(){},async releaseAIUsage(){},async markAIExhausted(){}};
   throw new Error('Unexpected import '+name);
