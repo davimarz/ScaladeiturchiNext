@@ -120,7 +120,7 @@ export default function CatalogVerificationRunner({ catalog, scope }: {
 
   const anythingRunning = visibleCatalogs.some(current => running[current]);
   return <div className="catalogVerifyRunner" aria-live="polite" aria-busy={anythingRunning}>
-    <strong>Salute dei cataloghi {anythingRunning ? "· aggiornamenti indipendenti in corso…" : ""}</strong>
+    <strong>Salute dei cataloghi {anythingRunning ? "· verifiche in corso o in attesa…" : ""}</strong>
     <div className="catalogHealthRows">{visibleCatalogs.map(current => {
       const state = progress[current];
       if (!state) return <div className="catalogHealthRow" key={current}><strong>{catalogConfig[current].label}</strong><span>Caricamento stato…</span></div>;
@@ -140,6 +140,6 @@ export default function CatalogVerificationRunner({ catalog, scope }: {
         {messages[current] ? <span role="status">{messages[current]}</span> : null}
       </div>;
     })}</div>
-    <small>Completo = titolo, foto, descrizione e prezzo rilevato. Ogni catalogo si può verificare separatamente; una verifica non blocca i pulsanti degli altri. Sconto e prezzo originario vengono mostrati solo quando disponibili.</small>
+    <small>Completo = titolo, foto, descrizione e prezzo rilevato. Ogni catalogo conserva il proprio stato e il proprio pulsante Riprova; il browser Amazon lavora su un catalogo alla volta. Sconto e prezzo originario vengono mostrati solo quando disponibili.</small>
   </div>;
 }
