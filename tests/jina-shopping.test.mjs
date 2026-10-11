@@ -22,7 +22,7 @@ test("parses complete Amazon products from the resilient text search", () => {
   const markdown = `
 [![Image 9: iRobot Roomba Plus 576](https://m.media-amazon.com/images/I/71NoxAdtujL._AC_UL320_.jpg)](http://www.amazon.it/-/en/iRobot-Roomba/dp/B0GXWXK6VF/ref=sr_1_1)
 
-## [iRobot Roomba Plus 576 Combo Robot Vacuum Cleaner](http://www.amazon.it/-/en/iRobot-Roomba/dp/B0GXWXK6VF/ref=sr_1_1)
+## [Roomba Plus 576 Combo Robot Vacuum Cleaner](http://amazon.it/-/en/iRobot-Roomba/dp/B0GXWXK6VF/ref=sr_1_1)
 
 With AutoWash Self-Draining Station, extendible mop and LiDAR navigation
 
@@ -33,6 +33,7 @@ Price, product page[€359.84€359.84 RRP: €613.93 RRP: €613.93€613.93](h
   const products = exports.parseJinaAmazonSearch(markdown);
   assert.equal(products.length, 1);
   assert.equal(products[0].asin, "B0GXWXK6VF");
+  assert.match(products[0].title, /^iRobot Roomba/);
   assert.equal(products[0].currentPrice, 359.84);
   assert.equal(products[0].listPrice, 613.93);
   assert.equal(products[0].discountPercent, 41);
