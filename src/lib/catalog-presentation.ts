@@ -81,6 +81,9 @@ export function discountValue(product: StoreProduct) {
         return Math.round((1 - price / product.list_price) * 100);
     return product.list_price == null && product.discount_percent && product.discount_percent > 0 && product.discount_percent < 100 ? product.discount_percent : 0;
 }
+export function defaultCatalogSort(catalog: string) {
+    return catalog === "haul" || catalog === "offerte-lambo" || catalog === "bestseller" ? "discount" : "default";
+}
 export function sortProducts(products: StoreProduct[], sort: string, bestseller: boolean) {
     return [...products].sort((a, b) => {
         let difference = 0;
