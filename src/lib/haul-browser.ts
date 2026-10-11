@@ -325,19 +325,6 @@ async function fetchAmazonWithFullScroll(
         if (match) add(match[1]);
       }
 
-      const html = document.documentElement.innerHTML;
-      const patterns = [
-        /["']asin["']\s*:\s*["']([A-Z0-9]{10})["']/gi,
-        /["']ASIN["']\s*:\s*["']([A-Z0-9]{10})["']/g,
-        /%22asin%22%3A%22([A-Z0-9]{10})%22/gi,
-        /\/dp\/([A-Z0-9]{10})(?:[/?#"'&]|$)/gi,
-        /\/gp\/product\/([A-Z0-9]{10})(?:[/?#"'&]|$)/gi,
-      ];
-      for (const pattern of patterns) {
-        let match: RegExpExecArray | null;
-        while ((match = pattern.exec(html)) !== null) add(match[1]);
-      }
-
       return [...asins];
     }).catch(() => []);
 
@@ -763,8 +750,10 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
   });
 
   try {
-    for (let offset = 0; offset < uniqueAsins.length; offset += 3) {
-      const batch = uniqueAsins.slice(offset, offset + 3);
+    // Fewer simultaneous product pages give late price widgets time to render
+    // and avoid exhausting the function's browser memory.
+    for (let offset = 0; offset < uniqueAsins.length; offset += 2) {
+      const batch = uniqueAsins.slice(offset, offset + 2);
       const snapshots = await Promise.all(batch.map(async (asin) => {
         let page: Awaited<ReturnType<Browser["newPage"]>> | undefined;
         try {
@@ -779,6 +768,8 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             timeout: 20_000,
           });
           if (!response || response.status() >= 400) return [asin, null] as const;
+          await page.waitForSelector("#productTitle, #landingImage, #feature-bullets, script[type='application/ld+json']", { timeout: 6000 }).catch(() => null);
+          await page.waitForSelector(".priceToPay .a-offscreen, #corePriceDisplay_desktop_feature_div .a-offscreen, [data-a-color='price'] .a-offscreen", { timeout: 4000 }).catch(() => null);
 
           const snapshot = await page.evaluate((targetAsin) => {
             const clean = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
@@ -795,8 +786,26 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
                document.querySelector<HTMLInputElement>('input[name="ASIN"]')?.value || "").toUpperCase();
             if (pageAsin && pageAsin !== targetAsin) return null;
 
+            const structuredProducts: Record<string, unknown>[] = [];
+            const visit = (value: unknown) => {
+              if (Array.isArray(value)) { value.forEach(visit); return; }
+              if (!value || typeof value !== "object") return;
+              const item = value as Record<string, unknown>;
+              const type = item["@type"];
+              if (type === "Product" || (Array.isArray(type) && type.includes("Product"))) {
+                const sku = String(item.sku || item.asin || "").toUpperCase();
+                if (!sku || sku === targetAsin) structuredProducts.push(item);
+              }
+              if (item["@graph"]) visit(item["@graph"]);
+            };
+            for (const script of Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'))) {
+              try { visit(JSON.parse(script.textContent || "null")); } catch {}
+            }
+            const structured = structuredProducts[0];
+
             const title =
               clean(document.querySelector<HTMLElement>("#productTitle")?.innerText) ||
+              (typeof structured?.name === "string" ? clean(structured.name) : "") ||
               clean(document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content).replace(/\s*:\s*Amazon\.it.*$/i, "") ||
               null;
 
@@ -810,6 +819,7 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
             }
             addDescription(document.querySelector<HTMLElement>("#productDescription")?.innerText);
             addDescription(document.querySelector<HTMLElement>("#aplus_feature_div")?.innerText);
+            if (typeof structured?.description === "string") addDescription(structured.description);
             const description = descriptionCandidates
               .filter((value, index, values) => values.indexOf(value) === index)
               .slice(0, 6)
@@ -831,24 +841,17 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               null;
 
             if (!currentText) {
-              for (const script of Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'))) {
-                try {
-                  const parsed = JSON.parse(script.textContent || "null");
-                  const items = Array.isArray(parsed) ? parsed : [parsed];
-                  for (const item of items) {
-                    if (!item || typeof item !== "object") continue;
-                    const offers = Array.isArray(item.offers) ? item.offers : [item.offers];
-                    for (const offer of offers) {
-                      if (!offer || typeof offer !== "object") continue;
-                      const price = offer.price ?? offer.lowPrice;
-                      if (price != null) {
-                        currentText = String(price);
-                        break;
-                      }
-                    }
-                    if (currentText) break;
-                  }
-                } catch {}
+              for (const product of structuredProducts) {
+                const offers = Array.isArray(product.offers) ? product.offers : [product.offers];
+                for (const value of offers) {
+                  if (!value || typeof value !== "object") continue;
+                  const offer = value as Record<string, unknown>;
+                  if (offer.priceCurrency && offer.priceCurrency !== "EUR") continue;
+                  const price = offer.price ?? offer.lowPrice;
+                  if (typeof price === "string" || typeof price === "number") currentText = String(price);
+                  if (currentText) break;
+                }
+                if (currentText) break;
               }
             }
 
@@ -884,6 +887,15 @@ export async function fetchAmazonProductSnapshotsWithBrowser(asins: string[]) {
               }
             }
             addImage(document.querySelector<HTMLMetaElement>('meta[property="og:image"]')?.content);
+            const structuredImages = Array.isArray(structured?.image) ? structured.image : [structured?.image];
+            for (const candidate of structuredImages) {
+              if (typeof candidate === "string") addImage(candidate);
+              else if (candidate && typeof candidate === "object") {
+                const image = candidate as Record<string, unknown>;
+                if (typeof image.url === "string") addImage(image.url);
+                if (typeof image.contentUrl === "string") addImage(image.contentUrl);
+              }
+            }
 
             const imageUrl = imageCandidates.find((value) =>
               /^https:\/\/(?:m\.media-amazon\.com|images-(?:na|eu|fe)\.ssl-images-amazon\.com)\//i.test(value) &&
