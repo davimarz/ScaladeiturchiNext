@@ -23,6 +23,8 @@ function stem(value: string) {
 }
 
 const TOKEN_SYNONYMS: Record<string, string[]> = {
+  borsa: ["borse","borsetta","borsette","borsello","borselli","handbag","handbags","purse","purses","shoulder bag","tote","tote bag","crossbody","crossbody bag","clutch","shopper","tracolla","tracolle","pochette"],
+  borse: ["borsa","borsetta","borsette","borsello","borselli","handbag","handbags","purse","purses","shoulder bag","tote","tote bag","crossbody","crossbody bag","clutch","shopper","tracolla","tracolle","pochette"],
   scarpa: ["shoe","shoes","sneaker","sneakers","calzatura","calzature"],
   scarpe: ["shoe","shoes","sneaker","sneakers","calzatura","calzature"],
   cappellino: ["cappello","berretto","cap"],
@@ -62,8 +64,12 @@ export function isRelevantProduct(title: string, query: string) {
   const wordStems = new Set(words.map(stem).filter((value) => value.length >= 4));
   const matchesToken = (token: string) => {
     if (words.includes(token) || wordStems.has(stem(token))) return true;
-    return (TOKEN_SYNONYMS[token] ?? []).some((synonym) =>
-      words.includes(synonym) || wordStems.has(stem(synonym))
+    return (TOKEN_SYNONYMS[token] ?? []).some((synonym) => {
+      const synonymWords = synonym.split(" ");
+      return synonymWords.length > 1
+        ? words.join(" ").includes(synonym)
+        : words.includes(synonym) || wordStems.has(stem(synonym));
+    }
     );
   };
 
