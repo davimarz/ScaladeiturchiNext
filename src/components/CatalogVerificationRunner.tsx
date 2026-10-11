@@ -105,8 +105,9 @@ export default function CatalogVerificationRunner({ catalog, scope }: {
             throw new Error("Impossibile leggere lo stato dei cataloghi.");
           const state = await readServiceJson<Progress>(response, "Stato temporaneamente non disponibile.");
           setProgress(previous => ({ ...previous, [current]: state }));
-          if (state.remaining > 0)
-            await runCatalog(current, false, controller.signal);
+          // Opening the dashboard only reads progress. A pending HAUL scan must
+          // not seize the shared Amazon browser before an operator can update
+          // another catalogue; each catalogue has its own explicit retry.
         }
         catch (error) {
           if (!(error instanceof Error && error.name === "AbortError"))
