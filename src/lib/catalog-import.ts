@@ -23,6 +23,31 @@ type Existing = { asin: string; title: string; description: string | null; image
   price_verified_at: string | null; category_id: string | null; featured: boolean; prime: boolean | null;
   in_haul: boolean; in_outlet: boolean; in_offerte_lambo: boolean; in_bestseller: boolean; haul_category: string | null; source: string };
 
+async function fetchListingHtml(sourceUrl: string) {
+  const response = await fetch(sourceUrl, { cache: "no-store", signal: AbortSignal.timeout(15000),
+    headers: { accept: "text/html", "accept-language": "it-IT,it;q=0.9",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36" } });
+  if (!response.ok) throw new Error("Amazon HTML HTTP " + response.status);
+  if (!/^https:\/\/(?:www\.)?amazon\.it\//i.test(response.url)) throw new Error("Pagina Amazon reindirizzata fuori da Amazon.it");
+  if (!response.headers.get("content-type")?.includes("text/html")) throw new Error("La fonte non restituisce HTML");
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Risposta Amazon senza contenuto");
+  const decoder = new TextDecoder();
+  let bytes = 0, html = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 8 * 1024 * 1024) throw new Error("Pagina Amazon troppo grande");
+      html += decoder.decode(value, { stream: true });
+    }
+    html += decoder.decode();
+  } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
+  if (/\/errors\/validateCaptcha|<title>\s*Robot Check/i.test(html)) throw new Error("Amazon richiede una verifica umana");
+  return html;
+}
+
 async function saveCatalogProducts(catalog: Catalog, products: ReturnType<typeof parseHaulHtml>, now: string, pending = false) {
   if (!products.length) return 0;
   const config = catalogConfig[catalog];
@@ -97,6 +122,15 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
   catch (error) {
     scanError = error instanceof Error ? error.message : "Scansione Amazon non disponibile";
     console.warn("catalog-import-scan", catalog, scanError);
+    if (!uploadedHtml) {
+      try {
+        const html = await fetchListingHtml(sourceUrl);
+        products = parseHaulHtml(html);
+        if (!products.length) scanError += " · HTML senza schede prodotto";
+      } catch (fallbackError) {
+        scanError += " · " + (fallbackError instanceof Error ? fallbackError.message : "Lettura HTML non disponibile");
+      }
+    }
   }
   const now = new Date().toISOString();
   const count = await saveCatalogProducts(catalog, products, now);
