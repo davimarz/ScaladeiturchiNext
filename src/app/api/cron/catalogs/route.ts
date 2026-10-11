@@ -47,7 +47,7 @@ async function tick() {
     await save([{ key: "catalog_auto_update_stage", value: "verify-" + catalog }, { key: "catalog_auto_update_had_error", value: hadError }, { key: "catalog_auto_update_last_message", value: message }]);
     return { ok: true, catalog, phase: "import", result };
   }
-  const result = await withCatalogJob(catalog, () => verifyCatalogProductsBatch(catalog, 6));
+  const result = await withCatalogJob(catalog, () => verifyCatalogProductsBatch(catalog, 4));
   const summary = await catalogVerificationSummary(catalog);
   if (summary.remaining > 0) return { ok: true, catalog, phase: "verify", result, summary };
   hadError ||= summary.incomplete > 0;
