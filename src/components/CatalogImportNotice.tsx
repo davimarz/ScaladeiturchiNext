@@ -12,7 +12,7 @@ export default function CatalogImportNotice({ catalog, status, count }: {
     success: `${label}: ${count || "0"} prodotti salvati. La verifica di immagini, descrizioni e prezzi prosegue qui sotto.`,
     partial: `${label}: ${count || "0"} prodotti recuperati prima dell’interruzione della scansione. I dati sono salvati e la verifica prosegue qui sotto; riprova l’importazione per completare l’elenco.`,
     "price-only": `${label}: nessun nuovo prodotto rilevato dalla fonte. I dati esistenti sono conservati e vengono verificati qui sotto.`,
-    "source-unavailable": `${label}: fonte Amazon non disponibile. I dati esistenti sono conservati; puoi verificare o riprovare solo gli incompleti.`,
+    "source-unavailable": `${label}: Amazon non ha restituito schede prodotto. I dati esistenti sono conservati. Se il catalogo è vuoto, puoi caricare la pagina HTML salvata da Amazon nelle Opzioni avanzate.`,
     busy: `${label}: un aggiornamento è già in corso. Attendi il termine prima di riprovare.`,
     "invalid-url": `${label}: inserisci un link Amazon.it valido per questo catalogo.`,
     "invalid-file": "Carica un file HTML di dimensioni inferiori a 40 MB.",
