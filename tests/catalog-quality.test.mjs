@@ -38,6 +38,11 @@ test('description extraction includes bullet points and excludes scripts/generic
   assert.match(description, /Microfono integrato/); assert.match(description, /Compatibile/); assert.doesNotMatch(description, /danger/);
   assert.equal(offer.extractAmazonProductDescription('<meta name="description" content="Acquista online un\'ampia selezione di prodotti Amazon">'), null);
 });
+test('product pages can recover title and description from nested Product JSON-LD when visible sections are absent', () => {
+  const html = '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Product","name":"Robot aspirapolvere Roomba con mappatura","description":"Robot aspirapolvere con navigazione intelligente, mappatura dei locali e svuotamento automatico."}]}</script>';
+  assert.equal(offer.extractAmazonProductTitle(html), 'Robot aspirapolvere Roomba con mappatura');
+  assert.match(offer.extractAmazonProductDescription(html), /mappatura dei locali/);
+});
 test('verification persists other products when one page fails and does not mark stale prices as fresh', async () => {
   const rows = [
     { asin: 'B012345678', title: good.title, description: good.description, image_url: good.imageUrl, current_price: 20, list_price: 40, discount_percent: 50, haul_verification_attempts: 2 },
