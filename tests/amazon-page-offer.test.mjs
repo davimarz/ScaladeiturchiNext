@@ -21,14 +21,14 @@ function loadParser() {
     require(name) {
       if (name === "./catalog-presentation") return { usefulTitle };
       if (name === "server-only") return {};
-      if (name === "./amazon-input") return { extractAmazonProductImage: () => null };
+      if (name === "./amazon-input") return { extractAmazonProductImage: () => null, extractAsin: url => url.pathname.match(/\/dp\/([A-Z0-9]{10})/i)?.[1]?.toUpperCase() || null };
       throw new Error("Unexpected import " + name);
     },
   });
   return exports;
 }
 
-const { extractAmazonProductOffer } = loadParser();
+const { extractAmazonProductOffer, fetchAmazonProductSnapshot } = loadParser();
 
 test("extracts current price, reference price and visible discount", () => {
   const html = `
@@ -60,4 +60,16 @@ test("does not invent a discount when only the current price is present", () => 
   assert.equal(offer.currentPrice, 19.99);
   assert.equal(offer.listPrice, null);
   assert.equal(offer.discountPercent, null);
+});
+
+test("recovers an EUR offer from nested Product JSON-LD", () => {
+  const html = '<script type="application/ld+json">{"@graph":[{"@type":"Product","name":"Cuffie bluetooth","offers":{"price":"24.90","priceCurrency":"EUR"}}]}</script>';
+  assert.equal(extractAmazonProductOffer(html).currentPrice, 24.9);
+});
+
+test("does not accept product data after an ASIN redirect or a mismatched product page", async () => {
+  const other = "B000000000";
+  const original = "B012345678";
+  await assert.rejects(fetchAmazonProductSnapshot(original, async () => new Response(null, { status: 302, headers: { location: 'https://www.amazon.it/dp/' + other } })), /another product/);
+  await assert.rejects(fetchAmazonProductSnapshot(original, async () => new Response('<input id="ASIN" value="' + other + '"><span class="priceToPay"><span class="a-offscreen">12,99 €</span></span>', { headers: { 'content-type': 'text/html' } })), /another product/);
 });
