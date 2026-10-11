@@ -87,6 +87,7 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
   let products: ReturnType<typeof parseHaulHtml> = [];
   let scanError: string | null = null;
   const savedAsins = new Set<string>();
+  const checkpointProducts = new Map<string, ReturnType<typeof parseHaulHtml>[number]>();
   try {
     if (uploadedHtml)
       products = parseHaulHtml(uploadedHtml);
@@ -95,7 +96,7 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
         const discovered = new Set(checkpoint.asins);
         const fresh = parseHaulHtml(checkpoint.html).filter(product => discovered.has(product.asin) && !savedAsins.has(product.asin));
         await saveCatalogProducts(catalog, fresh, new Date().toISOString(), true);
-        fresh.forEach(product => savedAsins.add(product.asin));
+        fresh.forEach(product => { savedAsins.add(product.asin); checkpointProducts.set(product.asin, product); });
         if (fresh.length) await supabaseAdminFetch("site_settings?on_conflict=key", {
           method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify([{ key: catalog + "_last_import", value: {
@@ -131,6 +132,22 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
         scanError += " · " + (fallbackError instanceof Error ? fallbackError.message : "Lettura HTML non disponibile");
       }
     }
+  }
+  // The final browser document can contain fewer cards than earlier scroll
+  // checkpoints (virtualized grids replace old cards). Keep every discovered
+  // product in the final count and merge any richer final fields with it.
+  if (checkpointProducts.size) {
+    const combined = new Map(checkpointProducts);
+    for (const product of products) {
+      const previous = combined.get(product.asin);
+      if (!previous) { combined.set(product.asin, product); continue; }
+      const data = mergeCatalogData({ title: previous.title, description: previous.description || null,
+        imageUrl: previous.imageUrl, currentPrice: previous.currentPrice, listPrice: previous.listPrice,
+        discountPercent: previous.discountPercent }, product);
+      combined.set(product.asin, { ...previous, ...product, ...data,
+        title: data.title || previous.title, haulCategory: product.haulCategory || previous.haulCategory });
+    }
+    products = [...combined.values()];
   }
   const now = new Date().toISOString();
   const count = await saveCatalogProducts(catalog, products, now);
