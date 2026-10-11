@@ -5,10 +5,10 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { isGenericAmazonImage } from '../src/lib/amazon-input.ts';
-function load(file, dependencies = {}) {
+function load(file, dependencies = {}, globals = {}) {
   const exports = {};
   const source = ts.transpileModule(readFileSync(new URL('../src/lib/' + file + '.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(source, { exports, URL, console, AbortSignal, setTimeout, clearTimeout, process: {arch:"x64",env:{}}, require(name) {
+  vm.runInNewContext(source, { exports, URL, console, AbortSignal, TextDecoder, setTimeout, clearTimeout, ...globals, process: {arch:"x64",env:{}}, require(name) {
     if (name === 'server-only') return {};
     if (Object.hasOwn(dependencies, name)) return dependencies[name];
     throw new Error('Unexpected import ' + name);
@@ -162,4 +162,30 @@ test('catalogue saves a checkpoint before an interrupted browser scan finishes',
  assert.equal(writes.length, 2);
  assert.equal(writes[0].haul_verification_status, 'pending');
  assert.equal(events.find(row => row.key === 'haul_last_import').value.status, 'partial');
+});
+
+test('catalogue retries the same Amazon listing as HTML after browser HTTP 503', async () => {
+ const product = { ...good, asin: 'B012345678', haulCategory: null };
+ const writes = [];
+ const importer = load('catalog-import', {
+  './supabase/admin': { async supabaseAdminFetch(path, init) {
+   if (!init) return [];
+   if (path.startsWith('products?on_conflict=')) writes.push(...JSON.parse(init.body));
+  } },
+  './haul-import': { parseHaulHtml: () => [product] },
+  './haul-browser': { fetchHaulWithFullScroll: async () => { throw new Error('Amazon browser HTTP 503'); } },
+  './catalog-sync': { markCatalogVerificationPending: async () => {} },
+  './catalog-config': config,
+  './product-validation': { MANUAL_SOURCES: [] },
+  './catalog-product': quality,
+ }, { fetch: async url => {
+  assert.equal(url, config.catalogConfig.haul.url);
+  const response = new Response('<div data-asin="B012345678">Cuffie bluetooth</div>', { headers: { 'content-type': 'text/html' } });
+  Object.defineProperty(response, 'url', { value: url });
+  return response;
+ } });
+ const result = await importer.importCatalog('haul', config.catalogConfig.haul.url);
+ assert.equal(result.status, 'partial');
+ assert.equal(result.count, 1);
+ assert.deepEqual(writes.map(row => row.asin), [product.asin]);
 });
