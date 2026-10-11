@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function PublicHeader() {
   return <header className="topbar">
-  <Link className="brand" href="/" aria-label="Scala dei Turchi - home">
+  <Link className="brand" href="/bestseller" aria-label="Scala dei Turchi - Bestseller">
    <span className="brandMark" aria-hidden="true">
     <svg viewBox="0 0 32 32" fill="none"><path d="M5 23h7v-5h7v-5h8M5 28h22" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
    </span>
