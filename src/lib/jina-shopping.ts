@@ -101,15 +101,51 @@ export function parseJinaAmazonSearch(markdown: string, limit = 8): JinaShopping
 }
 
 export async function searchAmazonViaJina(query: string, limit = 8): Promise<JinaShoppingProduct[]> {
-  const keywords = queryTokens(query).join(" ") || query;
-  const amazon = new URL("http://www.amazon.it/-/en/s");
-  amazon.searchParams.set("k", keywords.slice(0, 180));
-  const response = await fetch("https://r.jina.ai/" + amazon.toString(), {
-    cache: "no-store",
-    signal: AbortSignal.timeout(25_000),
-    headers: { accept: "text/plain" },
-  });
-  if (!response.ok) throw new Error("Jina Amazon HTTP " + response.status);
-  const products = parseJinaAmazonSearch(await response.text(), Math.min(24, Math.max(limit * 2, limit)));
-  return products.filter((product) => isRelevantProduct(product.title, query)).slice(0, limit);
+  const tokens = queryTokens(query);
+  // Keep gender and other useful qualifiers in Amazon's search phrase. The relevance
+  // filter may ignore them as mandatory title terms, but the retailer search benefits
+  // from seeing the user's complete intent.
+  const usefulQualifiers = query
+    .toLocaleLowerCase("it")
+    .match(/\b(?:donna|donne|uomo|uomini|bambino|bambina|bambini|bambine)\b/g) ?? [];
+  const expandedBase = tokens.includes("borse") ? "borsa" : tokens;
+  const base = [...new Set([...expandedBase, ...usefulQualifiers])].join(" ") || query;
+  const variants = [base];
+  if (/\bbors[ae]\b/i.test(query)) {
+    variants.push(
+      `borsa a tracolla ${usefulQualifiers[0] ?? "donna"}`,
+      `borsa a mano ${usefulQualifiers[0] ?? "donna"}`,
+      `shopper ${usefulQualifiers[0] ?? "donna"}`,
+      `handbag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`,
+      `tote bag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`,
+      `crossbody bag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`,
+    );
+  }
+
+  const uniqueVariants = [...new Set(variants.map((value) => value.replace(/\s+/g, " ").trim()))];
+  const results = new Map<string, JinaShoppingProduct>();
+  let lastError: unknown;
+  for (const keywords of uniqueVariants) {
+    const amazon = new URL("http://www.amazon.it/-/en/s");
+    amazon.searchParams.set("k", keywords.slice(0, 180));
+    try {
+      const response = await fetch("https://r.jina.ai/" + amazon.toString(), {
+        cache: "no-store",
+        signal: AbortSignal.timeout(25_000),
+        headers: { accept: "text/plain" },
+      });
+      if (!response.ok) throw new Error("Jina Amazon HTTP " + response.status);
+      const products = parseJinaAmazonSearch(await response.text(), Math.min(48, Math.max(limit * 3, limit)));
+      for (const product of products) {
+        if (isRelevantProduct(product.title, query)) results.set(product.asin, product);
+      }
+      // Continue across several independent Amazon result pages to collect enough
+      // fully usable products; the caller still enforces image and price completeness.
+      if (results.size >= limit) break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!results.size && lastError) throw lastError;
+  return [...results.values()].slice(0, limit);
 }
