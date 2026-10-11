@@ -24,6 +24,7 @@ test('catalogue completeness requires a description and positive price; referenc
   assert.ok(quality.missingCatalogData({ ...good, description: null }).includes('descrizione'));
   assert.ok(quality.missingCatalogData({ ...good, currentPrice: 0 }).includes('prezzo'));
   assert.ok(quality.missingCatalogData({ ...good, title: 'La gamma di classi energetiche' }).includes('titolo'));
+  assert.equal(quality.cleanDescription('Sedia ergonomica con supporto lombare regolabile. Potrebbe piacerti anche... Aggiungi al carrello'), 'Sedia ergonomica con supporto lombare regolabile.');
 });
 test('a partial response preserves useful existing data, but a new price never inherits an old discount', () => {
   const retained = quality.mergeCatalogData(good, { title: 'Prodotto Amazon B012345678', imageUrl: null, description: '', currentPrice: null });
