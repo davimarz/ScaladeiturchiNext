@@ -219,7 +219,8 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
       continue;
     }
     if (!response.ok) throw new Error("Amazon HTTP " + response.status);
-    if (!response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon response is not HTML");
+    const contentType = response.headers.get("content-type") || "assente";
+    if (!contentType.includes("text/html")) throw new Error("Amazon response is not HTML (" + contentType.slice(0, 60) + ")");
     const html = await readHtml(response);
     if (/\/errors\/validateCaptcha|<title>\s*Robot Check/i.test(html)) throw new Error("Amazon blocked the product page");
     const asinInput = [...html.matchAll(/<input\b[^>]*>/gi)].find(([tag]) => /(?:id|name)=["']ASIN["']/i.test(tag));
