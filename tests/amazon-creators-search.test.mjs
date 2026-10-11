@@ -55,4 +55,5 @@ test("AI product search uses the shared region-aware Amazon Creators client", as
   assert.equal(JSON.stringify(calls[0].payload.languagesOfPreference), '["it_IT"]');
   assert.equal(products.length, 1);
   assert.equal(products[0].currentPrice, 249);
+  assert.match(products[0].description, /^Descrizione sintetica dal titolo Amazon: iRobot Roomba/);
 });

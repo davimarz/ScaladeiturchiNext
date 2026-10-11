@@ -28,6 +28,7 @@ export type ShoppingProduct = {
 };
 
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
+const TITLE_DESCRIPTION_PREFIX = "Descrizione sintetica dal titolo Amazon: ";
 
 function affiliateUrl(asin: string) {
   const url = new URL(`https://www.amazon.it/dp/${asin}/ref=nosim`);
@@ -217,6 +218,11 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
     if (!asin || !/^[A-Z0-9]{10}$/.test(asin) || !title)
       return [];
     const listing = item.offersV2?.listings?.[0];
+    const features = (item.itemInfo?.features?.displayValues ?? [])
+      .map((value) => value.replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    const featureDescription = features.join(" · ").slice(0, 1400);
     const currentPrice = listing?.price?.money?.amount ?? null;
     const listPrice = listing?.savingBasis?.money?.amount ?? null;
     const discountPercent = listing?.savings?.percentage ?? (currentPrice != null && listPrice != null && listPrice > currentPrice
@@ -233,7 +239,13 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
         affiliateUrl: affiliateUrl(asin),
         source: "amazon-api" as const,
         priceVerifiedAt: currentPrice != null ? new Date().toISOString() : null,
-        features: item.itemInfo?.features?.displayValues?.slice(0, 6) ?? [],
+        features,
+        // Creators does not always return ItemInfo.Features even when it was
+        // requested. Keep an explicitly labelled, source-derived description
+        // so complete results stay visible while page enrichment is attempted.
+        description: featureDescription.length >= 20
+          ? featureDescription
+          : (TITLE_DESCRIPTION_PREFIX + title).slice(0, 1400),
       }];
   }).filter((product) => isRelevantProduct(product.title, query)).slice(0, limit);
 }
@@ -284,7 +296,9 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
 }
 
 export async function enrichMissingProductData(products: ShoppingProduct[]): Promise<ShoppingProduct[]> {
-  const missing = products.filter((product) => product.currentPrice == null || !product.imageUrl);
+  const needsDescription = (product: ShoppingProduct) =>
+    !product.description || product.description.startsWith(TITLE_DESCRIPTION_PREFIX);
+  const missing = products.filter((product) => product.currentPrice == null || !product.imageUrl || needsDescription(product));
   if (!missing.length)
     return products;
   const enrichedByAsin = new Map<string, ShoppingProduct>();
@@ -317,7 +331,7 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
     console.info("ai-shopping-browser-enrichment", error instanceof Error ? error.message : String(error));
   }
   let enriched = products.map((product) => enrichedByAsin.get(product.asin) ?? product);
-  const stillMissing = enriched.filter((product) => product.currentPrice == null || !product.imageUrl);
+  const stillMissing = enriched.filter((product) => product.currentPrice == null || !product.imageUrl || needsDescription(product));
   if (!stillMissing.length)
     return enriched;
   // Fallback only for data the browser could not verify.
