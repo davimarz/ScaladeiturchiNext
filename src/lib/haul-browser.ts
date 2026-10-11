@@ -33,6 +33,7 @@ export type HaulBrowserResult = {
   scrolls: number;
   products: BrowserListingProduct[];
   asins: string[];
+  warning?: string;
 };
 
 let cachedExecutablePath: string | null = null;
@@ -65,6 +66,7 @@ async function getChromiumExecutablePath() {
 async function fetchAmazonWithFullScroll(
   url: string,
   mode: "haul" | "search" | "bestsellers" = "haul",
+  onCheckpoint?: (snapshot: Pick<HaulBrowserResult, "html" | "asins" | "scrolls">) => Promise<void>,
 ): Promise<HaulBrowserResult> {
   const chromium = (await import("@sparticuz/chromium-min")).default;
   const puppeteer = await import("puppeteer-core");
@@ -80,10 +82,13 @@ async function fetchAmazonWithFullScroll(
     defaultViewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
-    protocolTimeout: 15000,
+    protocolTimeout: 60000,
     signal: AbortSignal.timeout(150000),
   });
 
+  let checkpoint: Pick<HaulBrowserResult, "html" | "asins" | "scrolls"> | null = null;
+  let checkpointSize = 0;
+  let completedScrolls = 0;
   try {
     const page = await browser.newPage();
     await page.setUserAgent(
@@ -184,6 +189,27 @@ async function fetchAmazonWithFullScroll(
     let stableRounds = 0;
     let scrolls = 0;
 
+    async function saveCheckpoint() {
+      const snapshot = await page.evaluate(() => {
+        const asins = new Set<string>();
+        for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
+          const asin = (element.dataset.asin || "").trim().toUpperCase();
+          if (/^[A-Z0-9]{10}$/.test(asin)) asins.add(asin);
+        }
+        for (const link of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))) {
+          const match = link.href.match(/\/(?:dp|gp\/product|gp\/aw\/d)\/([A-Z0-9]{10})(?:[/?#]|$)/i);
+          if (match) asins.add(match[1].toUpperCase());
+        }
+        return { html: document.documentElement.outerHTML, asins: [...asins] };
+      });
+      if (snapshot.asins.length) {
+        checkpoint = { ...snapshot, scrolls };
+        checkpointSize = snapshot.asins.length;
+        if (onCheckpoint) await onCheckpoint(checkpoint);
+      }
+    }
+    await saveCheckpoint().catch(error => console.warn("catalog-checkpoint", error instanceof Error ? error.message : String(error)));
+
     for (; scrolls < MAX_SCROLLS && stableRounds < STABLE_ROUNDS_TO_STOP; scrolls++) {
       await page.evaluate(() => {
         const candidates = Array.from(document.querySelectorAll<HTMLElement>("button, a"));
@@ -197,6 +223,9 @@ async function fetchAmazonWithFullScroll(
 
       await sleep(mode === "search" || mode === "bestsellers" ? 1400 : WAIT_AFTER_SCROLL_MS);
       const currentCount = await countAsins();
+      completedScrolls = scrolls + 1;
+      if (scrolls % 5 === 4 && currentCount > checkpointSize)
+        await saveCheckpoint().catch(error => console.warn("catalog-checkpoint", error instanceof Error ? error.message : String(error)));
 
       if (currentCount > previousCount) {
         previousCount = currentCount;
@@ -470,21 +499,29 @@ async function fetchAmazonWithFullScroll(
 
     const mergedProducts = [...productMap.values()];
     return { html, asinCount: discoveredAsins.length, scrolls, products: mergedProducts, asins: discoveredAsins };
+  } catch (error) {
+    if (checkpoint) {
+      const partial: Pick<HaulBrowserResult, "html" | "asins" | "scrolls"> = checkpoint;
+      console.warn("catalog-browser-partial", mode, error instanceof Error ? error.message : String(error));
+      return { ...partial, asinCount: partial.asins.length, scrolls: completedScrolls,
+        products: [], warning: error instanceof Error ? error.message : "Scansione interrotta" };
+    }
+    throw error;
   } finally {
     await closeCatalogBrowser(browser);
   }
 }
 
-export async function fetchHaulWithFullScroll(url: string): Promise<HaulBrowserResult> {
-  return fetchAmazonWithFullScroll(url, "haul");
+export async function fetchHaulWithFullScroll(url: string, onCheckpoint?: (snapshot: Pick<HaulBrowserResult, "html" | "asins" | "scrolls">) => Promise<void>): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "haul", onCheckpoint);
 }
 
-export async function fetchAmazonSearchWithFullScroll(url: string): Promise<HaulBrowserResult> {
-  return fetchAmazonWithFullScroll(url, "search");
+export async function fetchAmazonSearchWithFullScroll(url: string, onCheckpoint?: (snapshot: Pick<HaulBrowserResult, "html" | "asins" | "scrolls">) => Promise<void>): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "search", onCheckpoint);
 }
 
-export async function fetchAmazonBestsellersWithFullScroll(url: string): Promise<HaulBrowserResult> {
-  return fetchAmazonWithFullScroll(url, "bestsellers");
+export async function fetchAmazonBestsellersWithFullScroll(url: string, onCheckpoint?: (snapshot: Pick<HaulBrowserResult, "html" | "asins" | "scrolls">) => Promise<void>): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "bestsellers", onCheckpoint);
 }
 
 export async function fetchAmazonKeywordSearchWithFullScroll(url: string): Promise<HaulBrowserResult> {
