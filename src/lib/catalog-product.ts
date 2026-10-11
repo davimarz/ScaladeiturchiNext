@@ -13,7 +13,9 @@ export function validPrice(value: number | null | undefined): value is number {
   return value != null && Number.isFinite(value) && value > 0 && value < 10000;
 }
 export function cleanDescription(value: string | null | undefined) {
-  const text = (value || "").replace(/\s+/g, " ").trim().slice(0, 1400);
+  const text = (value || "")
+    .replace(/\b(?:Potrebbe piacerti anche|I clienti hanno acquistato anche|Recensioni clienti)\b[\s\S]*$/i, "")
+    .replace(/\s+/g, " ").trim().slice(0, 1400);
   return text.length >= 20 ? text : null;
 }
 export function missingCatalogData(data: CatalogData) {
