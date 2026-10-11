@@ -8,7 +8,7 @@ import { supabaseAdminFetch } from "./supabase/admin";
 
 import { catalogConfig, type Catalog } from "./catalog-config";
 
-import { mergeCatalogData, missingCatalogData, validPrice, type CatalogData } from "./catalog-product";
+import { catalogDescription, mergeCatalogData, missingCatalogData, validPrice, type CatalogData } from "./catalog-product";
 
 type ProductRow = {
   asin: string; title: string; description: string | null; image_url: string | null;
@@ -16,8 +16,8 @@ type ProductRow = {
   [key: string]: string | number | null;
 };
 
-function rowData(product: ProductRow): CatalogData {
-  return { title: product.title, description: product.description, imageUrl: product.image_url,
+function rowData(product: ProductRow, catalog: Catalog): CatalogData {
+  return { title: product.title, description: catalogDescription({ title: product.title, description: product.description }, catalog), imageUrl: product.image_url,
     currentPrice: product.current_price, listPrice: product.list_price, discountPercent: product.discount_percent };
 }
 
@@ -50,7 +50,7 @@ export async function catalogVerificationSummary(catalog: Catalog) {
   }
   const missing = { titolo: 0, immagine: 0, descrizione: 0, prezzo: 0 };
   for (const product of products) {
-    const fields = missingCatalogData({ title: product.title || null, description: product.description || null, imageUrl: product.image_url || null, currentPrice: product.current_price ?? null, listPrice: product.list_price ?? null, discountPercent: product.discount_percent ?? null });
+    const fields = missingCatalogData({ title: product.title || null, description: catalogDescription({ title: product.title, description: product.description }, catalog), imageUrl: product.image_url || null, currentPrice: product.current_price ?? null, listPrice: product.list_price ?? null, discountPercent: product.discount_percent ?? null });
     if (!product.price_verified_at && !fields.includes("prezzo"))
       fields.push("prezzo");
     for (const field of fields)
@@ -83,7 +83,7 @@ export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
       } catch (error) { recordError(product.asin, "Pagina prodotto: " + (error instanceof Error ? error.message : "lettura fallita")); }
     }));
   }
-  const browserTargets = products.filter(p => missingCatalogData(mergeCatalogData(rowData(p), snapshots.get(p.asin) || {})).length > 0 || !validPrice(snapshots.get(p.asin)?.currentPrice));
+  const browserTargets = products.filter(p => missingCatalogData(mergeCatalogData(rowData(p, catalog), snapshots.get(p.asin) || {})).length > 0 || !validPrice(snapshots.get(p.asin)?.currentPrice));
   if (browserTargets.length) {
     try {
       const browser = await fetchAmazonProductSnapshotsWithBrowser(browserTargets.map(p => p.asin));
@@ -103,7 +103,8 @@ export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
   // Persist each product before continuing; a later timeout cannot discard earlier work.
   for (const product of products) {
     const observation = snapshots.get(product.asin) || {};
-    const data = mergeCatalogData(rowData(product), observation);
+    const data = mergeCatalogData(rowData(product, catalog), observation);
+    data.description = catalogDescription(data, catalog);
     const missing = missingCatalogData(data);
     const freshPrice = validPrice(observation.currentPrice);
     const complete = missing.length === 0 && freshPrice;
