@@ -165,6 +165,30 @@ test('catalogue saves a checkpoint before an interrupted browser scan finishes',
  assert.equal(events.find(row => row.key === 'haul_last_import').value.status, 'partial');
 });
 
+test('catalogue keeps checkpointed cards when a virtualized final page contains fewer products', async () => {
+ const first = { ...good, asin: 'B012345678', haulCategory: null };
+ const second = { ...good, asin: 'B087654321', haulCategory: null };
+ const writes = [];
+ const importer = load('catalog-import', {
+  './supabase/admin': { async supabaseAdminFetch(path, init) {
+   if (!init) return [];
+   if (path.startsWith('products?on_conflict=')) writes.push(...JSON.parse(init.body));
+  } },
+  './haul-import': { parseHaulHtml: html => html === 'checkpoint' ? [first, second] : [second] },
+  './haul-browser': { async fetchHaulWithFullScroll(url, checkpoint) {
+   await checkpoint({ html: 'checkpoint', asins: [first.asin, second.asin], scrolls: 1 });
+   return { html: 'final', asins: [second.asin], products: [] };
+  } },
+  './catalog-sync': { markCatalogVerificationPending: async () => {} },
+  './catalog-config': config,
+  './product-validation': { MANUAL_SOURCES: [] },
+  './catalog-product': quality,
+ });
+ const result = await importer.importCatalog('haul', config.catalogConfig.haul.url);
+ assert.equal(result.count, 2);
+ assert.deepEqual(writes.slice(-2).map(row => row.asin), [first.asin, second.asin]);
+});
+
 test('catalogue retries the same Amazon listing as HTML after browser HTTP 503', async () => {
  const product = { ...good, asin: 'B012345678', haulCategory: null };
  const writes = [];
