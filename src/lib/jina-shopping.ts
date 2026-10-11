@@ -41,7 +41,7 @@ function affiliateUrl(asin: string) {
 
 export function parseJinaAmazonSearch(markdown: string, limit = 8): JinaShoppingProduct[] {
   const matches = [...markdown.matchAll(
-    /\[!\[Image \d+: ([^\]]+)\]\((https:\/\/m\.media-amazon\.com\/images\/I\/[^)\s]+)\)\]\(https?:\/\/www\.amazon\.it\/[^)\n]*\/dp\/([A-Z0-9]{10})(?:\/[^)\n]*)?\)/gi,
+    /\[!\[Image \d+: ([^\]]+)\]\((https:\/\/m\.media-amazon\.com\/images\/I\/[^)\s]+)\)\]\(https?:\/\/(?:www\.)?amazon\.it\/[^)\n]*\/dp\/([A-Z0-9]{10})(?:\/[^)\n]*)?\)/gi,
   )];
   const products: JinaShoppingProduct[] = [];
   const seen = new Set<string>();
@@ -51,8 +51,21 @@ export function parseJinaAmazonSearch(markdown: string, limit = 8): JinaShopping
     const asin = match[3].toUpperCase();
     if (seen.has(asin)) continue;
     const chunk = markdown.slice(match.index, matches[index + 1]?.index ?? Math.min(markdown.length, match.index + 5000));
-    const heading = chunk.match(/\n## \[([^\]]+)\]\(https?:\/\/www\.amazon\.it\/[^)\n]*\/dp\/[A-Z0-9]{10}[^)\n]*\)/i)?.[1];
-    const title = clean(heading || match[1]).replace(/\.{3}$/, "");
+    const heading = chunk.match(/\n## \[([^\]]+)\]\(https?:\/\/(?:www\.)?amazon\.it\/[^)\n]*\/dp\/[A-Z0-9]{10}[^)\n]*\)/i)?.[1];
+    const imageTitle = clean(match[1]).replace(/\.{3}$/, "");
+    const headingTitle = clean(heading || "").replace(/\.{3}$/, "");
+    // Amazon often puts the brand only in the image alt text (for example
+    // "iRobot"), while the linked heading starts directly with "Roomba".
+    // Keep the more descriptive title so exact brand + model queries survive
+    // the relevance filter applied after parsing.
+    const headingStart = headingTitle.split(/\s+/)[0];
+    const headingStartAt = headingStart
+      ? imageTitle.toLocaleLowerCase("it").indexOf(headingStart.toLocaleLowerCase("it"))
+      : -1;
+    const imagePrefix = headingStartAt > 0 ? imageTitle.slice(0, headingStartAt).trim() : "";
+    const title = imagePrefix
+      ? `${imagePrefix} ${headingTitle}`
+      : imageTitle.length >= headingTitle.length ? imageTitle : headingTitle;
     if (!title) continue;
 
     const description = clean(
