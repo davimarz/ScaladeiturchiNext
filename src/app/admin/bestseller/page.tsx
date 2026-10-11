@@ -67,7 +67,7 @@ export default async function AdminBestsellerPage({
 
         <p className="adminHint">Cliccando “Aggiorna Bestseller” il sistema importa i prodotti trovati e aggiorna titolo, immagine, prezzo attuale, prezzo precedente e sconto dei prodotti Bestseller già presenti.</p>
       </section>
-    <CatalogVerificationRunner catalog={params.bestseller_import === "success" || params.bestseller_import === "price-only" ? "bestseller" : null} />
+    <CatalogVerificationRunner catalog={params.bestseller_import === "success" || params.bestseller_import === "partial" || params.bestseller_import === "price-only" ? "bestseller" : null} />
     </main>
   );
 }
