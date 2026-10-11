@@ -70,13 +70,17 @@ export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
   );
   if (!products.length) return { checked: 0, verified: 0, pending: 0, failed: 0, imagesRecovered: 0, imagesMissing: 0 };
   const snapshots = new Map<string, Partial<CatalogData>>();
+  const sourceErrors = new Map<string, string[]>();
+  const recordError = (asin: string, message: string) => sourceErrors.set(asin, [...(sourceErrors.get(asin) || []), message.slice(0, 120)]);
   // Read two pages at a time. A burst of six Amazon requests can be throttled;
   // the daily update can afford a slower pass before trying Chromium.
   for (let offset = 0; offset < products.length; offset += 2) {
     await Promise.allSettled(products.slice(offset, offset + 2).map(async product => {
-      const direct = await fetchAmazonProductSnapshot(product.asin);
-      snapshots.set(product.asin, { title: direct.title, description: direct.description, imageUrl: direct.imageUrl,
-        currentPrice: direct.offer?.currentPrice ?? null, listPrice: direct.offer?.listPrice ?? null, discountPercent: direct.offer?.discountPercent ?? null });
+      try {
+        const direct = await fetchAmazonProductSnapshot(product.asin);
+        snapshots.set(product.asin, { title: direct.title, description: direct.description, imageUrl: direct.imageUrl,
+          currentPrice: direct.offer?.currentPrice ?? null, listPrice: direct.offer?.listPrice ?? null, discountPercent: direct.offer?.discountPercent ?? null });
+      } catch (error) { recordError(product.asin, "Pagina prodotto: " + (error instanceof Error ? error.message : "lettura fallita")); }
     }));
   }
   const browserTargets = products.filter(p => missingCatalogData(mergeCatalogData(rowData(p), snapshots.get(p.asin) || {})).length > 0 || !validPrice(snapshots.get(p.asin)?.currentPrice));
@@ -89,7 +93,11 @@ export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
           imageUrl: direct?.imageUrl ?? null, currentPrice: direct?.currentPrice ?? null,
           listPrice: direct?.listPrice ?? null, discountPercent: direct?.discountPercent ?? null }, snapshot));
       }
-    } catch (error) { console.warn("catalog-browser-batch", error instanceof Error ? error.message : String(error)); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("catalog-browser-batch", message);
+      browserTargets.forEach(product => recordError(product.asin, "Browser: " + message));
+    }
   }
   let verified = 0, pending = 0, failed = 0, imagesRecovered = 0, imagesMissing = 0;
   // Persist each product before continuing; a later timeout cannot discard earlier work.
@@ -109,7 +117,7 @@ export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
         price_verified_at: freshPrice ? now : undefined, currency: "EUR", updated_at: now,
         [status]: nextStatus, [attemptsColumn]: attempts,
         [prefix + "_verified_at"]: complete ? now : undefined,
-        [prefix + "_last_verification_error"]: complete ? null : "Dati mancanti o non riletti: " + [...missing, ...(!freshPrice ? ["prezzo aggiornato"] : [])].join(", "),
+        [prefix + "_last_verification_error"]: complete ? null : ["Dati mancanti o non riletti: " + [...missing, ...(!freshPrice ? ["prezzo aggiornato"] : [])].join(", "), ...(sourceErrors.get(product.asin) || [])].join(" · ").slice(0, 350),
       }),
     });
     if (complete) verified++; else if (nextStatus === "failed") failed++; else pending++;
