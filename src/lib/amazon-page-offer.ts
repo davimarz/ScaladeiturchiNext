@@ -1,7 +1,7 @@
 import "server-only";
 import { usefulTitle } from "./catalog-presentation";
 
-import { extractAmazonProductImage } from "./amazon-input";
+import { extractAmazonProductImage, extractAsin } from "./amazon-input";
 
 const AMAZON_HOSTS = new Set(["amazon.it", "www.amazon.it"]);
 
@@ -122,9 +122,26 @@ export function extractAmazonProductDescription(html: string) {
 }
 
 export function extractAmazonProductOffer(html: string): AmazonPageOffer | null {
+  const structuredPrice = (() => {
+    for (const product of productStructuredData(html)) {
+      const offers = Array.isArray(product.offers) ? product.offers : [product.offers];
+      for (const value of offers) {
+        if (!value || typeof value !== "object") continue;
+        const offer = value as Record<string, unknown>;
+        if (offer.priceCurrency && offer.priceCurrency !== "EUR") continue;
+        const price = offer.price ?? offer.lowPrice;
+        if (typeof price === "number" || typeof price === "string") {
+          const amount = normalizeNumber(String(price));
+          if (amount != null) return amount;
+        }
+      }
+    }
+    return null;
+  })();
   const current =
     matchPriceNear(html, /class=["'][^"']*(?:priceToPay|apexPriceToPay)[^"']*["']/i) ??
     matchPriceNear(html, /id=["'](?:priceblock_ourprice|priceblock_dealprice|corePriceDisplay_desktop_feature_div)["']/i) ??
+    structuredPrice ??
     jsonNumber(html, ["priceAmount", "displayPrice"]);
 
   if (current == null) return null;
@@ -178,10 +195,12 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
   if (!/^[A-Z0-9]{10}$/i.test(asin)) throw new Error("Invalid product ASIN");
   const normalizedAsin = asin.toUpperCase();
   let url = new URL("https://www.amazon.it/dp/" + normalizedAsin);
-  const signal = AbortSignal.timeout(10000);
+  const signal = AbortSignal.timeout(15000);
 
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!AMAZON_HOSTS.has(url.hostname.toLowerCase())) throw new Error("Unapproved Amazon offer redirect");
+    const redirectedAsin = extractAsin(url);
+    if (redirectedAsin && redirectedAsin !== normalizedAsin) throw new Error("Amazon redirected to another product");
     const response = await fetcher(url, {
       redirect: "manual",
       cache: "no-store",
@@ -189,7 +208,7 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
       headers: {
         accept: "text/html",
         "accept-language": "it-IT,it;q=0.9",
-        "user-agent": "ScalaDeiTurchiCatalog/1.0",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
       },
     });
     if (response.status >= 300 && response.status < 400) {
@@ -203,6 +222,9 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
     if (!response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon response is not HTML");
     const html = await readHtml(response);
     if (/\/errors\/validateCaptcha|<title>\s*Robot Check/i.test(html)) throw new Error("Amazon blocked the product page");
+    const asinInput = [...html.matchAll(/<input\b[^>]*>/gi)].find(([tag]) => /(?:id|name)=["']ASIN["']/i.test(tag));
+    const pageAsin = asinInput?.[0].match(/\bvalue=["']([A-Z0-9]{10})["']/i)?.[1]?.toUpperCase();
+    if (pageAsin && pageAsin !== normalizedAsin) throw new Error("Amazon returned another product");
     return {
       offer: extractAmazonProductOffer(html),
       imageUrl: extractAmazonProductImage(html, normalizedAsin),
