@@ -6,12 +6,14 @@ export default function CatalogAutoSchedule({
   enabled,
   time,
   lastRun,
+  stale,
   lastStatus,
   lastMessage,
 }: {
   enabled: boolean;
   time: string;
   lastRun: string;
+  stale: boolean;
   lastStatus: string;
   lastMessage: string;
 }) {
@@ -51,6 +53,7 @@ export default function CatalogAutoSchedule({
         <span>Fuso orario: Europe/Rome</span>
         <span>Ultimo avvio: {lastRun || "Mai"}</span>
         <span>Stato: {statusLabels[lastStatus] || lastStatus || "Non registrato"}</span>
+        {stale ? <span role="alert">L’ultimo aggiornamento automatico non risulta completato. Controlla l’accesso del cron alla Preview Vercel.</span> : null}
         {lastMessage ? <span>{lastMessage}</span> : null}
       </div>
     </form>
