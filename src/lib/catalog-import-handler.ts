@@ -23,7 +23,9 @@ export async function handleCatalogImport(request: NextRequest, catalog: Catalog
     const file = form.get("html_file");
     if (file instanceof File && file.size > 0 && (file.size > 40 * 1024 * 1024 || !/\.html?$/i.test(file.name))) return finish("invalid-file");
     const html = file instanceof File && file.size > 0 ? await file.text() : undefined;
-    const result = await withCatalogJob(catalog, () => importCatalog(catalog, sourceUrl, html));
+    // One Chromium scan at a time across all catalogues. Separate per-catalogue
+    // leases still keep their progress and retry state independent.
+    const result = await withCatalogJob("scheduler", () => withCatalogJob(catalog, () => importCatalog(catalog, sourceUrl, html)));
     return finish(result.status, result.count);
   } catch (error) {
     if (error instanceof CatalogBusyError) return finish("busy");
