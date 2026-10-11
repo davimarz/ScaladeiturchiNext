@@ -245,7 +245,7 @@ export default async function AdminPage({ searchParams, }: {
     {params.source === "invalid" ? <p className="adminError">Il link inserito non è valido per il catalogo selezionato.</p> : null}
     {params.source === "error" ? <p className="adminError">Non è stato possibile salvare il link del catalogo.</p> : null}
 
-    <CatalogAutoSchedule enabled={catalogAutoEnabled} time={catalogAutoTime} lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""} lastStatus={catalogAutoLastStatus} lastMessage={catalogAutoLastMessage}/>
+    <CatalogAutoSchedule enabled={catalogAutoEnabled} time={catalogAutoTime} lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""} stale={catalogAutoEnabled && (catalogAutoLastStatus === "running" || !catalogAutoLastRunRaw)} lastStatus={catalogAutoLastStatus} lastMessage={catalogAutoLastMessage}/>
 
     <div className="quickImportGrid">
      <form action="/api/admin/haul/import" method="post" className="quickImportCard">
