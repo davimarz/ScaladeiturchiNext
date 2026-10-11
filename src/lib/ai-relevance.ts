@@ -93,6 +93,7 @@ export function isUnrequestedAccessory(title: string, query: string) {
     { device: /\bspazzolin[oi]\b/, accessory: /\b(?:testin[ae]|ricambi|replacement|brush heads)\b/ },
     { device: /\b(?:smartphone|telefono|cellulare)\b/, accessory: /\b(?:cover|custodia|custodie|pellicola|protezione|caricabatterie|caricatore)\b/ },
     { device: /\b(?:cuffie|auricolari|headphones|earbuds)\b/, accessory: /\b(?:custodia|custodie|cuscinetti|ricambio|replacement)\b/ },
+    { device: /\b(?:irobot roomba|roomba|robot aspirapolvere|aspirapolvere robot)\b/, accessory: /\b(?:accessori|ricambi|replacement|spazzole|filtri|sacchetti|panni|mop|batteria)\b/ },
   ];
   return kinds.some(({device,accessory}) => {
     if (!device.test(requested) || accessory.test(requested)) return false;

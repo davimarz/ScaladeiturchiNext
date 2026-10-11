@@ -22,4 +22,6 @@ test("complete devices do not recommend compatible accessories unless explicitly
   assert.equal(isUnrequestedAccessory("Oral-B Testine di Ricambio per Spazzolino Elettrico", "Testine di ricambio Oral-B"), false);
   assert.equal(isUnrequestedAccessory("Custodia compatibile con cuffie Bluetooth", "Cuffie Bluetooth sotto 40 euro"), true);
   assert.equal(isUnrequestedAccessory("Cover per smartphone Samsung Galaxy", "Smartphone Samsung Galaxy"), true);
+  assert.equal(isUnrequestedAccessory("Kit ricambi con spazzole e filtri per iRobot Roomba", "iRobot Roomba"), true);
+  assert.equal(isUnrequestedAccessory("iRobot Roomba 115 Combo robot aspirapolvere lavapavimenti", "iRobot Roomba"), false);
 });

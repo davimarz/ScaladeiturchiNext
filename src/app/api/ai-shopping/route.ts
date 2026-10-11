@@ -65,7 +65,14 @@ export async function POST(request: NextRequest) {
     const DISCOVERY_TARGET = Math.min(32, TARGET_PRODUCTS + excludedAsins.size);
     const intent = await interpretShoppingQuery(query);
     const semanticQuery = intent.canonicalQuery;
-    const searchQueries = intent.searchQueries.slice(0, 3);
+    // Never let generated reformulations displace the user's exact words.
+    // Brand/model queries such as "iRobot Roomba" are often more precise than
+    // a broader semantic rewrite produced by the language model.
+    const searchQueries = [...new Set([
+      query,
+      semanticQuery,
+      ...intent.searchQueries,
+    ].map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 4);
     const requestedMaxPrice = maxPriceFromQuery(query);
     const local = await searchLocalCatalog(semanticQuery, DISCOVERY_TARGET).catch(() => []);
     let products = local;
@@ -73,11 +80,17 @@ export async function POST(request: NextRequest) {
     const searchOutputTokens = intent.outputTokens;
     const searchTotalTokens = intent.totalTokens;
     const searchErrors: string[] = [];
+    const usableProductCount = () => products.filter((product) =>
+      !excludedAsins.has(product.asin)
+      && isRelevantProduct(product.title, query)
+      && Boolean(product.imageUrl)
+      && product.currentPrice != null
+    ).length;
 
-    if (products.length < DISCOVERY_TARGET) {
+    if (usableProductCount() < DISCOVERY_TARGET) {
       try {
         for (const candidateQuery of searchQueries) {
-          if (products.length >= DISCOVERY_TARGET) break;
+          if (usableProductCount() >= DISCOVERY_TARGET) break;
           const creators = await searchAmazonCreators(candidateQuery, DISCOVERY_TARGET);
           products = mergeProducts(products, creators);
         }
@@ -88,10 +101,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < DISCOVERY_TARGET) {
+    if (usableProductCount() < DISCOVERY_TARGET) {
       try {
         for (const candidateQuery of searchQueries) {
-          if (products.length >= DISCOVERY_TARGET) break;
+          if (usableProductCount() >= DISCOVERY_TARGET) break;
           const fallback = await searchAmazonFallback(candidateQuery, DISCOVERY_TARGET);
           products = mergeProducts(products, fallback);
         }
@@ -102,9 +115,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (products.length < DISCOVERY_TARGET) {
+    if (usableProductCount() < DISCOVERY_TARGET) {
       try {
-        const external = await searchAmazonViaBrave(semanticQuery, DISCOVERY_TARGET, searchQueries);
+        const external = await searchAmazonViaBrave(query, DISCOVERY_TARGET, searchQueries);
         products = mergeProducts(products, external);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -115,12 +128,20 @@ export async function POST(request: NextRequest) {
 
     products = products
       .filter((product) => !excludedAsins.has(product.asin))
-      .filter((product) => isRelevantProduct(product.title, semanticQuery));
+      .filter((product) => isRelevantProduct(product.title, query));
 
     const candidateLimit = Math.min(18, Math.max(TARGET_PRODUCTS * 2, TARGET_PRODUCTS + Math.min(excludedAsins.size, 10)));
-    products = products.slice(0, candidateLimit);
-    if (mode === "more") products = await enrichAmazonProductsViaBraveByAsin(products);
+    products = products
+      .sort((a, b) => {
+        const completeness = (product: typeof a) =>
+          (product.imageUrl ? 1 : 0) + (product.currentPrice != null ? 1 : 0);
+        return completeness(b) - completeness(a);
+      })
+      .slice(0, candidateLimit);
     products = await enrichMissingProductData(products);
+    if (products.some((product) => !product.imageUrl || product.currentPrice == null)) {
+      products = await enrichAmazonProductsViaBraveByAsin(products);
+    }
 
     const plausiblePrices = products
       .map((product) => product.currentPrice)
