@@ -1,5 +1,6 @@
 import { isGenericAmazonImage } from "./amazon-input";
 import { needsProductTitleEnrichment } from "./amazon-page-offer";
+import type { Catalog } from "./catalog-config";
 
 export type CatalogData = {
   title: string | null;
@@ -17,6 +18,13 @@ export function cleanDescription(value: string | null | undefined) {
     .replace(/\b(?:Potrebbe piacerti anche|I clienti hanno acquistato anche|Recensioni clienti)\b[\s\S]*$/i, "")
     .replace(/\s+/g, " ").trim().slice(0, 1400);
   return text.length >= 20 ? text : null;
+}
+export function catalogDescription(data: Pick<CatalogData, "title" | "description">, catalog: Catalog) {
+  const description = cleanDescription(data.description);
+  if (description) return description;
+  if (catalog === "haul" && data.title && !needsProductTitleEnrichment(data.title))
+    return cleanDescription(data.title);
+  return null;
 }
 export function missingCatalogData(data: CatalogData) {
   return [
