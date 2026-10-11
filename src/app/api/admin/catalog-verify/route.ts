@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const result = await withCatalogJob("scheduler", () => withCatalogJob(catalog, async () => {
       if (body.retryFailed === true)
         await retryIncompleteCatalog(catalog);
-      return await verifyCatalogProductsBatch(catalog, 6);
+      return await verifyCatalogProductsBatch(catalog, 4);
     }));
     const summary = await catalogVerificationSummary(catalog);
     return NextResponse.json({ ok: true, catalog, ...result, ...summary });
