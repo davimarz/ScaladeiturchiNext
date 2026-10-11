@@ -1,6 +1,6 @@
 import "server-only";
 import { supabaseAdminFetch } from "./supabase/admin";
-import { productCategories, presentable, matchesSearch, inferredCategory, productBrand, sortProducts, usefulTitle, type StoreProduct } from "./catalog-presentation";
+import { productCategories, presentable, matchesSearch, inferredCategory, productBrand, sortProducts, usefulTitle, defaultCatalogSort, type StoreProduct } from "./catalog-presentation";
 import { catalogLimit } from "./product-validation";
 const membership: Record<string, string> = { bestseller: "in_bestseller", haul: "in_haul", "offerte-lambo": "in_offerte_lambo", outlet: "in_outlet" };
 export async function getPresentedCatalog(params: URLSearchParams) {
@@ -40,7 +40,7 @@ export async function getPresentedCatalog(params: URLSearchParams) {
         && (!(min > 0) || (p.current_price != null && p.current_price >= min))
         && (!Number.isFinite(max) || (p.current_price != null && p.current_price <= max))
         && (params.get("priced") !== "1" || Boolean(p.current_price && p.current_price > 0 && p.price_verified_at)));
-    const sorted = sortProducts(results, params.get("sort") || "default", catalog === "bestseller");
+    const sorted = sortProducts(results, params.get("sort") || defaultCatalogSort(catalog), catalog === "bestseller");
     const limit = catalogLimit(params.get("limit"));
     const offset = Math.max(0, Math.min(10000, Math.floor(Number(params.get("offset")) || 0)));
     return { products: sorted.slice(offset, offset + limit).map(p => ({ ...p, title: usefulTitle(p.title) ? p.title : "Prodotto Amazon " + p.asin })), total: sorted.length, incomplete, brands, truncated,
