@@ -28,6 +28,12 @@ test('sorting preserves actual bestseller ranks and distinct ASIN variants and p
  assert.deepEqual(presentation.sortProducts(products,'price-asc',false).map(p=>p.id),['b','a','c']);
  assert.equal(presentation.discountValue({...product,list_price:15,discount_percent:99}),0);
 });
+test('HAUL, Offerte Lampo and Bestseller default to the highest discount',()=>{
+ for(const catalog of ['haul','offerte-lambo','bestseller'])assert.equal(presentation.defaultCatalogSort(catalog),'discount');
+ assert.equal(presentation.defaultCatalogSort('tutte'),'default');
+ const products=[{...product,id:'smaller',list_price:40,current_price:20,discount_percent:50},{...product,id:'larger',list_price:100,current_price:20,discount_percent:80}];
+ assert.deepEqual(presentation.sortProducts(products,presentation.defaultCatalogSort('haul'),false).map(p=>p.id),['larger','smaller']);
+});
 test('short titles retain full source values and dates respect Rome rather than browser timezone',()=>{
  const title='Cuffie Sony '+('con microfono e custodia '.repeat(10));assert.ok(presentation.shortTitle(title).length<=106);assert.ok(presentation.shortTitle(title).endsWith('…'));assert.ok(title.length>106);
  assert.equal(presentation.observedDate('2026-01-01T23:30:00Z',Date.parse('2026-01-02T10:00:00Z')),'Prezzo rilevato oggi');
