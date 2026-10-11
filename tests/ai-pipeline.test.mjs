@@ -64,6 +64,20 @@ test('AI always searches the exact user query even when generated variants come 
  assert.equal(response.products[0].asin,'B0ROOMBA01');
 });
 
+test('AI bag search accepts Italian and English handbag naming variants with complete data',async()=>{
+ const handbag={asin:'B0BAG00001',title:'Women Shoulder Handbag Faux Leather Crossbody Tote',imageUrl:'https://m.media-amazon.com/images/I/bag.jpg',currentPrice:39.99,listPrice:59.99,discountPercent:33,currency:'EUR',source:'amazon-search',description:'Borsa a tracolla da donna in pelle sintetica con tasche interne.'};
+ const route=loadRoute({
+  intent:{canonicalQuery:'borsa donna',searchQueries:['borsa donna','borsa a tracolla donna','handbag women','tote bag women'],inputTokens:0,outputTokens:0,totalTokens:0},
+  jina:async query=>query==='borsa donna'?[handbag]:[],
+  relevant:title=>/handbag|borsa|tote/i.test(title),
+ });
+ const response=await route.POST({async json(){return {query:'borsa da donna'};}});
+ assert.equal(response.products.length,1);
+ assert.equal(response.products[0].asin,'B0BAG00001');
+ assert.ok(response.products[0].imageUrl);
+ assert.equal(response.products[0].currentPrice,39.99);
+});
+
 test('AI does not treat incomplete candidates as sufficient and uses the final enrichment fallback',async()=>{
  const incomplete=Array.from({length:32},(_,i)=>({asin:'B'+String(i).padStart(9,'0'),title:'iRobot Roomba robot aspirapolvere '+i,imageUrl:null,currentPrice:null,listPrice:null,discountPercent:null,currency:'EUR',source:'catalogo'}));
  let braveEnrichmentCalls=0;
