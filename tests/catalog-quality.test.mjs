@@ -105,7 +105,7 @@ test('a browser page failure does not discard successful snapshots from earlier 
  let pages=0,closed=0;
  const browser={ async newPage() {
   if(++pages>3) throw new Error('Browser page unavailable');
-  return { async setUserAgent(){},async setExtraHTTPHeaders(){},async goto(){return {status:()=>200};},async evaluate(){return {...good,currency:'EUR'};},async close(){} };
+  return { async setUserAgent(){},async setExtraHTTPHeaders(){},async goto(){return {status:()=>200};},async waitForSelector(){return null;},async evaluate(){return {...good,currency:'EUR'};},async close(){} };
  },async close(){closed++;},process(){return null;},async disconnect(){} };
  const reader=load('haul-browser',{
   '@sparticuz/chromium-min':{default:{args:[],async executablePath(){return '/tmp/catalog-test-chromium';}}},
@@ -113,4 +113,25 @@ test('a browser page failure does not discard successful snapshots from earlier 
  });
  const result=await reader.fetchAmazonProductSnapshotsWithBrowser(['B012345678','B087654321','B011111111','B022222222','B033333333','B044444444']);
  assert.equal(result.size,3);assert.equal(result.get('B012345678').currentPrice,20);assert.equal(closed,1);
+});
+
+test('catalogue import rejects ASINs found only in recommendation markup', async () => {
+ const first = { ...good, asin: 'B012345678', haulCategory: null };
+ const recommendation = { ...good, asin: 'B087654321', haulCategory: null };
+ const writes = [];
+ const importer = load('catalog-import', {
+  './supabase/admin': { async supabaseAdminFetch(path, init) {
+   if (!init) return [];
+   if (path.startsWith('products?on_conflict=')) writes.push(...JSON.parse(init.body));
+  } },
+  './haul-import': { parseHaulHtml: () => [first, recommendation] },
+  './haul-browser': { fetchHaulWithFullScroll: async () => ({ html: 'listing', asins: [first.asin], products: [first] }) },
+  './catalog-sync': { markCatalogVerificationPending: async () => {} },
+  './catalog-config': config,
+  './product-validation': { MANUAL_SOURCES: [] },
+  './catalog-product': quality,
+ });
+ const result = await importer.importCatalog('haul', config.catalogConfig.haul.url);
+ assert.equal(result.count, 1);
+ assert.deepEqual(writes.map(row => row.asin), [first.asin]);
 });
