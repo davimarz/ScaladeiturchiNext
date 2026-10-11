@@ -10,6 +10,8 @@ import { isRelevantProduct, maxPriceFromQuery, queryTokens, titleRelevance } fro
 
 import { fetchAmazonProductSnapshot } from "./amazon-page-offer";
 
+import { amazonRequest } from "./amazon/client";
+
 export type ShoppingProduct = {
   asin: string;
   title: string;
@@ -26,8 +28,6 @@ export type ShoppingProduct = {
 };
 
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
-
-const MARKETPLACE = "www.amazon.it";
 
 function affiliateUrl(asin: string) {
   const url = new URL(`https://www.amazon.it/dp/${asin}/ref=nosim`);
@@ -183,59 +183,10 @@ type CreatorItem = {
   };
 };
 
-let tokenCache: { token: string; expiresAt: number } | null = null;
-
-async function amazonAccessToken() {
-  if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) return tokenCache.token;
-  const clientId = process.env.AMAZON_CREATORS_CLIENT_ID || process.env.AMAZON_CREDENTIAL_ID;
-  const clientSecret = process.env.AMAZON_CREATORS_CLIENT_SECRET || process.env.AMAZON_CREDENTIAL_SECRET;
-  if (!clientId || !clientSecret) throw new Error("Amazon Creators API credentials unavailable");
-
-  const response = await fetch("https://api.amazon.co.uk/auth/o2/token", {
-    method: "POST",
-    cache: "no-store",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "client_credentials",
-      client_id: clientId,
-      client_secret: clientSecret,
-      scope: "creatorsapi::default",
-    }),
-    signal: AbortSignal.timeout(12_000),
-  });
-  const data = await response.json().catch(() => ({})) as { access_token?: string; expires_in?: number };
-  if (!response.ok || !data.access_token) throw new Error("Amazon Creators token unavailable");
-  tokenCache = { token: data.access_token, expiresAt: Date.now() + Math.max(60, data.expires_in ?? 3600) * 1000 };
-  return data.access_token;
-}
-
 export async function searchAmazonCreators(query: string, limit = 8): Promise<ShoppingProduct[]> {
-  const token = await amazonAccessToken();
-  const response = await fetch("https://creatorsapi.amazon/catalog/v1/searchItems", {
-    method: "POST",
-    cache: "no-store",
-    signal: AbortSignal.timeout(18000),
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-      "x-marketplace": MARKETPLACE,
-    },
-    body: JSON.stringify({
-      partnerTag: PARTNER_TAG,
-      marketplace: MARKETPLACE,
-      keywords: query.slice(0, 250),
-      itemCount: Math.min(10, Math.max(4, limit)),
-      searchIndex: "All",
-      resources: [
-        "images.primary.large",
-        "images.primary.medium",
-        "itemInfo.title",
-        "itemInfo.features",
-        "offersV2.listings.price",
-      ],
-    }),
-  });
-  const body = await response.json().catch(() => ({})) as {
+  // Use the shared client so the OAuth endpoint follows the configured
+  // Amazon credential version (3.1/3.2/3.3) instead of assuming one region.
+  const body = await amazonRequest<{
     searchResult?: {
       items?: CreatorItem[];
     };
@@ -243,10 +194,22 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
       code?: string;
       message?: string;
     }>;
-  };
-  if (!response.ok) {
-    const code = body.errors?.[0]?.code || String(response.status);
-    throw new Error("Amazon Creators API " + code);
+  }>("searchItems", {
+    keywords: query.slice(0, 250),
+    itemCount: Math.min(10, Math.max(4, limit)),
+    searchIndex: "All",
+    languagesOfPreference: ["it_IT"],
+    currencyOfPreference: "EUR",
+    resources: [
+      "images.primary.large",
+      "images.primary.medium",
+      "itemInfo.title",
+      "itemInfo.features",
+      "offersV2.listings.price",
+    ],
+  });
+  if (body.errors?.length && !body.searchResult?.items?.length) {
+    throw new Error(body.errors.map((error) => error.message || error.code || "Amazon error").join("; "));
   }
   return (body.searchResult?.items ?? []).flatMap((item) => {
     const asin = item.asin?.toUpperCase();
