@@ -88,30 +88,32 @@ export async function POST(request: NextRequest) {
     ).length;
 
     if (usableProductCount() < DISCOVERY_TARGET) {
-      try {
-        for (const candidateQuery of searchQueries) {
-          if (usableProductCount() >= DISCOVERY_TARGET) break;
+      for (const candidateQuery of searchQueries) {
+        if (usableProductCount() >= DISCOVERY_TARGET) break;
+        try {
           const creators = await searchAmazonCreators(candidateQuery, DISCOVERY_TARGET);
           products = mergeProducts(products, creators);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Creators: " + message);
+          console.info("ai-shopping-creators-fallback", message);
+          // Eligibility failures apply to the account, not to the keyword.
+          if (/AssociateNotEligible|AccessDeniedException|eligibility requirements/i.test(message)) break;
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        searchErrors.push("Creators: " + message);
-        console.info("ai-shopping-creators-fallback", message);
       }
     }
 
     if (usableProductCount() < DISCOVERY_TARGET) {
-      try {
-        for (const candidateQuery of searchQueries) {
-          if (usableProductCount() >= DISCOVERY_TARGET) break;
+      for (const candidateQuery of searchQueries) {
+        if (usableProductCount() >= DISCOVERY_TARGET) break;
+        try {
           const fallback = await searchAmazonFallback(candidateQuery, DISCOVERY_TARGET);
           products = mergeProducts(products, fallback);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Amazon browser: " + message);
+          console.info("ai-shopping-browser-fallback", message);
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        searchErrors.push("Amazon browser: " + message);
-        console.info("ai-shopping-browser-fallback", message);
       }
     }
 

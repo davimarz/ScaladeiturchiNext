@@ -292,6 +292,7 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
     affiliateUrl: affiliateUrl(product.asin),
     source: "amazon-search" as const,
     priceVerifiedAt: product.currentPrice != null ? new Date().toISOString() : null,
+    description: product.description || (TITLE_DESCRIPTION_PREFIX + product.title).slice(0, 1400),
   }));
 }
 

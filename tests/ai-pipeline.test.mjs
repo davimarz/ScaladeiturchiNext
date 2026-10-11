@@ -76,3 +76,18 @@ test('AI does not treat incomplete candidates as sufficient and uses the final e
  assert.equal(response.products.length,1);
  assert.equal(response.products[0].currentPrice,199);
 });
+
+test('AI continues with another Amazon query when one browser attempt returns an error',async()=>{
+ const attempted=[];
+ const roomba={asin:'B0ROOMBA02',title:'iRobot Roomba Plus 576 Combo robot aspirapolvere',imageUrl:'https://m.media-amazon.com/images/I/roomba.jpg',currentPrice:359,listPrice:499,discountPercent:28,currency:'EUR',source:'amazon-search',description:'Robot aspirapolvere e lavapavimenti con stazione automatica.',priceVerifiedAt:new Date().toISOString()};
+ const route=loadRoute({
+  intent:{canonicalQuery:'irobot roomba',searchQueries:['irobot roomba','robot aspirapolvere roomba'],inputTokens:0,outputTokens:0,totalTokens:0},
+  creators:async()=>{throw new Error('AssociateNotEligible');},
+  fallback:async query=>{attempted.push(query);if(attempted.length===1)throw new Error('Amazon browser HTTP 503');return [roomba];},
+  relevant:title=>/irobot roomba/i.test(title),
+ });
+ const response=await route.POST({async json(){return {query:'irobot roomba'};}});
+ assert.equal(attempted.length,2);
+ assert.equal(response.products.length,1);
+ assert.equal(response.products[0].asin,'B0ROOMBA02');
+});
