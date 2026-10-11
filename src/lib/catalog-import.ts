@@ -23,15 +23,62 @@ type Existing = { asin: string; title: string; description: string | null; image
   price_verified_at: string | null; category_id: string | null; featured: boolean; prime: boolean | null;
   in_haul: boolean; in_outlet: boolean; in_offerte_lambo: boolean; in_bestseller: boolean; haul_category: string | null; source: string };
 
+async function saveCatalogProducts(catalog: Catalog, products: ReturnType<typeof parseHaulHtml>, now: string, pending = false) {
+  if (!products.length) return 0;
+  const config = catalogConfig[catalog];
+  const existingByAsin = new Map<string, Existing>();
+  for (let offset = 0; offset < products.length; offset += 40) {
+    const ids = products.slice(offset, offset + 40).map(product => product.asin);
+    const existing = await supabaseAdminFetch<Existing[]>(`products?asin=in.(${ids.join(",")})&select=asin,title,description,image_url,current_price,list_price,discount_percent,price_verified_at,category_id,featured,prime,in_haul,in_outlet,in_offerte_lambo,in_bestseller,haul_category,source`);
+    existing.forEach(product => existingByAsin.set(product.asin, product));
+  }
+  const rows = products.map((product, index) => {
+    const existing = existingByAsin.get(product.asin);
+    const previous: CatalogData = { title: existing?.title || null, description: existing?.description || null, imageUrl: existing?.image_url || null,
+      currentPrice: existing?.current_price ?? null, listPrice: existing?.list_price ?? null, discountPercent: existing?.discount_percent ?? null };
+    const data = mergeCatalogData(previous, product);
+    const url = new URL("https://www.amazon.it/dp/" + product.asin);
+    url.searchParams.set("tag", process.env.AMAZON_PARTNER_TAG || "eiapromo-21");
+    return { asin: product.asin, title: data.title || product.title, description: data.description, image_url: data.imageUrl,
+      current_price: data.currentPrice, list_price: data.listPrice, discount_percent: data.discountPercent,
+      currency: "EUR", price_verified_at: validPrice(product.currentPrice) ? now : existing?.price_verified_at ?? null,
+      category_id: existing?.category_id ?? null, featured: existing?.featured ?? false, prime: existing?.prime ?? null,
+      in_haul: existing?.in_haul ?? false, in_outlet: existing?.in_outlet ?? false,
+      in_offerte_lambo: existing?.in_offerte_lambo ?? false, in_bestseller: existing?.in_bestseller ?? false,
+      [config.membership]: true, haul_category: product.haulCategory || existing?.haul_category || null,
+      ...(pending ? { [config.prefix + "_verification_status"]: "pending", [config.prefix + "_verification_attempts"]: 0 } : {}),
+      ...(catalog === "bestseller" ? { bestseller_rank: product.bestsellerRank ?? index + 1 } : {}),
+      amazon_url: "https://www.amazon.it/dp/" + product.asin, affiliate_url: url.toString(),
+      source: existing && MANUAL_SOURCES.some(source => source === existing.source) ? existing.source : "amazon-" + catalog + "-html", active: true, updated_at: now };
+  });
+  for (let offset = 0; offset < rows.length; offset += 50) {
+    await supabaseAdminFetch("products?on_conflict=asin", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows.slice(offset, offset + 50)) });
+  }
+  return rows.length;
+}
+
 export async function importCatalog(catalog: Catalog, sourceUrl: string, uploadedHtml?: string) {
   const config = catalogConfig[catalog];
   let products: ReturnType<typeof parseHaulHtml> = [];
   let scanError: string | null = null;
+  const savedAsins = new Set<string>();
   try {
     if (uploadedHtml)
       products = parseHaulHtml(uploadedHtml);
     else {
-      const scan = await (catalog === "haul" ? fetchHaulWithFullScroll : catalog === "bestseller" ? fetchAmazonBestsellersWithFullScroll : fetchAmazonSearchWithFullScroll)(sourceUrl);
+      const scan = await (catalog === "haul" ? fetchHaulWithFullScroll : catalog === "bestseller" ? fetchAmazonBestsellersWithFullScroll : fetchAmazonSearchWithFullScroll)(sourceUrl, async checkpoint => {
+        const discovered = new Set(checkpoint.asins);
+        const fresh = parseHaulHtml(checkpoint.html).filter(product => discovered.has(product.asin) && !savedAsins.has(product.asin));
+        await saveCatalogProducts(catalog, fresh, new Date().toISOString(), true);
+        fresh.forEach(product => savedAsins.add(product.asin));
+        if (fresh.length) await supabaseAdminFetch("site_settings?on_conflict=key", {
+          method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify([{ key: catalog + "_last_import", value: {
+            at: new Date().toISOString(), status: "partial", count: savedAsins.size,
+            error: "Scansione in corso o interrotta prima del completamento" } }]),
+        });
+      });
+      scanError = scan.warning || null;
       // The page HTML also contains carousels and recommendation scripts. Only
       // save products actually discovered as cards or links in this catalogue.
       const discovered = new Set(scan.asins);
@@ -51,41 +98,15 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
     scanError = error instanceof Error ? error.message : "Scansione Amazon non disponibile";
     console.warn("catalog-import-scan", catalog, scanError);
   }
-  const existingByAsin = new Map<string, Existing>();
-  for (let offset = 0; offset < products.length; offset += 40) {
-    const ids = products.slice(offset, offset + 40).map(product => product.asin);
-    const existing = await supabaseAdminFetch<Existing[]>(`products?asin=in.(${ids.join(",")})&select=asin,title,description,image_url,current_price,list_price,discount_percent,price_verified_at,category_id,featured,prime,in_haul,in_outlet,in_offerte_lambo,in_bestseller,haul_category,source`);
-    existing.forEach(product => existingByAsin.set(product.asin, product));
-  }
   const now = new Date().toISOString();
-  const rows = products.map((product, index) => {
-    const existing = existingByAsin.get(product.asin);
-    const previous: CatalogData = { title: existing?.title || null, description: existing?.description || null, imageUrl: existing?.image_url || null,
-      currentPrice: existing?.current_price ?? null, listPrice: existing?.list_price ?? null, discountPercent: existing?.discount_percent ?? null };
-    const data = mergeCatalogData(previous, product);
-    const url = new URL("https://www.amazon.it/dp/" + product.asin);
-    url.searchParams.set("tag", process.env.AMAZON_PARTNER_TAG || "eiapromo-21");
-    return { asin: product.asin, title: data.title || product.title, description: data.description, image_url: data.imageUrl,
-      current_price: data.currentPrice, list_price: data.listPrice, discount_percent: data.discountPercent,
-      currency: "EUR", price_verified_at: validPrice(product.currentPrice) ? now : existing?.price_verified_at ?? null,
-      category_id: existing?.category_id ?? null, featured: existing?.featured ?? false, prime: existing?.prime ?? null,
-      in_haul: existing?.in_haul ?? false, in_outlet: existing?.in_outlet ?? false,
-      in_offerte_lambo: existing?.in_offerte_lambo ?? false, in_bestseller: existing?.in_bestseller ?? false,
-      [config.membership]: true, haul_category: product.haulCategory || existing?.haul_category || null,
-      ...(catalog === "bestseller" ? { bestseller_rank: product.bestsellerRank ?? index + 1 } : {}),
-      amazon_url: "https://www.amazon.it/dp/" + product.asin, affiliate_url: url.toString(),
-      source: existing && MANUAL_SOURCES.some(source => source === existing.source) ? existing.source : "amazon-" + catalog + "-html", active: true, updated_at: now };
-  });
-  for (let offset = 0; offset < rows.length; offset += 50) {
-    await supabaseAdminFetch("products?on_conflict=asin", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows.slice(offset, offset + 50)) });
-  }
+  const count = await saveCatalogProducts(catalog, products, now);
   // Persist the discovery outcome; verification continues in bounded, resumable batches.
   await markCatalogVerificationPending(catalog);
-  const status = rows.length ? "success" : scanError ? "source-unavailable" : "price-only";
+  const status = count ? scanError ? "partial" : "success" : scanError ? "source-unavailable" : "price-only";
   await supabaseAdminFetch("site_settings?on_conflict=key", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify([
       { key: config.sourceKey, value: sourceUrl },
-      { key: catalog + "_last_import", value: { at: now, status, count: rows.length, error: scanError } },
-      ...(rows.length ? [{ key: catalog + "_last_successful_import", value: { at: now, count: rows.length } }] : []),
+      { key: catalog + "_last_import", value: { at: now, status, count, error: scanError } },
+      ...(count && !scanError ? [{ key: catalog + "_last_successful_import", value: { at: now, count } }] : []),
     ]) });
-  return { status, count: rows.length, scanError };
+  return { status, count, scanError };
 }
