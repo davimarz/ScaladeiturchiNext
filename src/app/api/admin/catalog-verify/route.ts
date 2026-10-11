@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Catalogo non valido" }, { status: 400 });
   const catalog = body.catalog;
   try {
-    const result = await withCatalogJob(catalog, async () => {
+    const result = await withCatalogJob("scheduler", () => withCatalogJob(catalog, async () => {
       if (body.retryFailed === true)
         await retryIncompleteCatalog(catalog);
       return await verifyCatalogProductsBatch(catalog, 6);
-    });
+    }));
     const summary = await catalogVerificationSummary(catalog);
     return NextResponse.json({ ok: true, catalog, ...result, ...summary });
   }
