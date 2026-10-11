@@ -12,7 +12,7 @@ import { catalogConfig, type Catalog } from "./catalog-config";
 
 import { MANUAL_SOURCES } from "./product-validation";
 
-import { mergeCatalogData, validPrice, type CatalogData } from "./catalog-product";
+import { catalogDescription, mergeCatalogData, validPrice, type CatalogData } from "./catalog-product";
 
 export function validCatalogUrl(catalog: Catalog, url: string) {
   return (catalog === "haul" ? isAmazonHaulUrl : catalog === "bestseller" ? isAmazonBestsellersUrl : isAmazonDealsUrl)(url);
@@ -64,7 +64,7 @@ async function saveCatalogProducts(catalog: Catalog, products: ReturnType<typeof
     const data = mergeCatalogData(previous, product);
     const url = new URL("https://www.amazon.it/dp/" + product.asin);
     url.searchParams.set("tag", process.env.AMAZON_PARTNER_TAG || "eiapromo-21");
-    return { asin: product.asin, title: data.title || product.title, description: data.description, image_url: data.imageUrl,
+    return { asin: product.asin, title: data.title || product.title, description: catalogDescription(data, catalog), image_url: data.imageUrl,
       current_price: data.currentPrice, list_price: data.listPrice, discount_percent: data.discountPercent,
       currency: "EUR", price_verified_at: validPrice(product.currentPrice) ? now : existing?.price_verified_at ?? null,
       category_id: existing?.category_id ?? null, featured: existing?.featured ?? false, prime: existing?.prime ?? null,
