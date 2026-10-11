@@ -32,8 +32,12 @@ export async function importCatalog(catalog: Catalog, sourceUrl: string, uploade
       products = parseHaulHtml(uploadedHtml);
     else {
       const scan = await (catalog === "haul" ? fetchHaulWithFullScroll : catalog === "bestseller" ? fetchAmazonBestsellersWithFullScroll : fetchAmazonSearchWithFullScroll)(sourceUrl);
-      const byAsin = new Map(parseHaulHtml(scan.html).map(product => [product.asin, product]));
+      // The page HTML also contains carousels and recommendation scripts. Only
+      // save products actually discovered as cards or links in this catalogue.
+      const discovered = new Set(scan.asins);
+      const byAsin = new Map(parseHaulHtml(scan.html).filter(product => discovered.has(product.asin)).map(product => [product.asin, product]));
       for (const product of scan.products) {
+        if (!discovered.has(product.asin)) continue;
         const previous = byAsin.get(product.asin);
         const data = mergeCatalogData({ title: previous?.title || null, description: previous?.description || null, imageUrl: previous?.imageUrl || null,
           currentPrice: previous?.currentPrice ?? null, listPrice: previous?.listPrice ?? null, discountPercent: previous?.discountPercent ?? null }, product);
