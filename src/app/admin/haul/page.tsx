@@ -42,6 +42,6 @@ export default async function AdminHaulPage({ searchParams }: { searchParams: Pr
       </form>
       <p className="adminHint">Cliccando “Aggiorna HAUL” il sistema importa i prodotti trovati e aggiorna anche prezzo attuale, prezzo precedente e sconto dei prodotti HAUL già presenti.</p>
     </section>
-  <CatalogVerificationRunner catalog={params.haul_import === "success" || params.haul_import === "price-only" ? "haul" : null} />
+  <CatalogVerificationRunner catalog={params.haul_import === "success" || params.haul_import === "partial" || params.haul_import === "price-only" ? "haul" : null} />
     </main>;
 }
