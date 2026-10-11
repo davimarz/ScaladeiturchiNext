@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-import { type StoreProduct } from "../lib/catalog-presentation";
+import { defaultCatalogSort, type StoreProduct } from "../lib/catalog-presentation";
 
 import { recordInterest } from "../lib/interest-events";
 
@@ -15,6 +15,7 @@ type Options = CatalogFilterValues & {
 };
 
 const defaults: Options = { q: "", min: "", max: "", brand: "", sort: "default", incomplete: false };
+const optionsForCategory = (category?: string): Options => ({ ...defaults, sort: defaultCatalogSort(category || "tutte") });
 
 type Result = {
   products: StoreProduct[];
@@ -37,12 +38,20 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   asins?: string[];
   pageSize?: number;
 }) {
-  const [draft, setDraft] = useState<Options>(defaults), [selected, setSelected] = useState<Options>(defaults);
+  const [draft, setDraft] = useState<Options>(() => optionsForCategory(fixedCategory)), [selected, setSelected] = useState<Options>(() => optionsForCategory(fixedCategory));
   const [products, setProducts] = useState<StoreProduct[]>([]), [loading, setLoading] = useState(true), [moreLoading, setMoreLoading] = useState(false), [error, setError] = useState("");
   const [meta, setMeta] = useState<Omit<Result, "products">>({ total: 0, incomplete: 0, brands: [], has_more: false, next_offset: 0 });
   const [revision, setRevision] = useState(0), [now, setNow] = useState(Date.now);
   const latest = useRef(0);
+  const previousCategory = useRef(fixedCategory);
   const asinKey = asins?.join(",");
+  useEffect(() => {
+    if (previousCategory.current === fixedCategory) return;
+    previousCategory.current = fixedCategory;
+    const next = optionsForCategory(fixedCategory);
+    setDraft(next);
+    setSelected(next);
+  }, [fixedCategory]);
   function parameters(options: Options, offset = 0) {
     const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), offset: String(offset), category: fixedCategory || "tutte", q: options.q, min: options.min, max: options.max, brand: options.brand, sort: options.sort, incomplete: options.incomplete ? "1" : "0" });
     if (asinKey !== undefined)
@@ -120,12 +129,12 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   const Heading = fixedCategory || asins ? "h1" : "h2";
   return <section className="catalogSection" id="catalogo" aria-busy={loading || moreLoading}>
   <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p></div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
-  <CatalogFilterPanel value={draft} brands={meta.brands} defaultSortLabel={fixedCategory === "bestseller" ? "Classifica Amazon" : "Completezza dei dati"} onChange={(filters) => setDraft({ ...draft, ...filters })} onSubmit={submit} onReset={() => { setDraft(defaults); apply(defaults); }}/>
+  <CatalogFilterPanel value={draft} brands={meta.brands} defaultSortLabel={fixedCategory === "bestseller" ? "Classifica Amazon" : "Completezza dei dati"} onChange={(filters) => setDraft({ ...draft, ...filters })} onSubmit={submit} onReset={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}/>
   <p className="catalogResults" role="status">{loading ? "Caricamento prodotti…" : `${meta.total} prodotti trovati · ${products.length} mostrati`}{!loading && !selected.incomplete && meta.incomplete > 0 ? ` · ${meta.incomplete} incompleti esclusi` : ""}</p>
   {!loading && !selected.incomplete && meta.incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draft, incomplete: true }; setDraft(next); apply(next); }}>Includi i prodotti incompleti</button> : null}
   {meta.truncated ? <p role="status">Catalogo molto ampio: la ricerca riguarda i primi 11.000 prodotti. Scegli un catalogo specifico per restringerla.</p> : null}
   {error ? <p className="adminError" role="alert">{error} <button type="button" onClick={() => apply(selected)}>Riprova</button></p> : null}
-  {!loading && !error && !products.length ? <div className="catalogState"><p>Nessun prodotto con questi filtri. Prova una parola più breve, un’altra marca o includi i dati incompleti.</p><button type="button" onClick={() => { setDraft(defaults); apply(defaults); }}>Mostra tutti i prodotti disponibili</button></div> : null}
+  {!loading && !error && !products.length ? <div className="catalogState"><p>Nessun prodotto con questi filtri. Prova una parola più breve, un’altra marca o includi i dati incompleti.</p><button type="button" onClick={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}>Mostra tutti i prodotti disponibili</button></div> : null}
   <div className="productGrid">{products.map(product => <StoreProductCard key={product.id} product={product} now={now} catalog={fixedCategory || "tutte"}/>)}</div>
   {meta.has_more ? <button className="buyButton catalogMoreButton" type="button" disabled={loading || moreLoading} onClick={more}>{moreLoading ? "Caricamento…" : "Mostra altri prodotti"}</button> : null}
   <p className="catalogDisclaimer">I prezzi indicano l’ultima lettura riuscita. Prezzo finale e disponibilità sono quelli mostrati su Amazon al momento dell’acquisto. I link affiliati possono generare una commissione senza costi aggiuntivi.</p>
