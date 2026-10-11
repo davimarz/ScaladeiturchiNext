@@ -219,6 +219,14 @@ export default async function AdminPage({ searchParams, }: {
     </div>
    </section>
 
+   <section className="adminPanel"><h2>Salute e completezza dei cataloghi</h2><CatalogVerificationRunner catalog={params.haul_import === "success" || params.haul_import === "price-only" || params.haul_import === "source-unavailable"
+      ? "haul"
+      : params.lambo_import === "success" || params.lambo_import === "price-only" || params.lambo_import === "source-unavailable"
+        ? "offerte-lambo"
+        : params.bestseller_import === "success" || params.bestseller_import === "price-only" || params.bestseller_import === "source-unavailable"
+          ? "bestseller"
+          : null}/></section>
+   <VisitorInterests />
    <section className="adminPanel compactImportPanel">
     <div className="compactPanelHead">
      <div>
@@ -237,7 +245,7 @@ export default async function AdminPage({ searchParams, }: {
     {params.source === "invalid" ? <p className="adminError">Il link inserito non è valido per il catalogo selezionato.</p> : null}
     {params.source === "error" ? <p className="adminError">Non è stato possibile salvare il link del catalogo.</p> : null}
 
-    <CatalogAutoSchedule enabled={catalogAutoEnabled} time={catalogAutoTime} lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""} stale={catalogAutoEnabled && (catalogAutoLastStatus === "running" || !catalogAutoLastRunRaw)} lastStatus={catalogAutoLastStatus} lastMessage={catalogAutoLastMessage}/>
+    <CatalogAutoSchedule enabled={catalogAutoEnabled} time={catalogAutoTime} lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""} lastStatus={catalogAutoLastStatus} lastMessage={catalogAutoLastMessage}/>
 
     <div className="quickImportGrid">
      <form action="/api/admin/haul/import" method="post" className="quickImportCard">
@@ -283,15 +291,6 @@ export default async function AdminPage({ searchParams, }: {
      </form>
     </div>
    </section>
-
-   <section className="adminPanel"><h2>Salute e completezza dei cataloghi</h2><CatalogVerificationRunner catalog={params.haul_import === "success" || params.haul_import === "partial" || params.haul_import === "price-only" || params.haul_import === "source-unavailable"
-      ? "haul"
-      : params.lambo_import === "success" || params.lambo_import === "partial" || params.lambo_import === "price-only" || params.lambo_import === "source-unavailable"
-        ? "offerte-lambo"
-        : params.bestseller_import === "success" || params.bestseller_import === "partial" || params.bestseller_import === "price-only" || params.bestseller_import === "source-unavailable"
-          ? "bestseller"
-          : null}/></section>
-   <VisitorInterests />
 
    <details className="adminAdvanced"><summary>Gestione e svuotamento dei cataloghi</summary>
    <section className="adminPanel catalogManagerPanel">
@@ -417,7 +416,7 @@ export default async function AdminPage({ searchParams, }: {
      {products.length === 30 ? <Link href={"/admin?page=" + (page + 1)}>Successivi →</Link> : null}
     </nav>
     <div className="adminTableWrap">
-     <table className="adminTable">
+     <table className="adminTable adminManualProducts">
       <thead>
        <tr>
         <th>Seleziona</th>
