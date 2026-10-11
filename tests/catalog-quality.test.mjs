@@ -135,3 +135,31 @@ test('catalogue import rejects ASINs found only in recommendation markup', async
  assert.equal(result.count, 1);
  assert.deepEqual(writes.map(row => row.asin), [first.asin]);
 });
+
+test('catalogue saves a checkpoint before an interrupted browser scan finishes', async () => {
+ const product = { ...good, asin: 'B012345678', haulCategory: null };
+ const writes = [], events = [];
+ const importer = load('catalog-import', {
+  './supabase/admin': { async supabaseAdminFetch(path, init) {
+   if (!init) return [];
+   const rows = JSON.parse(init.body);
+   if (path.startsWith('products?on_conflict=')) writes.push(...rows);
+   if (path.startsWith('site_settings?')) events.push(...rows);
+  } },
+  './haul-import': { parseHaulHtml: () => [product] },
+  './haul-browser': { async fetchHaulWithFullScroll(url, checkpoint) {
+   await checkpoint({ html: 'first page', asins: [product.asin], scrolls: 0 });
+   return { html: 'first page', asins: [product.asin], products: [], warning: 'Target closed' };
+  } },
+  './catalog-sync': { markCatalogVerificationPending: async () => {} },
+  './catalog-config': config,
+  './product-validation': { MANUAL_SOURCES: [] },
+  './catalog-product': quality,
+ });
+ const result = await importer.importCatalog('haul', config.catalogConfig.haul.url);
+ assert.equal(result.status, 'partial');
+ assert.equal(result.count, 1);
+ assert.equal(writes.length, 2);
+ assert.equal(writes[0].haul_verification_status, 'pending');
+ assert.equal(events.find(row => row.key === 'haul_last_import').value.status, 'partial');
+});
