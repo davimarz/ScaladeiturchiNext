@@ -70,12 +70,15 @@ export async function verifyCatalogProductsBatch(catalog: Catalog, limit = 6) {
   );
   if (!products.length) return { checked: 0, verified: 0, pending: 0, failed: 0, imagesRecovered: 0, imagesMissing: 0 };
   const snapshots = new Map<string, Partial<CatalogData>>();
-  // Cheap reader first; one Chromium batch only for observations still incomplete.
-  await Promise.allSettled(products.map(async product => {
-    const direct = await fetchAmazonProductSnapshot(product.asin);
-    snapshots.set(product.asin, { title: direct.title, description: direct.description, imageUrl: direct.imageUrl,
-      currentPrice: direct.offer?.currentPrice ?? null, listPrice: direct.offer?.listPrice ?? null, discountPercent: direct.offer?.discountPercent ?? null });
-  }));
+  // Read two pages at a time. A burst of six Amazon requests can be throttled;
+  // the daily update can afford a slower pass before trying Chromium.
+  for (let offset = 0; offset < products.length; offset += 2) {
+    await Promise.allSettled(products.slice(offset, offset + 2).map(async product => {
+      const direct = await fetchAmazonProductSnapshot(product.asin);
+      snapshots.set(product.asin, { title: direct.title, description: direct.description, imageUrl: direct.imageUrl,
+        currentPrice: direct.offer?.currentPrice ?? null, listPrice: direct.offer?.listPrice ?? null, discountPercent: direct.offer?.discountPercent ?? null });
+    }));
+  }
   const browserTargets = products.filter(p => missingCatalogData(mergeCatalogData(rowData(p), snapshots.get(p.asin) || {})).length > 0 || !validPrice(snapshots.get(p.asin)?.currentPrice));
   if (browserTargets.length) {
     try {
