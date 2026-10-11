@@ -19,6 +19,10 @@ test("never invents a product image from recommendation-only or unrelated pages"
   assert.equal(extractAmazonProductImage('<meta property="og:image" content="' + image + '">',asin),null);
   assert.equal(extractAmazonProductImage(identity + '<meta property="og:image" content="' + image + '">',asin),image);
 });
+test("reads the product image from a nested Product JSON-LD graph",()=>{
+  const jsonLd = identity + '<script type="application/ld+json">{"@graph":[{"@type":"Product","image":{"@type":"ImageObject","url":"' + image + '"}}]}</script>';
+  assert.equal(extractAmazonProductImage(jsonLd,asin),image);
+});
 test("fetches the canonical product URL with a timeout and manual redirects",async()=>{
   const result=await fetchAmazonProductImage(asin,async(url,init)=>{
     assert.equal(url.href,"https://www.amazon.it/dp/"+asin);
