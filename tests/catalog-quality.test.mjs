@@ -25,6 +25,10 @@ test('catalogue completeness requires a description and positive price; referenc
   assert.ok(quality.missingCatalogData({ ...good, currentPrice: 0 }).includes('prezzo'));
   assert.ok(quality.missingCatalogData({ ...good, title: 'La gamma di classi energetiche' }).includes('titolo'));
   assert.equal(quality.cleanDescription('Sedia ergonomica con supporto lombare regolabile. Potrebbe piacerti anche... Aggiungi al carrello'), 'Sedia ergonomica con supporto lombare regolabile.');
+  const haulOnlyTitle = { ...good, description: null };
+  assert.equal(quality.catalogDescription(haulOnlyTitle, 'haul'), good.title);
+  assert.equal(quality.catalogDescription(haulOnlyTitle, 'bestseller'), null);
+  assert.equal(quality.missingCatalogData({ ...haulOnlyTitle, description: quality.catalogDescription(haulOnlyTitle, 'haul') }).includes('descrizione'), false);
 });
 test('a partial response preserves useful existing data, but a new price never inherits an old discount', () => {
   const retained = quality.mergeCatalogData(good, { title: 'Prodotto Amazon B012345678', imageUrl: null, description: '', currentPrice: null });
@@ -51,7 +55,7 @@ test('verification persists other products when one page fails and does not mark
   ];
   const writes = [];
   const sync = load('catalog-sync', {
-    './amazon-page-offer': { async fetchAmazonProductSnapshot(asin) { if (asin === rows[0].asin) throw new Error('Unavailable'); return { title: good.title, imageUrl: good.imageUrl, description: good.description, offer: { currentPrice: 12, listPrice: null, discountPercent: null } }; } },
+    './amazon-page-offer': { async fetchAmazonProductSnapshot(asin) { if (asin === rows[0].asin) throw new Error('Unavailable'); return { title: good.title, imageUrl: good.imageUrl, description: null, offer: { currentPrice: 12, listPrice: null, discountPercent: null } }; } },
     './haul-browser': { async fetchAmazonProductSnapshotsWithBrowser() { return new Map(); } },
     './supabase/admin': { async supabaseAdminFetch(path, init) { if (!init) return rows; writes.push({ path, body: JSON.parse(init.body) }); } },
     './catalog-config': config, './catalog-product': quality,
@@ -61,7 +65,7 @@ test('verification persists other products when one page fails and does not mark
   assert.equal(writes.length, 2);
   assert.equal(writes[0].body.current_price, 20); assert.equal(writes[0].body.price_verified_at, undefined);
   assert.equal(writes[0].body.haul_verification_status, 'failed');
-  assert.equal(writes[1].body.description, good.description); assert.equal(writes[1].body.current_price, 12);
+  assert.equal(writes[1].body.description, good.title); assert.equal(writes[1].body.current_price, 12);
   assert.equal(writes[1].body.haul_verification_status, 'verified');
 });
 
