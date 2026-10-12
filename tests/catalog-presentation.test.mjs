@@ -100,6 +100,7 @@ test('AI results support the same brand, price, completeness and ordering filter
  const base={asin:'B012345678',title:'Sony cuffie Bluetooth con microfono',imageUrl:'https://m.media-amazon.com/images/I/sony.jpg',description:'Cuffie Bluetooth complete con microfono integrato.',features:[],currentPrice:30,listPrice:60,discountPercent:50,currency:'EUR',affiliateUrl:'https://www.amazon.it/dp/B012345678',source:'catalogo',priceVerifiedAt:'2026-01-01T12:00:00Z'};
  const products=[base,{...base,asin:'B087654321',title:'JBL cuffie wireless con custodia',currentPrice:20,listPrice:40},{...base,asin:'B099999999',title:'Bose cuffie wireless con custodia',currentPrice:10,imageUrl:null,description:null}];
  const defaults=filters.defaultAiProductFilters;
+ assert.equal(defaults.sort,"discount");
  assert.deepEqual(filters.filterAiProducts(products,defaults).map(p=>p.asin),['B012345678','B087654321']);
  assert.deepEqual(filters.filterAiProducts(products,{...defaults,sort:'price-asc'}).map(p=>p.asin),['B087654321','B012345678']);
  assert.deepEqual(filters.filterAiProducts(products,{...defaults,brand:'Sony'}).map(p=>p.asin),['B012345678']);
@@ -107,4 +108,12 @@ test('AI results support the same brand, price, completeness and ordering filter
  assert.deepEqual(filters.filterAiProducts(products,{...defaults,incomplete:true,sort:'price-asc'}).map(p=>p.asin),['B099999999','B087654321','B012345678']);
  assert.deepEqual(Array.from(filters.aiProductBrands(products)),['Bose','JBL','Sony']);
  assert.equal(filters.incompleteAiProductCount(products),1);
+ const mixed=[
+  {...base,asin:'discount-low',currentPrice:40,listPrice:50,discountPercent:20},
+  {...base,asin:'no-discount-expensive',currentPrice:19,listPrice:null,discountPercent:null},
+  {...base,asin:'discount-high',currentPrice:30,listPrice:60,discountPercent:50},
+  {...base,asin:'no-discount-cheap',currentPrice:7,listPrice:null,discountPercent:null},
+  {...base,asin:'no-price',currentPrice:null,listPrice:null,discountPercent:null},
+ ];
+ assert.deepEqual(filters.filterAiProducts(mixed,{...defaults,incomplete:true}).map(p=>p.asin),['discount-high','discount-low','no-discount-cheap','no-discount-expensive','no-price']);
 });
