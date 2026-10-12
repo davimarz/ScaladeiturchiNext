@@ -110,31 +110,43 @@ export async function searchAmazonViaJina(query: string, limit = 8): Promise<Jin
     .match(/\b(?:donna|donne|uomo|uomini|bambino|bambina|bambini|bambine)\b/g) ?? [];
   const expandedBase = tokens.includes("borse") ? "borsa" : tokens;
   const base = [...new Set([...expandedBase, ...usefulQualifiers])].join(" ") || query;
-  // Interactive searches need one exact Amazon.it search and, for bags, one
-  // useful synonym. The catalogue import may take longer; a visitor cannot.
+  // Jina can return an empty Italian search page even when the same Amazon.it
+  // results are available through Amazon's English locale. Keep both routes:
+  // the locale changes the page language, not the Amazon marketplace.
   const bagEnglish = /\bbors[ae]\b/i.test(query)
     ? `handbag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`
     : "";
-  const uniqueVariants = [...new Set([query, base, bagEnglish].map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 3);
+  const scarfEnglish = /\bsciarp[ae]\b/i.test(query)
+    ? `${usefulQualifiers[0] === "donna" || usefulQualifiers[0] === "donne" ? "women" : "men"} scarf`
+    : "";
+  const variants = [
+    { keywords: query, englishLocale: false },
+    { keywords: query, englishLocale: true },
+    ...[base, bagEnglish, scarfEnglish].filter(Boolean).map((keywords) => ({ keywords, englishLocale: true })),
+  ];
+  const uniqueVariants = variants.filter((variant, index) =>
+    variants.findIndex((other) => other.keywords === variant.keywords && other.englishLocale === variant.englishLocale) === index,
+  ).slice(0, 4);
   const results = new Map<string, JinaShoppingProduct>();
   let lastError: unknown;
-  for (const keywords of uniqueVariants) {
-    const amazon = new URL("https://www.amazon.it/s");
+  for (const { keywords, englishLocale } of uniqueVariants) {
+    const amazon = new URL(englishLocale ? "http://www.amazon.it/-/en/s" : "https://www.amazon.it/s");
     amazon.searchParams.set("k", keywords.slice(0, 180));
     try {
       const response = await fetch("https://r.jina.ai/" + amazon.toString(), {
         cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(15_000),
         headers: { accept: "text/plain" },
       });
       if (!response.ok) throw new Error("Jina Amazon HTTP " + response.status);
       const products = parseJinaAmazonSearch(await response.text(), Math.min(48, Math.max(limit * 3, limit)));
+      console.info("ai-shopping-jina-page", englishLocale ? "en" : "it", "parsed", products.length);
       for (const product of products) {
         if (isRelevantProduct(product.title, query)) results.set(product.asin, product);
       }
       // Continue across several independent Amazon result pages to collect enough
       // fully usable products; the caller still enforces image and price completeness.
-      if (results.size >= Math.min(4, limit)) break;
+      if (results.size >= Math.min(8, limit)) break;
     } catch (error) {
       lastError = error;
     }
