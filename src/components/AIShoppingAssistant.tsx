@@ -209,7 +209,7 @@ export default function AIShoppingAssistant() {
    {answer ? <div className="aiAnswer"><strong>Risposta</strong><p>{answer}</p></div> : null}
 
    {!loading && products.length > 0 ? <>
-    <CatalogFilterPanel className="aiResultFilters" value={draftFilters} brands={brands} defaultSortLabel="Pertinenza AI" onChange={setDraftFilters} onSubmit={applyFilters} onReset={resetFilters}/>
+    <CatalogFilterPanel className="aiResultFilters" value={draftFilters} brands={brands} defaultSortLabel="Sconto e prezzo" onChange={setDraftFilters} onSubmit={applyFilters} onReset={resetFilters}/>
     <p className="catalogResults" role="status">{displayedProducts.length} prodotti mostrati su {products.length}{!selectedFilters.incomplete && incomplete > 0 ? ` · ${incomplete} incompleti esclusi` : ""}</p>
     {!selectedFilters.incomplete && incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draftFilters, incomplete: true }; setDraftFilters(next); setSelectedFilters(next); recordInterest("filter", "ai"); }}>Includi i prodotti incompleti</button> : null}
    </> : null}
