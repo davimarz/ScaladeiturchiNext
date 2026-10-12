@@ -19,8 +19,9 @@ export default function CatalogFilterPanel({ value, brands, defaultSortLabel, on
   onReset: () => void;
   className?: string;
 }) {
+  const activeCount = Number(Boolean(value.brand)) + Number(Boolean(value.min)) + Number(Boolean(value.max)) + Number(value.incomplete);
   return <details className={`catalogFilters ${className}`.trim()}>
-   <summary>Filtri e ordinamento</summary>
+   <summary>Filtri e ordinamento <span className="filterCount">{activeCount ? `${activeCount} attivi` : "Opzionali"}</span></summary>
    <form onSubmit={onSubmit} className="filterFields">
     <label>Marca<select value={value.brand} onChange={(event) => onChange({ ...value, brand: event.target.value })}><option value="">Tutte le marche</option>{brands.map((brand) => <option key={brand}>{brand}</option>)}</select></label>
     <label>Prezzo minimo (€)<input type="number" min="0" step="0.01" value={value.min} onChange={(event) => onChange({ ...value, min: event.target.value })}/></label>
