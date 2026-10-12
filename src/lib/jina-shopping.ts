@@ -110,28 +110,21 @@ export async function searchAmazonViaJina(query: string, limit = 8): Promise<Jin
     .match(/\b(?:donna|donne|uomo|uomini|bambino|bambina|bambini|bambine)\b/g) ?? [];
   const expandedBase = tokens.includes("borse") ? "borsa" : tokens;
   const base = [...new Set([...expandedBase, ...usefulQualifiers])].join(" ") || query;
-  const variants = [base];
-  if (/\bbors[ae]\b/i.test(query)) {
-    variants.push(
-      `borsa a tracolla ${usefulQualifiers[0] ?? "donna"}`,
-      `borsa a mano ${usefulQualifiers[0] ?? "donna"}`,
-      `shopper ${usefulQualifiers[0] ?? "donna"}`,
-      `handbag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`,
-      `tote bag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`,
-      `crossbody bag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`,
-    );
-  }
-
-  const uniqueVariants = [...new Set(variants.map((value) => value.replace(/\s+/g, " ").trim()))];
+  // Interactive searches need one exact Amazon.it search and, for bags, one
+  // useful synonym. The catalogue import may take longer; a visitor cannot.
+  const bagEnglish = /\bbors[ae]\b/i.test(query)
+    ? `handbag ${usefulQualifiers[0] === "uomo" || usefulQualifiers[0] === "uomini" ? "men" : "women"}`
+    : "";
+  const uniqueVariants = [...new Set([query, base, bagEnglish].map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 3);
   const results = new Map<string, JinaShoppingProduct>();
   let lastError: unknown;
   for (const keywords of uniqueVariants) {
-    const amazon = new URL("http://www.amazon.it/-/en/s");
+    const amazon = new URL("https://www.amazon.it/s");
     amazon.searchParams.set("k", keywords.slice(0, 180));
     try {
       const response = await fetch("https://r.jina.ai/" + amazon.toString(), {
         cache: "no-store",
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(12_000),
         headers: { accept: "text/plain" },
       });
       if (!response.ok) throw new Error("Jina Amazon HTTP " + response.status);
@@ -141,7 +134,7 @@ export async function searchAmazonViaJina(query: string, limit = 8): Promise<Jin
       }
       // Continue across several independent Amazon result pages to collect enough
       // fully usable products; the caller still enforces image and price completeness.
-      if (results.size >= limit) break;
+      if (results.size >= Math.min(4, limit)) break;
     } catch (error) {
       lastError = error;
     }

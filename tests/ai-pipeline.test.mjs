@@ -68,7 +68,7 @@ test('AI bag search accepts Italian and English handbag naming variants with com
  const handbag={asin:'B0BAG00001',title:'Women Shoulder Handbag Faux Leather Crossbody Tote',imageUrl:'https://m.media-amazon.com/images/I/bag.jpg',currentPrice:39.99,listPrice:59.99,discountPercent:33,currency:'EUR',source:'amazon-search',description:'Borsa a tracolla da donna in pelle sintetica con tasche interne.'};
  const route=loadRoute({
   intent:{canonicalQuery:'borsa donna',searchQueries:['borsa donna','borsa a tracolla donna','handbag women','tote bag women'],inputTokens:0,outputTokens:0,totalTokens:0},
-  jina:async query=>query==='borsa donna'?[handbag]:[],
+  jina:async query=>query==='borsa da donna'?[handbag]:[],
   relevant:title=>/handbag|borsa|tote/i.test(title),
  });
  const response=await route.POST({async json(){return {query:'borsa da donna'};}});
@@ -78,17 +78,17 @@ test('AI bag search accepts Italian and English handbag naming variants with com
  assert.equal(response.products[0].currentPrice,39.99);
 });
 
-test('AI does not treat incomplete candidates as sufficient and uses the final enrichment fallback',async()=>{
+test('AI does not treat incomplete candidates as sufficient and enriches the best candidates once',async()=>{
  const incomplete=Array.from({length:32},(_,i)=>({asin:'B'+String(i).padStart(9,'0'),title:'iRobot Roomba robot aspirapolvere '+i,imageUrl:null,currentPrice:null,listPrice:null,discountPercent:null,currency:'EUR',source:'catalogo'}));
- let braveEnrichmentCalls=0;
+ let enrichmentCalls=0;
  const route=loadRoute({
   intent:{canonicalQuery:'irobot roomba',searchQueries:['irobot roomba'],inputTokens:0,outputTokens:0,totalTokens:0},
   local:incomplete,
   relevant:title=>/irobot roomba/i.test(title),
-  braveEnrich:async items=>{braveEnrichmentCalls+=1;return items.map((item,index)=>index===0?{...item,imageUrl:'https://m.media-amazon.com/images/I/roomba.jpg',currentPrice:199}:item);},
+  enrich:async items=>{enrichmentCalls+=1;return items.map((item,index)=>index===0?{...item,imageUrl:'https://m.media-amazon.com/images/I/roomba.jpg',currentPrice:199}:item);},
  });
  const response=await route.POST({async json(){return {query:'irobot roomba'};}});
- assert.equal(braveEnrichmentCalls,1);
+ assert.equal(enrichmentCalls,1);
  assert.equal(response.products.length,1);
  assert.equal(response.products[0].currentPrice,199);
 });
@@ -106,4 +106,23 @@ test('AI continues with another Amazon query when one browser attempt returns an
  assert.equal(attempted.length,2);
  assert.equal(response.products.length,1);
  assert.equal(response.products[0].asin,'B0ROOMBA02');
+});
+
+test('AI starts official and Amazon.it discovery concurrently and skips slower fallbacks with four complete results',async()=>{
+ let creatorsStarted=false,jinaStarted=false;
+ const products=Array.from({length:4},(_,i)=>({asin:'B01234567'+i,title:'Robot aspirapolvere Roomba '+i,imageUrl:'https://m.media-amazon.com/images/I/robot.jpg',currentPrice:199+i,listPrice:null,discountPercent:null,currency:'EUR',source:'amazon-api'}));
+ const calls=[];
+ const route=loadRoute({
+  intent:{canonicalQuery:'roomba',searchQueries:['roomba'],inputTokens:0,outputTokens:0,totalTokens:0},
+  creators:async()=>{creatorsStarted=true;while(!jinaStarted)await new Promise(resolve=>setTimeout(resolve,1));return products;},
+  jina:async()=>{jinaStarted=true;while(!creatorsStarted)await new Promise(resolve=>setTimeout(resolve,1));return [];},
+  fallback:async()=>{calls.push('browser');return [];},
+  braveSearch:async()=>{calls.push('brave');return [];},
+ });
+ const response=await Promise.race([
+  route.POST({async json(){return {query:'roomba'};}}),
+  new Promise((_,reject)=>setTimeout(()=>reject(new Error('sources were serialized')),1000)),
+ ]);
+ assert.equal(response.products.length,4);
+ assert.deepEqual(calls,[]);
 });

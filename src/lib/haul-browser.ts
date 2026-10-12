@@ -65,7 +65,7 @@ async function getChromiumExecutablePath() {
 
 async function fetchAmazonWithFullScroll(
   url: string,
-  mode: "haul" | "search" | "bestsellers" = "haul",
+  mode: "haul" | "search" | "bestsellers" | "ai-search" = "haul",
   onCheckpoint?: (snapshot: Pick<HaulBrowserResult, "html" | "asins" | "scrolls">) => Promise<void>,
 ): Promise<HaulBrowserResult> {
   const chromium = (await import("@sparticuz/chromium-min")).default;
@@ -82,8 +82,8 @@ async function fetchAmazonWithFullScroll(
     defaultViewport: { width: 1440, height: 1000, deviceScaleFactor: 1 },
     executablePath: await getChromiumExecutablePath(),
     headless: true,
-    protocolTimeout: 60000,
-    signal: AbortSignal.timeout(150000),
+    protocolTimeout: mode === "ai-search" ? 20000 : 60000,
+    signal: AbortSignal.timeout(mode === "ai-search" ? 35000 : 150000),
   });
 
   let checkpoint: Pick<HaulBrowserResult, "html" | "asins" | "scrolls"> | null = null;
@@ -107,7 +107,7 @@ async function fetchAmazonWithFullScroll(
 
     // A single retry covers transient 503 responses without spinning through
     // alternative storefronts or mixing products from another catalogue.
-    const candidateUrls = [url, url];
+    const candidateUrls = mode === "ai-search" ? [url] : [url, url];
 
     let loaded = false;
     let lastStatus = 0;
@@ -115,7 +115,7 @@ async function fetchAmazonWithFullScroll(
       if (attempt > 0) await sleep(1800);
       const response = await page.goto(candidateUrls[attempt], {
         waitUntil: "domcontentloaded",
-        timeout: 45_000,
+        timeout: mode === "ai-search" ? 15000 : 45_000,
       });
       lastStatus = response?.status() ?? 0;
       const title = await page.title().catch(() => "");
@@ -127,7 +127,7 @@ async function fetchAmazonWithFullScroll(
         /robot check|captcha|inserisci i caratteri|sorry|automated access/i.test(title + "\n" + bodyText);
 
       if (!blocked && lastStatus < 400) {
-        await sleep(1600);
+        await sleep(mode === "ai-search" ? 300 : 1600);
         const initialAsins = await page.evaluate(() => {
             const asins = new Set<string>();
             for (const element of Array.from(document.querySelectorAll<HTMLElement>("[data-asin]"))) {
@@ -155,7 +155,7 @@ async function fetchAmazonWithFullScroll(
 
     if (!loaded) throw new Error("Amazon browser HTTP " + (lastStatus || 503));
 
-    await sleep(mode === "search" || mode === "bestsellers" ? 2600 : 1500);
+    await sleep(mode === "ai-search" ? 400 : mode === "search" || mode === "bestsellers" ? 2600 : 1500);
 
     await page.evaluate(() => {
       const labels = ["accetta", "accetto", "accept", "continua senza accettare"];
@@ -210,7 +210,7 @@ async function fetchAmazonWithFullScroll(
     }
     await saveCheckpoint().catch(error => console.warn("catalog-checkpoint", error instanceof Error ? error.message : String(error)));
 
-    for (; scrolls < MAX_SCROLLS && stableRounds < STABLE_ROUNDS_TO_STOP; scrolls++) {
+    for (; scrolls < (mode === "ai-search" ? 1 : MAX_SCROLLS) && stableRounds < STABLE_ROUNDS_TO_STOP; scrolls++) {
       await page.evaluate(() => {
         const candidates = Array.from(document.querySelectorAll<HTMLElement>("button, a"));
         const more = candidates.find((element) => {
@@ -221,7 +221,7 @@ async function fetchAmazonWithFullScroll(
         window.scrollTo({ top: document.body.scrollHeight, behavior: "instant" });
       });
 
-      await sleep(mode === "search" || mode === "bestsellers" ? 1400 : WAIT_AFTER_SCROLL_MS);
+      await sleep(mode === "ai-search" ? 500 : mode === "search" || mode === "bestsellers" ? 1400 : WAIT_AFTER_SCROLL_MS);
       const currentCount = await countAsins();
       completedScrolls = scrolls + 1;
       if (scrolls % 5 === 4 && currentCount > checkpointSize)
@@ -526,6 +526,10 @@ export async function fetchAmazonBestsellersWithFullScroll(url: string, onCheckp
 
 export async function fetchAmazonKeywordSearchWithFullScroll(url: string): Promise<HaulBrowserResult> {
   return fetchAmazonWithFullScroll(url, "bestsellers");
+}
+
+export async function fetchAmazonKeywordSearchQuick(url: string): Promise<HaulBrowserResult> {
+  return fetchAmazonWithFullScroll(url, "ai-search");
 }
 
 

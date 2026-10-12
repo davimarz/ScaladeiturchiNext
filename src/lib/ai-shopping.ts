@@ -2,7 +2,7 @@ import "server-only";
 
 import { parseHaulHtml } from "./haul-import";
 
-import { fetchAmazonKeywordSearchWithFullScroll, fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
+import { fetchAmazonKeywordSearchQuick, fetchAmazonProductSnapshotsWithBrowser } from "./haul-browser";
 
 import { supabaseAdminFetch } from "./supabase/admin";
 
@@ -29,6 +29,7 @@ export type ShoppingProduct = {
 
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
 const TITLE_DESCRIPTION_PREFIX = "Descrizione sintetica dal titolo Amazon: ";
+let creatorsIneligibleUntil = 0;
 
 function affiliateUrl(asin: string) {
   const url = new URL(`https://www.amazon.it/dp/${asin}/ref=nosim`);
@@ -185,9 +186,10 @@ type CreatorItem = {
 };
 
 export async function searchAmazonCreators(query: string, limit = 8): Promise<ShoppingProduct[]> {
+  if (Date.now() < creatorsIneligibleUntil) return [];
   // Use the shared client so the OAuth endpoint follows the configured
   // Amazon credential version (3.1/3.2/3.3) instead of assuming one region.
-  const body = await amazonRequest<{
+  const requestCreators = () => amazonRequest<{
     searchResult?: {
       items?: CreatorItem[];
     };
@@ -209,6 +211,14 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
       "offersV2.listings.price",
     ],
   });
+  let body: Awaited<ReturnType<typeof requestCreators>>;
+  try {
+    body = await requestCreators();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/AssociateNotEligible|eligibility requirement/i.test(message)) creatorsIneligibleUntil = Date.now() + 60 * 60_000;
+    throw error;
+  }
   if (body.errors?.length && !body.searchResult?.items?.length) {
     throw new Error(body.errors.map((error) => error.message || error.code || "Amazon error").join("; "));
   }
@@ -252,14 +262,13 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
 
 export async function searchAmazonFallback(query: string, limit = 8): Promise<ShoppingProduct[]> {
   const url = new URL("https://www.amazon.it/s");
-  const keywords = queryTokens(query).join(" ") || query;
-  url.searchParams.set("k", keywords.slice(0, 180));
+  url.searchParams.set("k", query.slice(0, 180));
   let html = "";
   try {
     const response = await fetch(url.toString(), {
       redirect: "follow",
       cache: "no-store",
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(8000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
         "accept-language": "it-IT,it;q=0.9,en;q=0.7",
@@ -274,12 +283,12 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
     }
   }
   catch { }
-  if (!html) {
-    const result = await fetchAmazonKeywordSearchWithFullScroll(url.toString());
-    html = result.html;
+  let parsed = html ? parseHaulHtml(html).filter((product) => isRelevantProduct(product.title, query)) : [];
+  if (!parsed.length) {
+    const result = await fetchAmazonKeywordSearchQuick(url.toString());
+    parsed = parseHaulHtml(result.html).filter((product) => isRelevantProduct(product.title, query));
   }
-  return parseHaulHtml(html)
-    .filter((product) => isRelevantProduct(product.title, query))
+  return parsed
     .slice(0, limit)
     .map((product) => ({
     asin: product.asin,
@@ -296,49 +305,16 @@ export async function searchAmazonFallback(query: string, limit = 8): Promise<Sh
   }));
 }
 
-export async function enrichMissingProductData(products: ShoppingProduct[]): Promise<ShoppingProduct[]> {
-  const needsDescription = (product: ShoppingProduct) =>
-    !product.description || product.description.startsWith(TITLE_DESCRIPTION_PREFIX);
-  const missing = products.filter((product) => product.currentPrice == null || !product.imageUrl || needsDescription(product));
+export async function enrichMissingProductData(products: ShoppingProduct[], browserLimit = 2): Promise<ShoppingProduct[]> {
+  // A title-derived description is sufficient for the result card. Fetch
+  // details only when a visible price or image is missing.
+  const missing = products.filter((product) => product.currentPrice == null || !product.imageUrl).slice(0, 8);
   if (!missing.length)
     return products;
   const enrichedByAsin = new Map<string, ShoppingProduct>();
-  // Accuracy-first: use the rendered Amazon product page first.
-  try {
-    const browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(missing.map((product) => product.asin));
-    for (const product of missing) {
-      const snapshot = browserSnapshots.get(product.asin);
-      if (!snapshot)
-        continue;
-      enrichedByAsin.set(product.asin, {
-        ...product,
-        affiliateUrl: (snapshot.title || snapshot.imageUrl || snapshot.currentPrice != null)
-          ? affiliateUrl(product.asin)
-          : affiliateSearchUrl(product.asin),
-        title: snapshot.title && (product.title === product.asin || isRelevantProduct(snapshot.title, product.title))
-          ? snapshot.title
-          : product.title,
-        imageUrl: snapshot.imageUrl || product.imageUrl,
-        currentPrice: snapshot.currentPrice ?? product.currentPrice,
-        priceVerifiedAt: snapshot.currentPrice != null ? new Date().toISOString() : product.priceVerifiedAt,
-        description: snapshot.description || product.description,
-        listPrice: snapshot.currentPrice != null ? snapshot.listPrice ?? null : product.listPrice,
-        discountPercent: snapshot.currentPrice != null ? snapshot.discountPercent ?? null : product.discountPercent,
-        currency: snapshot.currency ?? product.currency,
-      });
-    }
-  }
-  catch (error) {
-    console.info("ai-shopping-browser-enrichment", error instanceof Error ? error.message : String(error));
-  }
-  let enriched = products.map((product) => enrichedByAsin.get(product.asin) ?? product);
-  const stillMissing = enriched.filter((product) => product.currentPrice == null || !product.imageUrl || needsDescription(product));
-  if (!stillMissing.length)
-    return enriched;
-  // Fallback only for data the browser could not verify.
-  for (let offset = 0; offset < stillMissing.length; offset += 3) {
-    const batch = stillMissing.slice(offset, offset + 3);
-    const results = await Promise.all(batch.map(async (product) => {
+  // HTTP detail pages are cheaper than starting a browser; resolve candidates
+  // concurrently, then use Chromium for the few still incomplete.
+  const results = await Promise.all(missing.map(async (product) => {
       try {
         const snapshot = await fetchAmazonProductSnapshot(product.asin);
         const offer = snapshot.offer;
@@ -356,17 +332,40 @@ export async function enrichMissingProductData(products: ShoppingProduct[]): Pro
           listPrice: offer?.currentPrice != null ? offer.listPrice : product.listPrice,
           discountPercent: offer?.currentPrice != null ? offer.discountPercent : product.discountPercent,
           currency: offer?.currency ?? product.currency,
+          description: snapshot.description || product.description,
         };
       }
       catch {
         return product;
       }
-    }));
-    for (const product of results)
-      enrichedByAsin.set(product.asin, product);
+  }));
+  for (const product of results)
+    enrichedByAsin.set(product.asin, product);
+  const stillMissing = results.filter((product) => product.currentPrice == null || !product.imageUrl).slice(0, browserLimit);
+  if (stillMissing.length) {
+    try {
+      const browserSnapshots = await fetchAmazonProductSnapshotsWithBrowser(stillMissing.map((product) => product.asin));
+      for (const product of stillMissing) {
+        const snapshot = browserSnapshots.get(product.asin);
+        if (!snapshot) continue;
+        enrichedByAsin.set(product.asin, {
+          ...product,
+          affiliateUrl: affiliateUrl(product.asin),
+          title: snapshot.title && (product.title === product.asin || isRelevantProduct(snapshot.title, product.title)) ? snapshot.title : product.title,
+          imageUrl: snapshot.imageUrl || product.imageUrl,
+          currentPrice: snapshot.currentPrice ?? product.currentPrice,
+          priceVerifiedAt: snapshot.currentPrice != null ? new Date().toISOString() : product.priceVerifiedAt,
+          description: snapshot.description || product.description,
+          listPrice: snapshot.currentPrice != null ? snapshot.listPrice : product.listPrice,
+          discountPercent: snapshot.currentPrice != null ? snapshot.discountPercent : product.discountPercent,
+          currency: snapshot.currency ?? product.currency,
+        });
+      }
+    } catch (error) {
+      console.info("ai-shopping-browser-enrichment", error instanceof Error ? error.message : String(error));
+    }
   }
-  enriched = enriched.map((product) => enrichedByAsin.get(product.asin) ?? product);
-  return enriched;
+  return products.map((product) => enrichedByAsin.get(product.asin) ?? product);
 }
 
 export function mergeProducts(...groups: ShoppingProduct[][]) {

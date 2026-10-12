@@ -95,9 +95,6 @@ async function enrichFromBraveByAsin<T extends EnrichableShoppingProduct>(apiKey
     const exactQueries = [
       'site:amazon.it "' + product.asin + '"',
       'site:amazon.it/dp "' + product.asin + '"',
-      '"' + product.asin + '" Amazon.it prezzo',
-      '"' + product.asin + '" Amazon.it €',
-      '"' + product.asin + '" "' + product.title.slice(0, 80) + '"'
     ];
     const exactMatches: BraveResult[] = [];
     let foundPrice: number | null = product.currentPrice;
@@ -213,17 +210,14 @@ export async function searchAmazonViaBrave(query: string, limit = 8, semanticQue
         break;
     }
   };
-  const queries = [...new Set([query, ...semanticQueries].map((value) => value.trim()).filter(Boolean))].slice(0, 6);
+  const queries = [...new Set([query, ...semanticQueries].map((value) => value.trim()).filter(Boolean))].slice(0, 2);
   for (const candidate of queries) {
     if (products.length >= limit)
       break;
     const candidateKeywords = queryTokens(candidate).join(" ") || candidate;
     const searchPatterns = [
-      'site:amazon.it "' + candidateKeywords + '"',
-      'site:amazon.it/dp "' + candidateKeywords + '"',
       'site:amazon.it/dp ' + candidateKeywords + ' prezzo',
-      candidateKeywords + " Amazon.it",
-      candidateKeywords + " Amazon.it prezzo"
+      'site:amazon.it ' + candidateKeywords,
     ];
     for (const pattern of searchPatterns) {
       if (products.length >= limit)
