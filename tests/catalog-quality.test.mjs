@@ -1,4 +1,4 @@
-import { usefulTitle } from '../src/lib/catalog-presentation.ts';
+import * as presentation from '../src/lib/catalog-presentation.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -15,7 +15,7 @@ function load(file, dependencies = {}, globals = {}) {
   }});
   return exports;
 }
-const offer = load('amazon-page-offer', { './catalog-presentation': { usefulTitle }, './amazon-input': { extractAmazonProductImage: () => null } });
+const offer = load('amazon-page-offer', { './catalog-presentation': { usefulTitle: presentation.usefulTitle }, './amazon-input': { extractAmazonProductImage: () => null } });
 const quality = load('catalog-product', { './amazon-input': { isGenericAmazonImage }, './amazon-page-offer': offer });
 const config = load('catalog-config');
 const good = { title: 'Cuffie bluetooth con microfono', description: 'Cuffie senza fili con microfono e custodia di ricarica.', imageUrl: 'https://m.media-amazon.com/images/I/headphones.jpg', currentPrice: 20, listPrice: 40, discountPercent: 50 };
@@ -75,7 +75,7 @@ test('catalogue pagination returns a continuation without losing different ASIN 
  const calls = [];
  let fail = false;
  vm.runInNewContext(source, { exports, URL, console, require(name) {
-   if (name === 'next/server') return { NextResponse: { json: (body, init) => ({ body, status: init?.status || 200 }) } };
+   if (name === 'next/server') return { NextResponse: { json: (body, init) => ({ body, status: init?.status || 200, headers: { set(name, value) { this[name] = value; } } }) } };
    if (name.includes('presented-catalog')) return {getPresentedCatalog:()=>assert.fail('legacy request should preserve pagination')};
    if (name.includes('product-validation')) return { catalogLimit: () => 2 };
    if (name.includes('amazon-page-offer')) return { needsProductTitleEnrichment: () => false };
@@ -84,9 +84,23 @@ test('catalogue pagination returns a continuation without losing different ASIN 
  }});
  const response = await exports.GET({ nextUrl: new URL('https://example.com/api/catalog?category=offerte-lambo&offset=2') });
  assert.equal(response.body.products.length, 2); assert.equal(response.body.has_more, true); assert.equal(response.body.next_offset, 4);
+ assert.match(response.headers['Server-Timing'], /^catalog;dur=\d+(\.\d+)?$/);
  assert.match(calls[0], /offset=2/); assert.match(calls[0], /limit=3/); assert.equal(response.body.products[0].image_url, response.body.products[1].image_url);
  fail = true;
  assert.equal((await exports.GET({ nextUrl:new URL('https://example.com/api/catalog') })).status, 503);
+});
+
+test('presentation filter changes reuse the short-lived base catalogue read', async () => {
+ const row = { id:'one', asin:'B012345678', title:good.title, description:good.description, image_url:good.imageUrl, affiliate_url:'https://www.amazon.it/dp/B012345678', current_price:20, list_price:null, currency:'EUR', discount_percent:null, price_verified_at:new Date().toISOString(), haul_category:null, bestseller_rank:null };
+ let reads=0;
+ const catalog=load('presented-catalog', {
+  './supabase/admin': { async supabaseAdminFetch() { reads++; return [row]; } },
+  './catalog-presentation': presentation,
+  './product-validation': { catalogLimit: () => 30 },
+ });
+ const first=await catalog.getPresentedCatalog(new URLSearchParams({category:'haul',incomplete:'1'}));
+ const second=await catalog.getPresentedCatalog(new URLSearchParams({category:'haul',incomplete:'1',q:'cuffie'}));
+ assert.equal(first.products.length,1);assert.equal(second.products.length,1);assert.equal(reads,1);
 });
 
 test('verification summary accounts for catalogues larger than a database response page', async () => {
