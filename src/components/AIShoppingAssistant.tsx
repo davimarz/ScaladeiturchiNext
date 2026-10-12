@@ -5,7 +5,6 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import StoreProductCard from "./StoreProductCard";
 
 import CatalogFilterPanel from "./CatalogFilterPanel";
-import CatalogQuickFilters from "./CatalogQuickFilters";
 
 import { queryTokens, maxPriceFromQuery } from "../lib/ai-relevance";
 
@@ -184,11 +183,6 @@ export default function AIShoppingAssistant() {
     setSelectedFilters(defaultAiProductFilters);
     recordInterest("filter", "ai");
   }
-  function applyQuick(filters: AiProductFilters) {
-    setDraftFilters(filters);
-    setSelectedFilters(filters);
-    recordInterest(filters.sort !== selectedFilters.sort ? "sort" : "filter", "ai");
-  }
   return (<section className="aiShopping" aria-busy={loading || moreLoading}>
    <div className="aiShoppingIntro">
     <p className="eyebrow">ASSISTENTE SHOPPING</p>
@@ -216,7 +210,6 @@ export default function AIShoppingAssistant() {
    {answer ? <div className="aiAnswer"><strong>Risposta</strong><p>{answer}</p></div> : null}
 
    {!loading && products.length > 0 ? <>
-    <CatalogQuickFilters value={selectedFilters} onApply={applyQuick}/>
     <CatalogFilterPanel className="aiResultFilters" value={draftFilters} brands={brands} defaultSortLabel="Sconto e prezzo" onChange={setDraftFilters} onSubmit={applyFilters} onReset={resetFilters}/>
     <p className="catalogResults" role="status">{displayedProducts.length} prodotti mostrati su {products.length}{!selectedFilters.incomplete && incomplete > 0 ? ` · ${incomplete} incompleti esclusi` : ""}</p>
     {!selectedFilters.incomplete && incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draftFilters, incomplete: true }; setDraftFilters(next); setSelectedFilters(next); recordInterest("filter", "ai"); }}>Includi i prodotti incompleti</button> : null}

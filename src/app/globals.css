@@ -425,11 +425,6 @@ body{font-size:16px;line-height:1.55}
 
 /* Catalog controls share one compact pattern on desktop and narrow screens. */
 .publicTabIcon{display:none;width:20px;height:20px;flex:none}
-.quickFilterBar{display:flex;align-items:center;gap:8px;margin:14px 0 4px;overflow-x:auto;scrollbar-width:thin;padding:2px 1px 8px;white-space:nowrap}
-.quickFilterBar button{min-height:44px;flex:none;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);padding:8px 14px;font-size:13px;font-weight:650;cursor:pointer}
-.quickFilterBar button[aria-pressed=true]{background:#e2f7f4;border-color:var(--sea);color:var(--sea-dark);text-decoration:none}
-.quickFilterLabel{flex:none;color:var(--muted);font-size:12px;font-weight:700}
-.quickFilterDivider{height:26px;border-left:1px solid var(--line);margin:0 4px;flex:none}
 .catalogVerifiedAt{display:inline-block;margin:10px 0 0;padding:7px 10px;border-radius:8px;background:#e2f7f4;color:var(--sea-dark);font-size:13px;font-weight:650}
 .buyLabelShort{display:none}
 
@@ -446,7 +441,6 @@ body{font-size:16px;line-height:1.55}
  .buyButton{padding:9px 7px}
  .buyLabelFull{display:none}.buyLabelShort{display:inline}
  .productSkeleton{min-height:335px}
- .quickFilterBar{margin:10px 0 2px;padding-bottom:10px}
  .aiShopping:has(.aiAskForm.hasResults){padding-bottom:110px}
  .aiAskForm.hasResults:not(:focus-within){position:fixed;left:12px;right:12px;bottom:calc(82px + env(safe-area-inset-bottom,0px));z-index:40;grid-template-columns:minmax(0,1fr) auto;align-items:center;padding:8px;margin:0;border:1px solid var(--line);border-radius:14px;background:rgba(247,248,244,.97);box-shadow:0 -5px 20px rgba(21,55,72,.12)}
  .aiAskForm.hasResults:not(:focus-within) textarea{min-height:48px;height:48px;resize:none;padding:11px;font-size:14px}

@@ -9,7 +9,6 @@ import { recordInterest } from "../lib/interest-events";
 import StoreProductCard from "./StoreProductCard";
 
 import CatalogFilterPanel, { type CatalogFilterValues } from "./CatalogFilterPanel";
-import CatalogQuickFilters from "./CatalogQuickFilters";
 
 type Options = CatalogFilterValues & {
   q: string;
@@ -124,11 +123,6 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
       recordInterest("sort", fixedCategory || "tutte");
   }
   function submit(event: FormEvent) { event.preventDefault(); apply(); }
-  function applyQuick(filters: CatalogFilterValues) {
-    const next = { ...selected, ...filters };
-    setDraft(next);
-    apply(next);
-  }
   async function more() {
     if (loading || moreLoading)
       return;
@@ -162,7 +156,6 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   const Heading = fixedCategory || asins ? "h1" : "h2";
   return <section className="catalogSection" id="catalogo" aria-busy={loading || moreLoading}>
   <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p>{fixedCategory === "offerte-lambo" && meta.latest_price_verified_at ? <p className="catalogVerifiedAt">Ultima verifica dei prezzi nel catalogo: <time dateTime={meta.latest_price_verified_at}>{new Date(meta.latest_price_verified_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Rome" })}</time></p> : null}</div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
-  <CatalogQuickFilters value={selected} onApply={applyQuick}/>
   <CatalogFilterPanel value={draft} brands={meta.brands} defaultSortLabel={fixedCategory === "bestseller" ? "Classifica Amazon" : fixedCategory === "haul" || fixedCategory === "offerte-lambo" ? "Sconto maggiore" : "Completezza dei dati"} onChange={(filters) => setDraft({ ...draft, ...filters })} onSubmit={submit} onReset={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}/>
   <p className="catalogResults" role="status">{loading ? "Caricamento prodotti…" : `${meta.total} prodotti trovati · ${products.length} mostrati`}{!loading && !selected.incomplete && meta.incomplete > 0 ? ` · ${meta.incomplete} incompleti esclusi` : ""}</p>
   {!loading && !selected.incomplete && meta.incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draft, incomplete: true }; setDraft(next); apply(next); }}>Includi i prodotti incompleti</button> : null}
