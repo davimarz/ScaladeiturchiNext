@@ -91,8 +91,19 @@ export function sortProducts(products: StoreProduct[], sort: string, bestseller:
             difference = (a.current_price && a.current_price > 0 ? a.current_price : Infinity) - (b.current_price && b.current_price > 0 ? b.current_price : Infinity);
         else if (sort === "price-desc")
             difference = (b.current_price || 0) - (a.current_price || 0);
-        else if (sort === "discount")
-            difference = discountValue(b) - discountValue(a);
+        else if (sort === "discount") {
+            const discountA = discountValue(a);
+            const discountB = discountValue(b);
+            if (discountA > 0 && discountB > 0)
+                difference = discountB - discountA;
+            else if (discountA > 0)
+                difference = -1;
+            else if (discountB > 0)
+                difference = 1;
+            else
+                difference = (a.current_price && a.current_price > 0 ? a.current_price : Infinity)
+                    - (b.current_price && b.current_price > 0 ? b.current_price : Infinity);
+        }
         else if (bestseller)
             difference = (a.bestseller_rank ?? Infinity) - (b.bestseller_rank ?? Infinity);
         else
