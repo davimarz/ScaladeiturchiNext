@@ -9,13 +9,14 @@ export default function BestsellerPage() {
       <PublicHeader />
 
       <section className="brandHero" aria-labelledby="brandHeroTitle">
-        <Image src="/brand/scala-banner.webp" alt="" fill preload sizes="(max-width: 600px) 100vw, 1176px" className="brandHeroImage" />
-        <div className="brandHeroScrim" aria-hidden="true" />
         <div className="brandHeroContent">
           <p className="eyebrow">REALMONTE · AGRIGENTO</p>
           <h2 id="brandHeroTitle">Offerte da scoprire, con un tocco di Sicilia.</h2>
           <p>Prodotti e occasioni Amazon selezionati per rendere più semplice la tua ricerca.</p>
           <a className="brandHeroCta" href="#catalogo">Scopri le offerte</a>
+        </div>
+        <div className="brandHeroVisual">
+          <Image src="/brand/scala-banner.webp" alt="La Scala dei Turchi e il mare della costa agrigentina" fill preload sizes="(max-width: 600px) 100vw, 1176px" className="brandHeroImage" />
         </div>
       </section>
 
