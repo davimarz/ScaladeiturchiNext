@@ -3,6 +3,53 @@ import { supabaseAdminFetch } from "./supabase/admin";
 import { productCategories, presentable, matchesSearch, inferredCategory, productBrand, sortProducts, usefulTitle, defaultCatalogSort, type StoreProduct } from "./catalog-presentation";
 import { catalogLimit } from "./product-validation";
 const membership: Record<string, string> = { bestseller: "in_bestseller", haul: "in_haul", "offerte-lambo": "in_offerte_lambo", outlet: "in_outlet" };
+// The source catalogs update in batches; reuse each category's base rows briefly
+// so changing a client-side filter does not repeat up to eleven REST reads.
+const rowCache = new Map<string, { expiresAt: number; rows: Promise<StoreProduct[]> }>();
+const ROW_CACHE_TTL_MS = 45_000;
+const ROW_CACHE_LIMIT = 6;
+
+async function loadRows(filters: string[], cacheable: boolean): Promise<StoreProduct[]> {
+    const key = filters.join("&");
+    const now = Date.now();
+    if (cacheable) {
+        const cached = rowCache.get(key);
+        if (cached && cached.expiresAt > now) {
+            rowCache.delete(key);
+            rowCache.set(key, cached);
+            return cached.rows;
+        }
+        if (cached)
+            rowCache.delete(key);
+    }
+    const rows = (async () => {
+        const all: StoreProduct[] = [];
+        for (let offset = 0; offset <= 10000; offset += 1000) {
+            const page = await supabaseAdminFetch<StoreProduct[]>("products?" + key + `&limit=1000&offset=${offset}`);
+            all.push(...page);
+            if (page.length < 1000)
+                break;
+        }
+        return all;
+    })();
+    if (!cacheable)
+        return rows;
+    const entry = { expiresAt: Number.POSITIVE_INFINITY, rows };
+    rowCache.set(key, entry);
+    while (rowCache.size > ROW_CACHE_LIMIT)
+        rowCache.delete(rowCache.keys().next().value!);
+    try {
+        const result = await rows;
+        entry.expiresAt = Date.now() + ROW_CACHE_TTL_MS;
+        return result;
+    }
+    catch (error) {
+        if (rowCache.get(key)?.rows === rows)
+            rowCache.delete(key);
+        throw error;
+    }
+}
+
 export async function getPresentedCatalog(params: URLSearchParams) {
     const catalog = params.get("category") || "tutte";
     const filters = ["active=eq.true", "select=id,asin,title,description,image_url,affiliate_url,current_price,list_price,currency,discount_percent,price_verified_at,haul_category,bestseller_rank", "order=id.asc"];
@@ -16,16 +63,8 @@ export async function getPresentedCatalog(params: URLSearchParams) {
         return { products: [], total: 0, has_more: false, next_offset: 0, incomplete: 0, brands: [] };
     if (asins.length)
         filters.push("asin=in.(" + asins.join(",") + ")");
-    const rows: StoreProduct[] = [];
-    let truncated = false;
-    for (let offset = 0; offset <= 10000; offset += 1000) {
-        const page = await supabaseAdminFetch<StoreProduct[]>("products?" + filters.join("&") + `&limit=1000&offset=${offset}`);
-        rows.push(...page);
-        if (page.length < 1000)
-            break;
-        if (offset === 10000)
-            truncated = true;
-    }
+    const rows = await loadRows(filters, asins.length === 0);
+    const truncated = rows.length >= 11000;
     const brands = [...new Set(rows.map(p => productBrand(p.title)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it"));
     const incomplete = rows.filter(p => !presentable(p)).length;
     const query = (params.get("q") || "").slice(0, 120).trim();
