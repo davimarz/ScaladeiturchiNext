@@ -383,26 +383,31 @@ body{font-size:16px;line-height:1.55}
 
 @media(max-width:600px){.topbar{flex-wrap:nowrap}.shoppingLinks a{font-size:0;gap:0}.shoppingLinks a:first-child::before{content:"♡";font-size:21px;line-height:1}.shoppingLinks a:last-child::before{content:"⇄";font-size:18px;line-height:1}.shoppingLinks span{font-size:11px;margin-left:3px}.productTools .productToolIcon{width:44px;min-width:44px;height:44px;min-height:44px;flex-basis:44px}}
 
-/* Brand identity for the public landing page. */
+/* Shared public brand header and readable image-backed hero. */
 .brandMark{width:58px;height:58px;background:#fff;border-radius:50%;box-shadow:0 2px 10px rgba(21,55,72,.12)}
 .brandMark img{display:block;width:100%;height:100%;object-fit:contain}
-.brandHero{max-width:1176px;margin:18px auto 14px;overflow:hidden;border:1px solid #d9e4e1;border-radius:22px;background:#f6f2e9;box-shadow:var(--shadow)}
-.brandHeroContent{padding:26px 36px 20px}
-.brandHeroContent h2{max-width:590px;margin:9px 0 12px;font-size:clamp(30px,4vw,48px);line-height:1.08;letter-spacing:-.04em}
-.brandHeroContent>p:not(.eyebrow){max-width:490px;margin:0;color:var(--muted);font-size:16px;line-height:1.55}
-.brandHeroCta{display:inline-flex;min-height:48px;align-items:center;justify-content:center;margin-top:20px;padding:0 20px;border-radius:11px;background:var(--sea);color:#fff;font-weight:750;box-shadow:0 5px 14px rgba(8,123,120,.2);transition:background .15s,transform .15s}
-.brandHeroCta:hover{background:var(--sea-dark);transform:translateY(-1px)}
-.brandHeroVisual{position:relative;height:clamp(190px,22vw,270px);overflow:hidden;background:#0f3854}
-.brandHeroImage{object-fit:cover;object-position:center 54%}
+.brandHero{position:relative;isolation:isolate;display:flex;align-items:center;max-width:1176px;min-height:250px;margin:16px auto 14px;overflow:hidden;border:1px solid #164d70;border-radius:22px;background:#123b60;box-shadow:var(--shadow)}
+.brandHeroImage{z-index:-2;object-fit:cover;object-position:center 54%}
+.brandHeroScrim{position:absolute;z-index:-1;inset:0;background:linear-gradient(90deg,rgba(8,34,57,.94) 0%,rgba(8,34,57,.87) 42%,rgba(8,34,57,.52) 72%,rgba(8,34,57,.2) 100%)}
+.brandHeroContent{position:relative;max-width:740px;padding:30px 40px;color:#fff}
+.brandHeroContent .eyebrow{color:#a7f3eb;font-weight:800;letter-spacing:.14em}
+.brandHeroContent h1{max-width:650px;margin:8px 0 10px;color:#fff;font-size:clamp(29px,4vw,46px);font-weight:760;line-height:1.08;letter-spacing:-.035em;text-wrap:balance;text-shadow:0 2px 12px rgba(0,0,0,.24)}
+.brandHeroContent>p:not(.eyebrow){max-width:520px;margin:0;color:#f2f8fc;font-size:16px;line-height:1.55;text-shadow:0 1px 8px rgba(0,0,0,.3)}
+.brandHeroCta{display:inline-flex;min-height:48px;align-items:center;justify-content:center;margin-top:16px;padding:0 20px;border:1px solid rgba(255,255,255,.7);border-radius:12px;background:#fff;color:#123b60;font-weight:800;box-shadow:0 5px 18px rgba(0,0,0,.2);transition:background .15s,transform .15s}
+.brandHeroCta:hover{background:#e7f7f4;transform:translateY(-1px)}
+.brandHeroCta:focus-visible{outline:3px solid #fbbf24;outline-offset:3px}
 #catalogo{scroll-margin-top:82px}
 @media(max-width:800px){.brandHero{margin-left:20px;margin-right:20px}}
 @media(max-width:600px){
  .brandMark{width:52px;height:52px}
- .brandHero{margin:12px 12px 10px;border-radius:18px}
- .brandHeroContent{padding:17px 18px 14px}
- .brandHeroContent h2{font-size:clamp(25px,7vw,32px);margin:6px 0 0}
- .brandHeroContent>p:not(.eyebrow),.brandHeroCta{display:none}
- .brandHeroVisual{height:clamp(108px,34vw,145px)}
+ .brandHero{min-height:226px;margin:10px 12px;border-radius:16px}
+ .brandHeroImage{object-position:62% center}
+ .brandHeroScrim{background:linear-gradient(90deg,rgba(8,34,57,.94) 0%,rgba(8,34,57,.86) 62%,rgba(8,34,57,.58) 100%)}
+ .brandHeroContent{max-width:100%;padding:20px 18px}
+ .brandHeroContent .eyebrow{font-size:10px;letter-spacing:.12em}
+ .brandHeroContent h1{max-width:450px;font-size:clamp(25px,7vw,32px);line-height:1.12;margin:7px 0 9px}
+ .brandHeroContent>p:not(.eyebrow){max-width:440px;font-size:14px;line-height:1.4}
+ .brandHeroCta{min-height:44px;margin-top:12px;padding-inline:16px;font-size:14px}
 }
 
 /* Lightweight placeholders keep the catalog layout stable while data loads. */
@@ -433,10 +438,6 @@ body{font-size:16px;line-height:1.55}
  .publicTabs a{min-height:56px;display:flex;flex-direction:column;gap:3px;padding:5px 2px;font-size:11px}
  .publicTabIcon{display:block}
  .brandHero{margin:8px 12px;border-radius:15px}
- .brandHeroContent{padding:14px 15px 12px}
- .brandHeroContent h2{font-size:21px;line-height:1.16;margin:6px 0 0}
- .brandHeroVisual{height:108px}
- .brandHeroContent .eyebrow{font-size:9px;letter-spacing:.1em}
  .productBody h3{min-height:0;-webkit-line-clamp:2;font-size:15px}
  .descriptionPreview{display:none}
  .productBody .priceRow{margin-top:8px}
