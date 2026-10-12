@@ -12,7 +12,7 @@ export default function HaulPage() {
       <div className="compactCatalogPage">
         <ProductBrowser
           fixedCategory="haul"
-          heading="HAUL"
+          heading="Occasioni HAUL"
           eyebrow="PICCOLI ACQUISTI, NUOVE IDEE"
           showCategoryChips={false}
         />

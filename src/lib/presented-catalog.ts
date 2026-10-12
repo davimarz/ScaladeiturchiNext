@@ -66,6 +66,11 @@ export async function getPresentedCatalog(params: URLSearchParams) {
     const rows = await loadRows(filters, asins.length === 0);
     const truncated = rows.length >= 11000;
     const brands = [...new Set(rows.map(p => productBrand(p.title)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it"));
+    // This is the latest verified price, not an inferred offer expiration or a sync timestamp.
+    const latestPriceVerifiedAt = rows.reduce<string | null>((latest, product) => {
+        const observed = product.price_verified_at;
+        return product.current_price && product.current_price > 0 && observed && Number.isFinite(Date.parse(observed)) && Date.parse(observed) <= Date.now() && (!latest || Date.parse(observed) > Date.parse(latest)) ? observed : latest;
+    }, null);
     const incomplete = rows.filter(p => !presentable(p)).length;
     const query = (params.get("q") || "").slice(0, 120).trim();
     const selected = params.get("product_category") || (!membership[catalog] ? catalog : "tutte");
@@ -82,7 +87,7 @@ export async function getPresentedCatalog(params: URLSearchParams) {
     const sorted = sortProducts(results, params.get("sort") || defaultCatalogSort(catalog), catalog === "bestseller");
     const limit = catalogLimit(params.get("limit"));
     const offset = Math.max(0, Math.min(10000, Math.floor(Number(params.get("offset")) || 0)));
-    return { products: sorted.slice(offset, offset + limit).map(p => ({ ...p, title: usefulTitle(p.title) ? p.title : "Prodotto Amazon " + p.asin })), total: sorted.length, incomplete, brands, truncated,
+    return { products: sorted.slice(offset, offset + limit).map(p => ({ ...p, title: usefulTitle(p.title) ? p.title : "Prodotto Amazon " + p.asin })), total: sorted.length, incomplete, brands, truncated, latest_price_verified_at: latestPriceVerifiedAt,
         category_counts: productCategories.map(([slug, label]) => ({ slug, label, count: rows.filter(p => slug === "tutte" || inferredCategory(p.title) === slug).length })),
         has_more: offset + limit < sorted.length, next_offset: Math.min(offset + limit, sorted.length) };
 }

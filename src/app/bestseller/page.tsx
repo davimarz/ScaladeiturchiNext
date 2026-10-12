@@ -9,11 +9,11 @@ export default function BestsellerPage() {
       <PublicHeader />
 
       <section className="brandHero" aria-labelledby="brandHeroTitle">
-        <Image src="/brand/scala-banner.webp" alt="" fill priority sizes="100vw" className="brandHeroImage" />
+        <Image src="/brand/scala-banner.webp" alt="" fill preload sizes="(max-width: 600px) 100vw, 1176px" className="brandHeroImage" />
         <div className="brandHeroScrim" aria-hidden="true" />
         <div className="brandHeroContent">
           <p className="eyebrow">REALMONTE · AGRIGENTO</p>
-          <h1 id="brandHeroTitle">Offerte da scoprire, con un tocco di Sicilia.</h1>
+          <h2 id="brandHeroTitle">Offerte da scoprire, con un tocco di Sicilia.</h2>
           <p>Prodotti e occasioni Amazon selezionati per rendere più semplice la tua ricerca.</p>
           <a className="brandHeroCta" href="#catalogo">Scopri le offerte</a>
         </div>

@@ -9,6 +9,7 @@ import { recordInterest } from "../lib/interest-events";
 import StoreProductCard from "./StoreProductCard";
 
 import CatalogFilterPanel, { type CatalogFilterValues } from "./CatalogFilterPanel";
+import CatalogQuickFilters from "./CatalogQuickFilters";
 
 type Options = CatalogFilterValues & {
   q: string;
@@ -25,6 +26,7 @@ type Result = {
   has_more: boolean;
   next_offset: number;
   truncated?: boolean;
+  latest_price_verified_at?: string | null;
 };
 
 function parseCatalogResult(value: unknown): Result {
@@ -39,10 +41,11 @@ function parseCatalogResult(value: unknown): Result {
     has_more: Boolean(result.has_more),
     next_offset: Number.isFinite(result.next_offset) ? Number(result.next_offset) : 0,
     truncated: Boolean(result.truncated),
+    latest_price_verified_at: typeof result.latest_price_verified_at === "string" ? result.latest_price_verified_at : null,
   };
 }
 
-const introductions: Record<string, string> = { bestseller: "I prodotti presenti nelle classifiche Amazon, ordinati per posizione. La classifica non equivale a una valutazione di qualità.", "offerte-lambo": "Prodotti raccolti dalla pagina offerte Amazon. Prezzi, sconti e disponibilità possono cambiare: controllali su Amazon.", haul: "La selezione Amazon HAUL. Qui trovi solo i dati che siamo riusciti a rilevare dalla fonte." };
+const introductions: Record<string, string> = { bestseller: "Prodotti dalle classifiche Amazon, mostrati prima per sconto rilevato e poi per prezzo. La posizione in classifica non è una valutazione di qualità.", "offerte-lambo": "Occasioni raccolte dalla pagina offerte Amazon. Prezzi, sconti e disponibilità possono cambiare: controllali su Amazon.", haul: "Occasioni dalla selezione Amazon HAUL, con i dati che siamo riusciti a verificare dalla fonte." };
 
 export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i prodotti", eyebrow = "CATALOGO", excludeCategories = "", asins, pageSize = 30 }: {
   fixedCategory?: string;
@@ -121,6 +124,11 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
       recordInterest("sort", fixedCategory || "tutte");
   }
   function submit(event: FormEvent) { event.preventDefault(); apply(); }
+  function applyQuick(filters: CatalogFilterValues) {
+    const next = { ...selected, ...filters };
+    setDraft(next);
+    apply(next);
+  }
   async function more() {
     if (loading || moreLoading)
       return;
@@ -153,14 +161,15 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   }
   const Heading = fixedCategory || asins ? "h1" : "h2";
   return <section className="catalogSection" id="catalogo" aria-busy={loading || moreLoading}>
-  <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p></div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
+  <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p>{fixedCategory === "offerte-lambo" && meta.latest_price_verified_at ? <p className="catalogVerifiedAt">Ultima verifica dei prezzi nel catalogo: <time dateTime={meta.latest_price_verified_at}>{new Date(meta.latest_price_verified_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Rome" })}</time></p> : null}</div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
+  <CatalogQuickFilters value={selected} onApply={applyQuick}/>
   <CatalogFilterPanel value={draft} brands={meta.brands} defaultSortLabel={fixedCategory === "bestseller" ? "Classifica Amazon" : fixedCategory === "haul" || fixedCategory === "offerte-lambo" ? "Sconto maggiore" : "Completezza dei dati"} onChange={(filters) => setDraft({ ...draft, ...filters })} onSubmit={submit} onReset={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}/>
   <p className="catalogResults" role="status">{loading ? "Caricamento prodotti…" : `${meta.total} prodotti trovati · ${products.length} mostrati`}{!loading && !selected.incomplete && meta.incomplete > 0 ? ` · ${meta.incomplete} incompleti esclusi` : ""}</p>
   {!loading && !selected.incomplete && meta.incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draft, incomplete: true }; setDraft(next); apply(next); }}>Includi i prodotti incompleti</button> : null}
   {meta.truncated ? <p role="status">Catalogo molto ampio: la ricerca riguarda i primi 11.000 prodotti. Scegli un catalogo specifico per restringerla.</p> : null}
   {error ? <p className="adminError" role="alert">{error} <button type="button" onClick={() => apply(selected)}>Riprova</button></p> : null}
   {!loading && !error && !products.length ? <div className="catalogState"><p>Nessun prodotto con questi filtri. Prova una parola più breve, un’altra marca o includi i dati incompleti.</p><button type="button" onClick={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}>Mostra tutti i prodotti disponibili</button></div> : null}
-  {loading ? <div className="productGrid productGridLoading" aria-hidden="true">{Array.from({ length: 3 }, (_, index) => <div className="productSkeleton" key={index}><span/><div><i/><i/><i/><b/></div></div>)}</div> : <div className="productGrid">{products.map((product, index) => <StoreProductCard key={product.id} product={product} now={now} catalog={fixedCategory || "tutte"} priority={index === 0}/>)}</div>}
+  {loading ? <div className="productGrid productGridLoading" aria-hidden="true">{Array.from({ length: 3 }, (_, index) => <div className="productSkeleton" key={index}><span/><div><i/><i/><i/><b/></div></div>)}</div> : <div className="productGrid">{products.map((product, index) => <StoreProductCard key={product.id} product={product} now={now} catalog={fixedCategory || "tutte"} priority={index === 0 && fixedCategory !== "bestseller"}/>)}</div>}
   {meta.has_more ? <button className="buyButton catalogMoreButton" type="button" disabled={loading || moreLoading} onClick={more}>{moreLoading ? "Caricamento…" : "Mostra altri prodotti"}</button> : null}
   <p className="catalogDisclaimer">I prezzi indicano l’ultima lettura riuscita. Prezzo finale e disponibilità sono quelli mostrati su Amazon al momento dell’acquisto. I link affiliati possono generare una commissione senza costi aggiuntivi.</p>
  </section>;
