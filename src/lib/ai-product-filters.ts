@@ -15,7 +15,7 @@ export const defaultAiProductFilters: AiProductFilters = {
   brand: "",
   min: "",
   max: "",
-  sort: "default",
+  sort: "discount",
   incomplete: false,
 };
 
@@ -58,7 +58,6 @@ export function filterAiProducts(products: AiSearchProduct[], filters: AiProduct
     && (!Number.isFinite(maximum) || (product.currentPrice != null && product.currentPrice <= maximum))
   );
 
-  if (filters.sort === "default") return filtered;
   return filtered
     .map((product, index) => ({ product, index, store: asStoreProduct(product) }))
     .sort((a, b) => {
@@ -67,8 +66,19 @@ export function filterAiProducts(products: AiSearchProduct[], filters: AiProduct
         difference = (a.product.currentPrice && a.product.currentPrice > 0 ? a.product.currentPrice : Infinity) - (b.product.currentPrice && b.product.currentPrice > 0 ? b.product.currentPrice : Infinity);
       else if (filters.sort === "price-desc")
         difference = (b.product.currentPrice || 0) - (a.product.currentPrice || 0);
-      else if (filters.sort === "discount")
-        difference = discountValue(b.store) - discountValue(a.store);
+      else if (filters.sort === "discount" || filters.sort === "default") {
+        const discountA = discountValue(a.store);
+        const discountB = discountValue(b.store);
+        if (discountA > 0 && discountB > 0)
+          difference = discountB - discountA;
+        else if (discountA > 0)
+          difference = -1;
+        else if (discountB > 0)
+          difference = 1;
+        else
+          difference = (a.product.currentPrice && a.product.currentPrice > 0 ? a.product.currentPrice : Infinity)
+            - (b.product.currentPrice && b.product.currentPrice > 0 ? b.product.currentPrice : Infinity);
+      }
       return (Number.isNaN(difference) ? 0 : difference) || a.index - b.index;
     })
     .map(({ product }) => product);
