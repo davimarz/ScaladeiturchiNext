@@ -105,9 +105,19 @@ async function getCatalog(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  try { return await getCatalog(request); }
+  const startedAt = Date.now();
+  try {
+    const response = await getCatalog(request);
+    const duration = Date.now() - startedAt;
+    response.headers.set("Server-Timing", `catalog;dur=${duration.toFixed(1)}`);
+    if (duration >= 1500)
+      console.warn("catalog-slow", { durationMs: Math.round(duration), category: request.nextUrl.searchParams.get("category") || "tutte" });
+    return response;
+  }
   catch (error) {
     console.error("catalog-read", error instanceof Error ? error.message : String(error));
-    return NextResponse.json({ error: "Catalogo temporaneamente non disponibile. Riprova tra poco." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    const response = NextResponse.json({ error: "Catalogo temporaneamente non disponibile. Riprova tra poco." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+    response.headers.set("Server-Timing", `catalog;dur=${(Date.now() - startedAt).toFixed(1)}`);
+    return response;
   }
 }
