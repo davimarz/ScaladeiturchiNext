@@ -33,6 +33,14 @@ test('HAUL, Offerte Lampo and Bestseller default to the highest discount',()=>{
  assert.equal(presentation.defaultCatalogSort('tutte'),'default');
  const products=[{...product,id:'smaller',list_price:40,current_price:20,discount_percent:50},{...product,id:'larger',list_price:100,current_price:20,discount_percent:80}];
  assert.deepEqual(presentation.sortProducts(products,presentation.defaultCatalogSort('haul'),false).map(p=>p.id),['larger','smaller']);
+ const withNoDiscount=[
+  {...product,id:'discount-low',current_price:40,list_price:50,discount_percent:20},
+  {...product,id:'discount-high',current_price:30,list_price:60,discount_percent:50},
+  {...product,id:'no-discount-high',current_price:19,list_price:null,discount_percent:null},
+  {...product,id:'no-discount-low',current_price:7,list_price:null,discount_percent:null},
+  {...product,id:'no-price',current_price:null,list_price:null,discount_percent:null}
+ ];
+ assert.deepEqual(presentation.sortProducts(withNoDiscount,'discount',false).map(p=>p.id),['discount-high','discount-low','no-discount-low','no-discount-high','no-price']);
 });
 test('short titles retain full source values and dates respect Rome rather than browser timezone',()=>{
  const title='Cuffie Sony '+('con microfono e custodia '.repeat(10));assert.ok(presentation.shortTitle(title).length<=106);assert.ok(presentation.shortTitle(title).endsWith('…'));assert.ok(title.length>106);
