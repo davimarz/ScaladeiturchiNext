@@ -84,3 +84,43 @@ test("Jina search preserves gender and broadens bag queries through complete Ama
   assert.equal(products.length, 1);
   assert.equal(products[0].currentPrice, 39.99);
 });
+
+test("an empty Italian page retries the older English-locale Amazon.it search for scarves", async () => {
+  const exports = {};
+  const calls = [];
+  const source = ts.transpileModule(
+    readFileSync(new URL("../src/lib/jina-shopping.ts", import.meta.url), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+  ).outputText;
+  vm.runInNewContext(source, {
+    exports,
+    URL,
+    console: { info() {} },
+    process: { env: {} },
+    AbortSignal: { timeout: () => undefined },
+    fetch: async (url) => {
+      calls.push(url);
+      const isEnglish = url.includes("/-/en/s");
+      return {
+        ok: true,
+        async text() {
+          if (!isEnglish) return "Amazon search page with no products";
+          return Array.from({ length: 8 }, (_, index) => {
+            const asin = `B0SCARF00${index}`;
+            return `[![Image ${index + 1}: Sciarpa uomo lana ${index}](https://m.media-amazon.com/images/I/scarf${index}.jpg)](http://www.amazon.it/-/en/Sciarpa-uomo/dp/${asin}/ref=sr_1_${index + 1})\n\n## [Sciarpa uomo lana ${index}](http://www.amazon.it/-/en/Sciarpa-uomo/dp/${asin}/ref=sr_1_${index + 1})\n\nPrice, product page[€19.99](http://www.amazon.it/-/en/Sciarpa-uomo/dp/${asin}/ref=sr_1_${index + 1})`;
+          }).join("\n\n");
+        },
+      };
+    },
+    require(name) {
+      if (name.includes("ai-relevance")) return { isRelevantProduct: () => true, queryTokens: () => ["sciarpa", "uomo"] };
+      throw new Error("Unexpected import " + name);
+    },
+  });
+  const products = await exports.searchAmazonViaJina("sciarpa uomo", 8);
+  assert.equal(products.length, 8);
+  assert.equal(products[0].currentPrice, 19.99);
+  assert.ok(calls[0].includes("https://www.amazon.it/s"));
+  assert.ok(calls[1].includes("http://www.amazon.it/-/en/s"));
+  assert.equal(calls.length, 2);
+});
