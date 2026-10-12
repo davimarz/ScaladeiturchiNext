@@ -1,6 +1,6 @@
 # Scala dei Turchi Next
 
-Nuova versione web di Scala dei Turchi Amazon. Il progetto originale Streamlit rimane separato e invariato.
+Applicazione web di Scala dei Turchi per aggregare le offerte Amazon.
 
 ## Architettura
 
@@ -55,7 +55,7 @@ docker run --env-file .env.local -p 3000:3000 scaladeiturchi-next
 
 ## Deploy
 
-Il repository è pronto per essere importato in Vercel. Dopo il primo deploy vanno configurate le variabili ambiente server-side e verificata la sincronizzazione reale con Amazon Creators API.
+Il progetto viene distribuito su Vercel. Le variabili d’ambiente vanno configurate lato server e la sincronizzazione Amazon va verificata nell’ambiente Preview prima di pubblicare le modifiche in Production.
 
 ## Correzioni admin e sicurezza
 - Installazione riproducibile: `pnpm install --frozen-lockfile`; verifiche: `pnpm lint`, `pnpm test`, `pnpm build`.
