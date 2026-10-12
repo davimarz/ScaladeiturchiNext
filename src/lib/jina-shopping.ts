@@ -139,8 +139,12 @@ export async function searchAmazonViaJina(query: string, limit = 8): Promise<Jin
         headers: { accept: "text/plain" },
       });
       if (!response.ok) throw new Error("Jina Amazon HTTP " + response.status);
-      const products = parseJinaAmazonSearch(await response.text(), Math.min(48, Math.max(limit * 3, limit)));
-      console.info("ai-shopping-jina-page", englishLocale ? "en" : "it", "parsed", products.length);
+      const markdown = await response.text();
+      const products = parseJinaAmazonSearch(markdown, Math.min(48, Math.max(limit * 3, limit)));
+      console.info("ai-shopping-jina-page", englishLocale ? "en" : "it", "parsed", products.length,
+        "bytes", markdown.length, "asins", (markdown.match(/\/dp\/[A-Z0-9]{10}/gi) ?? []).length,
+        "images", (markdown.match(/m\.media-amazon\.com\/images\/I\//gi) ?? []).length,
+        "blocked", /captcha|robot check|access denied|automated access/i.test(markdown));
       for (const product of products) {
         if (isRelevantProduct(product.title, query)) results.set(product.asin, product);
       }
