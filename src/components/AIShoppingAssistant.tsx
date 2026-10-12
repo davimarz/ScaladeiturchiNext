@@ -48,6 +48,7 @@ export default function AIShoppingAssistant() {
   const brands = useMemo(() => aiProductBrands(products), [products]);
   const incomplete = useMemo(() => incompleteAiProductCount(products), [products]);
   const displayedProducts = useMemo(() => filterAiProducts(products, selectedFilters), [products, selectedFilters]);
+  const directAmazonQuery = query.replace(/\s+/g, " ").trim().slice(0, 180);
   useEffect(() => {
     try {
       const saved = readAiSearchSession(sessionStorage.getItem(aiSearchSessionKey) || "");
@@ -203,6 +204,11 @@ export default function AIShoppingAssistant() {
      {loading ? "Cerco e verifico prezzi…" : "Chiedi all'AI"}
     </button>
    </form>
+
+   {directAmazonQuery.length >= 3 ? <div className="aiDirectSearch">
+    <a href={`/api/amazon-search?q=${encodeURIComponent(directAmazonQuery)}`} target="_blank" rel="noopener noreferrer sponsored" onClick={() => recordInterest("search", "ai")}>Cerca subito su Amazon ↗</a>
+    <span>Si apre Amazon.it con gli stessi termini. Vedrai risultati e prezzi direttamente su Amazon.</span>
+   </div> : null}
 
    <div className="aiSuggestions" aria-label="Suggerimenti rapidi da provare">
     {suggestions.map((suggestion) => (<button type="button" key={suggestion} onClick={() => { setQuery(suggestion); queryInput.current?.focus(); }}>
