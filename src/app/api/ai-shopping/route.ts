@@ -10,7 +10,6 @@ import {
 } from "../../../lib/ai-shopping";
 import { searchAmazonViaBrave } from "../../../lib/brave-shopping";
 import { searchAmazonViaJina } from "../../../lib/jina-shopping";
-import { isApifyAmazonConfigured, searchAmazonViaApify } from "../../../lib/apify-shopping";
 import { isRelevantProduct, isUnrequestedAccessory, maxPriceFromQuery } from "../../../lib/ai-relevance";
 import {
   finalizeAIUsage,
@@ -92,52 +91,33 @@ export async function POST(request: NextRequest) {
       && product.currentPrice != null
     ).length;
 
-    // Creators API is always the primary source. Use the Apify product scraper
-    // immediately when the official source fails or returns too few complete
-    // results; keep the existing readers as later fallbacks.
     const MIN_USABLE_PRODUCTS = 4;
-    const creatorsStarted = Date.now();
-    let creatorsFailed = false;
-    try {
-      const primary = await searchAmazonCreators(query, DISCOVERY_TARGET);
-      // Merge the fresh official data first so it wins over older catalog data.
-      products = mergeProducts(primary, products);
-      console.info("ai-shopping-creators-ms", Date.now() - creatorsStarted, "items", primary.length, "usable", usableProductCount());
-    } catch (error) {
-      creatorsFailed = true;
-      const message = error instanceof Error ? error.message : String(error);
-      searchErrors.push("Creators: " + message);
-      console.info("ai-shopping-creators-fallback", message);
-    }
-
-    if (usableProductCount() < MIN_USABLE_PRODUCTS && isApifyAmazonConfigured()) {
-      try {
-        const started = Date.now();
-        const external = await searchAmazonViaApify(query, DISCOVERY_TARGET);
-        // Apify is the designated fallback and should replace stale prices from
-        // local data when its freshly scraped offer is available.
-        products = mergeProducts(external, products);
-        console.info("ai-shopping-apify-fallback-ms", Date.now() - started, "items", external.length, "usable", usableProductCount());
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        searchErrors.push("Apify: " + message);
-        console.info("ai-shopping-apify-fallback", message);
+    if (usableProductCount() < MIN_USABLE_PRODUCTS) {
+      for (const candidateQuery of searchQueries.slice(0, 2)) {
+        if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
+        try {
+          const jina = await searchAmazonViaJina(candidateQuery, DISCOVERY_TARGET);
+          products = mergeProducts(products, jina);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Jina Amazon: " + message);
+          console.info("ai-shopping-jina-fallback", message);
+        }
       }
-    } else if (usableProductCount() < MIN_USABLE_PRODUCTS && creatorsFailed) {
-      searchErrors.push("Apify: APIFY_API_TOKEN non configurato");
-      console.info("ai-shopping-apify-fallback", "APIFY_API_TOKEN non configurato");
     }
 
     if (usableProductCount() < MIN_USABLE_PRODUCTS) {
-      try {
-        const started = Date.now();
-        const fallback = await searchAmazonViaJina(query, DISCOVERY_TARGET);
-        products = mergeProducts(fallback, products);
-        console.info("ai-shopping-jina-fallback-ms", Date.now() - started, "items", fallback.length, "usable", usableProductCount());
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        searchErrors.push("Jina Amazon: " + message);
-        console.info("ai-shopping-jina-fallback", message);
+      for (const candidateQuery of searchQueries) {
+        if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
+        try {
+          const creators = await searchAmazonCreators(candidateQuery, DISCOVERY_TARGET);
+          products = mergeProducts(products, creators);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Creators: " + message);
+          console.info("ai-shopping-creators-fallback", message);
+          if (/AssociateNotEligible|AccessDeniedException|eligibility requirements/i.test(message)) break;
+        }
       }
     }
 
@@ -217,7 +197,7 @@ export async function POST(request: NextRequest) {
           (product.imageUrl ? 3 : 0)
           + (product.currentPrice != null ? 4 : 0)
           + (product.listPrice != null ? 1 : 0)
-          + (product.source === "amazon-api" || product.source === "amazon-apify" || product.source === "amazon-search" || product.source === "catalogo" ? 1 : 0);
+          + (product.source === "amazon-api" || product.source === "amazon-search" || product.source === "catalogo" ? 1 : 0);
         return score(b) - score(a);
       })
       .filter((product) => product.imageUrl && product.currentPrice != null)
