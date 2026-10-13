@@ -227,9 +227,9 @@ export default async function AdminPage({ searchParams, }: {
      </div>
     </div>
 
-    <CatalogImportNotice catalog="haul" status={params.haul_import} count={params.haul_count}/>
-    <CatalogImportNotice catalog="offerte-lambo" status={params.lambo_import} count={params.lambo_count}/>
     <CatalogImportNotice catalog="bestseller" status={params.bestseller_import} count={params.bestseller_count}/>
+    <CatalogImportNotice catalog="offerte-lambo" status={params.lambo_import} count={params.lambo_count}/>
+    <CatalogImportNotice catalog="haul" status={params.haul_import} count={params.haul_count}/>
     {params.auto_schedule === "saved" ? <p className="adminNotice">Orario dell&apos;aggiornamento automatico salvato.</p> : null}
     {params.auto_schedule === "invalid" ? <p className="adminError">Inserisci un orario valido.</p> : null}
     {params.auto_schedule === "error" ? <p className="adminError">Non è stato possibile salvare lo scheduler automatico.</p> : null}
@@ -263,18 +263,18 @@ export default async function AdminPage({ searchParams, }: {
     </section>
 
     <div className="quickImportGrid">
-     <form action="/api/admin/haul/import" method="post" className="quickImportCard">
+     <form action="/api/admin/bestseller/import" method="post" className="quickImportCard">
       <input type="hidden" name="return_to" value="/admin"/>
       <div className="quickImportMeta">
-       <strong>HAUL</strong>
-       <span>Ultimo controllo: {formatLastCheck(stats?.haul_last_price)}</span>
+       <strong>Bestseller</strong>
+       <span>Ultimo controllo: {formatLastCheck(stats?.bestseller_last_price)}</span>
       </div>
       <div className="quickImportControls">
-       <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required/>
-       <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="haul" className="quickImportSaveButton">Salva link</button>
-       <AdminUpdateButton idleLabel="Aggiorna HAUL"/>
+       <input name="bestseller_url" type="url" defaultValue={savedBestsellerUrl} aria-label="URL Amazon Bestseller" required/>
+       <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="bestseller" className="quickImportSaveButton">Salva link</button>
+       <AdminUpdateButton idleLabel="Aggiorna Bestseller"/>
       </div>
-      <Link href="/admin/haul" className="quickImportLink">Opzioni avanzate</Link>
+      <Link href="/admin/bestseller" className="quickImportLink">Opzioni avanzate</Link>
      </form>
 
      <form action="/api/admin/offerte-lambo/import" method="post" className="quickImportCard">
@@ -291,20 +291,19 @@ export default async function AdminPage({ searchParams, }: {
       <Link href="/admin/offerte-lambo" className="quickImportLink">Opzioni avanzate</Link>
      </form>
 
-     <form action="/api/admin/bestseller/import" method="post" className="quickImportCard">
+     <form action="/api/admin/haul/import" method="post" className="quickImportCard">
       <input type="hidden" name="return_to" value="/admin"/>
       <div className="quickImportMeta">
-       <strong>Bestseller</strong>
-       <span>Ultimo controllo: {formatLastCheck(stats?.bestseller_last_price)}</span>
+       <strong>HAUL</strong>
+       <span>Ultimo controllo: {formatLastCheck(stats?.haul_last_price)}</span>
       </div>
       <div className="quickImportControls">
-       <input name="bestseller_url" type="url" defaultValue={savedBestsellerUrl} aria-label="URL Amazon Bestseller" required/>
-       <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="bestseller" className="quickImportSaveButton">Salva link</button>
-       <AdminUpdateButton idleLabel="Aggiorna Bestseller"/>
+       <input name="haul_url" type="url" defaultValue={savedHaulUrl} aria-label="URL Amazon HAUL" required/>
+       <button type="submit" formAction="/api/admin/catalog-source" formMethod="post" name="catalog" value="haul" className="quickImportSaveButton">Salva link</button>
+       <AdminUpdateButton idleLabel="Aggiorna HAUL"/>
       </div>
-      <Link href="/admin/bestseller" className="quickImportLink">Opzioni avanzate</Link>
-     </form>
-    </div>
+      <Link href="/admin/haul" className="quickImportLink">Opzioni avanzate</Link>
+     </form>    </div>
    </section>
 
    <section className="adminPanel"><h2>Salute e completezza dei cataloghi</h2><CatalogVerificationRunner catalog={params.haul_import === "success" || params.haul_import === "partial" || params.haul_import === "price-only" || params.haul_import === "source-unavailable"
