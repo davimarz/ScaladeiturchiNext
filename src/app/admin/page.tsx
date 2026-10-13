@@ -260,7 +260,7 @@ export default async function AdminPage({ searchParams, }: {
         </div>
        </section>
     
-       </details>
+    </section>
 
     <div className="quickImportGrid">
      <form action="/api/admin/haul/import" method="post" className="quickImportCard">
