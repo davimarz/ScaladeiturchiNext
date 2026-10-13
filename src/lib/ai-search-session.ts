@@ -9,7 +9,7 @@ export type AiSearchProduct = {
   discountPercent: number | null;
   currency: string;
   affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search" | "amazon-apify" | "brave-search";
+  source: "catalogo" | "amazon-api" | "amazon-search" | "brave-search";
   features?: string[];
   priceVerifiedAt?: string | null;
   description?: string | null;
@@ -24,7 +24,7 @@ export type AiSearchSession = {
   savedAt: number;
 };
 
-const sources = new Set<AiSearchProduct["source"]>(["catalogo", "amazon-api", "amazon-search", "amazon-apify", "brave-search"]);
+const sources = new Set<AiSearchProduct["source"]>(["catalogo", "amazon-api", "amazon-search", "brave-search"]);
 
 function safeAmazonUrl(value: unknown) {
   if (typeof value !== "string") return false;
