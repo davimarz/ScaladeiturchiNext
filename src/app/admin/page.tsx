@@ -254,9 +254,9 @@ export default async function AdminPage({ searchParams, }: {
         {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
     
         <div className="catalogManagerGrid">
-         <AdminCatalogCard catalog="haul" label="HAUL" count={Number(stats?.haul_count ?? 0)}/>
-         <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={Number(stats?.lambo_count ?? 0)}/>
          <AdminCatalogCard catalog="bestseller" label="Bestseller" count={Number(stats?.bestseller_count ?? 0)}/>
+         <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={Number(stats?.lambo_count ?? 0)}/>
+         <AdminCatalogCard catalog="haul" label="HAUL" count={Number(stats?.haul_count ?? 0)}/>
         </div>
        </section>
     
