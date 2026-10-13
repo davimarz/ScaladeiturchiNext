@@ -21,7 +21,7 @@ export type ShoppingProduct = {
   discountPercent: number | null;
   currency: string;
   affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search" | "amazon-apify" | "brave-search";
+  source: "catalogo" | "amazon-api" | "amazon-search" | "brave-search";
   features?: string[];
   priceVerifiedAt?: string | null;
   description?: string | null;
@@ -29,7 +29,6 @@ export type ShoppingProduct = {
 
 const PARTNER_TAG = process.env.AMAZON_PARTNER_TAG || "eiapromo-21";
 const TITLE_DESCRIPTION_PREFIX = "Descrizione sintetica dal titolo Amazon: ";
-let creatorsIneligibleUntil = 0;
 
 function affiliateUrl(asin: string) {
   const url = new URL(`https://www.amazon.it/dp/${asin}/ref=nosim`);
@@ -186,10 +185,9 @@ type CreatorItem = {
 };
 
 export async function searchAmazonCreators(query: string, limit = 8): Promise<ShoppingProduct[]> {
-  if (Date.now() < creatorsIneligibleUntil) return [];
   // Use the shared client so the OAuth endpoint follows the configured
   // Amazon credential version (3.1/3.2/3.3) instead of assuming one region.
-  const requestCreators = () => amazonRequest<{
+  const body = await amazonRequest<{
     searchResult?: {
       items?: CreatorItem[];
     };
@@ -211,14 +209,6 @@ export async function searchAmazonCreators(query: string, limit = 8): Promise<Sh
       "offersV2.listings.price",
     ],
   });
-  let body: Awaited<ReturnType<typeof requestCreators>>;
-  try {
-    body = await requestCreators();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/AssociateNotEligible|eligibility requirement/i.test(message)) creatorsIneligibleUntil = Date.now() + 60 * 60_000;
-    throw error;
-  }
   if (body.errors?.length && !body.searchResult?.items?.length) {
     throw new Error(body.errors.map((error) => error.message || error.code || "Amazon error").join("; "));
   }
