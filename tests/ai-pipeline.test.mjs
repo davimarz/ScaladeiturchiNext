@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-function loadRoute({intent,local=[],creators=async()=>[],apify=async()=>[],apifyConfigured=true,jina=async()=>[],fallback=async()=>[],braveSearch=async()=>[],enrich=async items=>items,braveEnrich=async items=>items,relevant=()=>true}) {
+function loadRoute({intent,local=[],creators=async()=>[],jina=async()=>[],fallback=async()=>[],braveSearch=async()=>[],enrich=async items=>items,braveEnrich=async items=>items,relevant=()=>true}) {
  const exports={};
  const source=ts.transpileModule(readFileSync(new URL('../src/app/api/ai-shopping/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  vm.runInNewContext(source,{exports,console,require(name){
@@ -20,7 +20,6 @@ function loadRoute({intent,local=[],creators=async()=>[],apify=async()=>[],apify
   };
   if(name.includes('brave-shopping'))return {searchAmazonViaBrave:braveSearch,enrichAmazonProductsViaBraveByAsin:braveEnrich};
   if(name.includes('jina-shopping'))return {searchAmazonViaJina:jina};
-  if(name.includes('apify-shopping'))return {searchAmazonViaApify:apify,isApifyAmazonConfigured:()=>apifyConfigured};
   if(name.includes('ai-relevance'))return {isRelevantProduct:relevant,isUnrequestedAccessory:()=>false,maxPriceFromQuery:()=>null};
   if(name.includes('ai-usage'))return {async reserveAIUsage(){return {allowed:true,usageDay:'2026-10-11'};},async finalizeAIUsage(){},async recordAIQuery(){},async releaseAIUsage(){},async markAIExhausted(){}};
   throw new Error('Unexpected import '+name);
@@ -43,13 +42,12 @@ test('AI avoids re-scanning complete results and enriches each search only once'
   };
   if(name.includes('brave-shopping'))return {async searchAmazonViaBrave(){calls.push('brave-search');return[];},async enrichAmazonProductsViaBraveByAsin(items){calls.push('brave-enrich');return items;}};
   if(name.includes('jina-shopping'))return {async searchAmazonViaJina(){calls.push('jina-search');return[];}};
-  if(name.includes('apify-shopping'))return {async searchAmazonViaApify(){calls.push('apify');return[];},isApifyAmazonConfigured(){return false;}};
   if(name.includes('ai-relevance'))return {isRelevantProduct:()=>true,isUnrequestedAccessory:()=>false,maxPriceFromQuery:()=>50};
   if(name.includes('ai-usage'))return {async reserveAIUsage(){return {allowed:true,usageDay:'2026-10-09'};},async finalizeAIUsage(){},async recordAIQuery(){},async releaseAIUsage(){},async markAIExhausted(){}};
   throw new Error('Unexpected import '+name);
  }});
  for(const mode of ['search','more'])assert.equal((await exports.POST({async json(){return {query:'Cuffie bluetooth sotto 50 euro',mode};}})).products.length,8);
- assert.deepEqual(calls,['creators','enrich','creators','enrich']);
+ assert.deepEqual(calls,['enrich','enrich']);
 });
 
 test('AI always searches the exact user query even when generated variants come first',async()=>{
@@ -110,36 +108,3 @@ test('AI continues with another Amazon query when one browser attempt returns an
  assert.equal(response.products[0].asin,'B0ROOMBA02');
 });
 
-test('AI tries Creators first and skips Apify and later fallbacks when primary data is complete',async()=>{
- const products=Array.from({length:4},(_,i)=>({asin:'B01234567'+i,title:'Robot aspirapolvere Roomba '+i,imageUrl:'https://m.media-amazon.com/images/I/robot.jpg',currentPrice:199+i,listPrice:null,discountPercent:null,currency:'EUR',source:'amazon-api'}));
- const calls=[];
- const route=loadRoute({
-  intent:{canonicalQuery:'roomba',searchQueries:['roomba'],inputTokens:0,outputTokens:0,totalTokens:0},
-  local:products,
-  creators:async()=>{calls.push('creators');return[];},
-  apify:async()=>{calls.push('apify');return [];},
-  jina:async()=>{calls.push('jina');return [];},
-  fallback:async()=>{calls.push('browser');return [];},
-  braveSearch:async()=>{calls.push('brave');return [];},
- });
- const response=await route.POST({async json(){return {query:'roomba'};}});
- assert.equal(response.products.length,4);
- assert.deepEqual(calls,['creators']);
-});
-
-test('AI falls back from Creator API to Apify before other sources',async()=>{
- const calls=[];
- const products=Array.from({length:4},(_,i)=>({asin:'B01234567'+i,title:'iRobot Roomba robot aspirapolvere '+i,imageUrl:'https://m.media-amazon.com/images/I/roomba.jpg',currentPrice:199+i,listPrice:249+i,discountPercent:20,currency:'EUR',source:'amazon-apify',description:'Robot aspirapolvere iRobot Roomba con base di ricarica.'}));
- const route=loadRoute({
-  intent:{canonicalQuery:'irobot roomba',searchQueries:['irobot roomba'],inputTokens:0,outputTokens:0,totalTokens:0},
-  creators:async()=>{calls.push('creators');throw new Error('AssociateNotEligible');},
-  apify:async query=>{calls.push('apify:'+query);return products;},
-  jina:async()=>{calls.push('jina');return [];},
-  fallback:async()=>{calls.push('browser');return [];},
-  braveSearch:async()=>{calls.push('brave');return [];},
-  relevant:title=>/irobot roomba/i.test(title),
- });
- const response=await route.POST({async json(){return {query:'irobot roomba'};}});
- assert.equal(response.products.length,4);
- assert.deepEqual(calls,['creators','apify:irobot roomba']);
-});
