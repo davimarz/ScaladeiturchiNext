@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-function loadRoute({intent,local=[],creators=async()=>[],jina=async()=>[],fallback=async()=>[],braveSearch=async()=>[],enrich=async items=>items,braveEnrich=async items=>items,relevant=()=>true}) {
+function loadRoute({intent,local=[],creators=async()=>[],jina=async()=>[],fallback=async()=>[],braveSearch=async()=>[],enrich=async items=>items,braveEnrich=async items=>items,generateAnswer=async()=>({text:'Risultati trovati',inputTokens:1,outputTokens:1,totalTokens:2,model:'test'}),relevant=()=>true}) {
  const exports={};
  const source=ts.transpileModule(readFileSync(new URL('../src/app/api/ai-shopping/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
  vm.runInNewContext(source,{exports,console,require(name){
@@ -16,7 +16,7 @@ function loadRoute({intent,local=[],creators=async()=>[],jina=async()=>[],fallba
    searchAmazonCreators:creators,
    searchAmazonFallback:fallback,
    enrichMissingProductData:enrich,
-   async generateShoppingAnswer(){return {text:'Risultati trovati',inputTokens:1,outputTokens:1,totalTokens:2};},
+   generateShoppingAnswer:generateAnswer,
   };
   if(name.includes('brave-shopping'))return {searchAmazonViaBrave:braveSearch,enrichAmazonProductsViaBraveByAsin:braveEnrich};
   if(name.includes('jina-shopping'))return {searchAmazonViaJina:jina};
@@ -108,3 +108,18 @@ test('AI continues with another Amazon query when one browser attempt returns an
  assert.equal(response.products[0].asin,'B0ROOMBA02');
 });
 
+
+test('AI calls Creators first and keeps valid products if Gemini answer generation fails',async()=>{
+ const calls=[];
+ const products=Array.from({length:4},(_,i)=>({asin:'B01234567'+i,title:'Sciarpa uomo in lana morbida '+i,imageUrl:'https://m.media-amazon.com/images/I/scarf.jpg',currentPrice:19+i,listPrice:29+i,discountPercent:34,currency:'EUR',source:'amazon-api'}));
+ const route=loadRoute({
+  intent:{canonicalQuery:'sciarpa uomo',searchQueries:['sciarpa uomo','sciarpa da uomo'],inputTokens:0,outputTokens:0,totalTokens:0},
+  creators:async query=>{calls.push('creators:'+query);return products;},
+  jina:async()=>{calls.push('jina');return[];},
+  generateAnswer:async()=>{calls.push('gemini');throw new Error('Gemini API unavailable');},
+ });
+ const response=await route.POST({async json(){return {query:'sciarpa uomo'};}});
+ assert.equal(response.products.length,4);
+ assert.match(response.answer,/Ho trovato 4 prodotti pertinenti/);
+ assert.deepEqual(calls,['creators:sciarpa uomo','gemini']);
+});
