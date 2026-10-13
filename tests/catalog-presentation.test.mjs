@@ -83,7 +83,8 @@ test('the catalogue filter panel has one unambiguous completeness control',()=>{
  const source=readFileSync(new URL('../src/components/ProductBrowser.tsx',import.meta.url),'utf8');
  const aiSource=readFileSync(new URL('../src/components/AIShoppingAssistant.tsx',import.meta.url),'utf8');
  const controls=readFileSync(new URL('../src/components/CatalogFilterPanel.tsx',import.meta.url),'utf8');
- for(const label of ['Marca','Prezzo minimo','Prezzo massimo','Prezzo crescente','Prezzo decrescente','Sconto maggiore','Mostra anche prodotti incompleti'])assert.match(controls,new RegExp(label));
+ for(const label of ['Marca','Mostra anche prodotti incompleti'])assert.match(controls,new RegExp(label));
+ assert.doesNotMatch(controls,/Prezzo minimo|Prezzo massimo|Prezzo crescente|Prezzo decrescente|Sconto maggiore/);
  assert.match(source,/CatalogFilterPanel/);assert.match(aiSource,/CatalogFilterPanel/);
  assert.doesNotMatch(source+aiSource+controls,/Solo con prezzo rilevato|product_category|productCategories|priced|>Categoria</);
 });
