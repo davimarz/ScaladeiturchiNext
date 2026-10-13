@@ -28,7 +28,8 @@ Copia `.env.example` e configura solo sul server:
 - `ADMIN_PASSWORD`
 - `ADMIN_SESSION_SECRET`
 
-Le credenziali Amazon e Supabase non devono essere esposte tramite variabili `NEXT_PUBLIC_*`.\nIl fallback Apify non è open source e può consumare credito: il piano gratuito include $5 di utilizzo mensile, mentre gli Actor possono applicare costi per risultati e risorse di calcolo. Configurare `APIFY_API_TOKEN` solo nei Secrets Vercel e monitorare il consumo nell’account Apify.
+Le credenziali Amazon e Supabase non devono essere esposte tramite variabili `NEXT_PUBLIC_*`.
+Il fallback Apify non è open source e può consumare credito: il piano gratuito include $5 di utilizzo mensile, mentre gli Actor possono applicare costi per risultati e risorse di calcolo. Configurare `APIFY_API_TOKEN` solo nei Secrets Vercel e monitorare il consumo nell’account Apify.
 
 ## Sviluppo
 
