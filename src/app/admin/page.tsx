@@ -239,7 +239,7 @@ export default async function AdminPage({ searchParams, }: {
 
     <CatalogAutoSchedule enabled={catalogAutoEnabled} time={catalogAutoTime} lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""} stale={catalogAutoEnabled && (catalogAutoLastStatus === "running" || !catalogAutoLastRunRaw)} lastStatus={catalogAutoLastStatus} lastMessage={catalogAutoLastMessage}/>
 
-    <details className="adminAdvanced"><summary>Gestione e svuotamento dei cataloghi</summary>
+    <section className="adminAdvanced"><h2 className="adminAdvancedTitle">Gestione e svuotamento dei cataloghi</h2>
        <section className="adminPanel catalogManagerPanel">
         <div className="compactPanelHead">
          <div>
@@ -316,7 +316,7 @@ export default async function AdminPage({ searchParams, }: {
           : null}/></section>
    <VisitorInterests />
 
-   <details className="adminAdvanced"><summary>Diagnostica Amazon Creators API</summary>
+   <section className="adminAdvanced"><h2 className="adminAdvancedTitle">Diagnostica Amazon Creators API</h2>
    <section className="adminPanel">
     <div className="compactPanelHead">
      <div>
@@ -327,9 +327,9 @@ export default async function AdminPage({ searchParams, }: {
     <CreatorsApiTest />
    </section>
 
-   </details>
+   </section>
 
-   <details className="adminAdvanced"><summary>Utilizzo AI, ricerche e storico</summary>
+   <section className="adminAdvanced"><h2 className="adminAdvancedTitle">Utilizzo AI, ricerche e storico</h2>
    <section className="adminPanel aiUsagePanel">
     <div className="compactPanelHead">
      <div>
@@ -348,8 +348,8 @@ export default async function AdminPage({ searchParams, }: {
      <div><span>Ultima richiesta</span><strong>{formatLastCheck(todayAI?.last_request_at)}</strong><small>{todayAI?.exhausted_at ? "Quota esaurita: " + formatLastCheck(todayAI.exhausted_at) : "Quota non esaurita"}</small></div>
     </div>
 
-    <details className="adminAdvancedPanel aiHistoryPanel">
-     <summary>Prodotti più ricercati</summary>
+    <section className="adminAdvancedPanel aiHistoryPanel">
+     <h3 className="adminAdvancedPanelTitle">Prodotti più ricercati</h3>
      <p>Classifica dei prodotti comparsi più spesso nelle ricerche dei clienti, con le domande che li hanno generati.</p>
      <div className="adminTableWrap">
       <table className="adminTable">
@@ -373,10 +373,10 @@ export default async function AdminPage({ searchParams, }: {
        </tbody>
       </table>
      </div>
-    </details>
+    </section>
 
-    <details className="adminAdvancedPanel aiHistoryPanel">
-     <summary>Cronologia delle ricerche</summary>
+    <section className="adminAdvancedPanel aiHistoryPanel">
+     <h3 className="adminAdvancedPanelTitle">Cronologia delle ricerche</h3>
      <p>Ultime domande inviate dai clienti all&apos;assistente AI.</p>
      <div className="adminTableWrap">
       <table className="adminTable">
@@ -402,12 +402,12 @@ export default async function AdminPage({ searchParams, }: {
        </tbody>
       </table>
      </div>
-    </details>
+    </section>
    </section>
 
-   </details>
+   </section>
 
-   <details className="adminAdvanced"><summary>Gestione prodotti manuali e strumenti avanzati</summary>
+   <section className="adminAdvanced"><h2 className="adminAdvancedTitle">Gestione prodotti manuali e strumenti avanzati</h2>
    <section className="adminPanel">
     <h2>Prodotti manuali</h2>
     <AdminCatalogActions />
@@ -513,6 +513,6 @@ export default async function AdminPage({ searchParams, }: {
     </p>
    </section>
 
-   </details>
+   </section>
   </main>);
 }
