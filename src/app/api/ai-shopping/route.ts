@@ -93,6 +93,25 @@ export async function POST(request: NextRequest) {
 
     const MIN_USABLE_PRODUCTS = 4;
     if (usableProductCount() < MIN_USABLE_PRODUCTS) {
+      for (const candidateQuery of searchQueries) {
+        if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
+        try {
+          const started = Date.now();
+          const creators = await searchAmazonCreators(candidateQuery, DISCOVERY_TARGET);
+          // Fresh API offer data should take precedence over local snapshots.
+          products = mergeProducts(creators, products);
+          console.info("ai-shopping-creators-ms", Date.now() - started, "items", creators.length, "usable", usableProductCount());
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Creators: " + message);
+          console.info("ai-shopping-creators-fallback", message);
+          // An eligibility or access error applies to the account, not to a keyword.
+          if (/AssociateNotEligible|AccessDeniedException|eligibility requirements/i.test(message)) break;
+        }
+      }
+    }
+
+    if (usableProductCount() < MIN_USABLE_PRODUCTS) {
       for (const candidateQuery of searchQueries.slice(0, 2)) {
         if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
         try {
@@ -102,21 +121,6 @@ export async function POST(request: NextRequest) {
           const message = error instanceof Error ? error.message : String(error);
           searchErrors.push("Jina Amazon: " + message);
           console.info("ai-shopping-jina-fallback", message);
-        }
-      }
-    }
-
-    if (usableProductCount() < MIN_USABLE_PRODUCTS) {
-      for (const candidateQuery of searchQueries) {
-        if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
-        try {
-          const creators = await searchAmazonCreators(candidateQuery, DISCOVERY_TARGET);
-          products = mergeProducts(products, creators);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          searchErrors.push("Creators: " + message);
-          console.info("ai-shopping-creators-fallback", message);
-          if (/AssociateNotEligible|AccessDeniedException|eligibility requirements/i.test(message)) break;
         }
       }
     }
@@ -245,7 +249,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const gemini = await generateShoppingAnswer(semanticQuery, products);
+    let gemini: Awaited<ReturnType<typeof generateShoppingAnswer>> = {
+      text: `Ho trovato ${products.length} prodotti pertinenti per “${semanticQuery}”. Controlla i dettagli e la disponibilità su Amazon.`,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      model: "fallback-locale",
+    };
+    try {
+      gemini = await generateShoppingAnswer(semanticQuery, products);
+    } catch (error) {
+      // The product search must remain useful when the optional answer model is unavailable.
+      console.info("ai-shopping-answer-fallback", error instanceof Error ? error.message : String(error));
+    }
     const inputTokens = searchInputTokens + gemini.inputTokens;
     const outputTokens = searchOutputTokens + gemini.outputTokens;
     const totalTokens = searchTotalTokens + gemini.totalTokens;
