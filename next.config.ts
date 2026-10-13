@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
+  experimental: { useTypeScriptCli: false },
   serverExternalPackages: ["@sparticuz/chromium-min", "puppeteer-core"],
   images: {
     remotePatterns: [

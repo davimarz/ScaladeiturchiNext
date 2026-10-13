@@ -147,14 +147,25 @@ export function extractAmazonProductImage(html: string, asin: string) {
     for (const script of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
       try {
         const parsed = JSON.parse(script[1]);
-        const items = Array.isArray(parsed) ? parsed : [parsed];
-        for (const item of items) {
-          if (!item || typeof item !== "object") continue;
+        const items: unknown[] = [];
+        const visit = (value: unknown) => {
+          if (Array.isArray(value)) { value.forEach(visit); return; }
+          if (!value || typeof value !== "object") return;
+          items.push(value);
+          const record = value as Record<string, unknown>;
+          if (record["@graph"]) visit(record["@graph"]);
+        };
+        visit(parsed);
+        for (const value of items) {
+          const item = value as Record<string, unknown>;
           const imageValue = (item as { image?: unknown }).image;
           const candidates = Array.isArray(imageValue) ? imageValue : [imageValue];
           for (const candidate of candidates) {
-            if (typeof candidate !== "string") continue;
-            const image = accept(candidate);
+            const imageValue = typeof candidate === "string" ? candidate : candidate && typeof candidate === "object"
+              ? (candidate as Record<string, unknown>).url ?? (candidate as Record<string, unknown>).contentUrl
+              : null;
+            if (typeof imageValue !== "string") continue;
+            const image = accept(imageValue);
             if (image) return image;
           }
         }

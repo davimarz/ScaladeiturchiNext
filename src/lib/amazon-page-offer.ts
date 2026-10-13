@@ -1,5 +1,7 @@
 import "server-only";
-import { extractAmazonProductImage } from "./amazon-input";
+import { usefulTitle } from "./catalog-presentation";
+
+import { extractAmazonProductImage, extractAsin } from "./amazon-input";
 
 const AMAZON_HOSTS = new Set(["amazon.it", "www.amazon.it"]);
 
@@ -59,23 +61,38 @@ function cleanProductTitle(value: string) {
     .slice(0, 300);
 }
 
+function productStructuredData(html: string) {
+  const products: Record<string, unknown>[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (!value || typeof value !== "object") return;
+    const item = value as Record<string, unknown>;
+    const type = item["@type"];
+    if (type === "Product" || (Array.isArray(type) && type.includes("Product"))) products.push(item);
+    if (item["@graph"]) visit(item["@graph"]);
+    if (item.itemListElement) visit(item.itemListElement);
+  };
+  for (const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try { visit(JSON.parse(match[1])); } catch { /* Ignore malformed structured data and continue with the page DOM. */ }
+  }
+  return products;
+}
+
 function isUsefulProductTitle(value: string) {
   const normalized = value.toLowerCase();
   return value.length > 3 &&
-    !/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|amazon\.it\s*$/i.test(normalized);
+    !/^scegli (?:il paese|paese)|^accedi|^amazon\.it\s*:|^robot check|^pagina non trovata|mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|amazon\.it\s*$/i.test(normalized);
 }
 
 export function needsProductTitleEnrichment(value: string) {
-  const title = value.replace(/\s+/g, " ").trim();
-  if (!title) return true;
-  if (/mostra visualizzazione per acquistare rapidamente|quick view|acquista rapidamente|visualizzazione rapida|^Prodotto Amazon\s+[A-Z0-9]{10}$/i.test(title)) return true;
-  const meaningfulWords = title.split(/\s+/).filter((word) => word !== "&" && word.length > 0);
-  return meaningfulWords.length <= 3 && title.length <= 32 && !/\d/.test(title);
+  return !usefulTitle(value);
 }
 
 export function extractAmazonProductTitle(html: string) {
+  const structuredTitle = productStructuredData(html).map(item => typeof item.name === "string" ? item.name : "").find(isUsefulProductTitle);
   const candidates = [
     html.match(/id=["']productTitle["'][^>]*>([\s\S]*?)<\/span>/i)?.[1],
+    structuredTitle,
     html.match(/<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1],
     html.match(/<meta\b[^>]*name=["']title["'][^>]*content=["']([^"']+)["']/i)?.[1],
     html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1],
@@ -89,10 +106,42 @@ export function extractAmazonProductTitle(html: string) {
   return null;
 }
 
+export function extractAmazonProductDescription(html: string) {
+  const structured = productStructuredData(html).map(item => typeof item.description === "string" ? item.description : "");
+  const sections = [
+    html.match(/id=["']feature-bullets["'][^>]*>([\s\S]*?)(?:<\/ul>|<\/section>)/i)?.[1],
+    html.match(/id=["']productDescription["'][^>]*>([\s\S]*?)(?:<\/div>|<\/section>)/i)?.[1],
+    html.match(/<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)?.[1],
+    ...structured,
+  ];
+  const description = sections.filter(Boolean).map(value => decodeEntities(value!)
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    .filter(value => value.length >= 20 && !/acquista online un'ampia selezione|robot check|automated access/i.test(value));
+  return [...new Set(description)].join(" · ").slice(0, 1400) || null;
+}
+
 export function extractAmazonProductOffer(html: string): AmazonPageOffer | null {
+  const structuredPrice = (() => {
+    for (const product of productStructuredData(html)) {
+      const offers = Array.isArray(product.offers) ? product.offers : [product.offers];
+      for (const value of offers) {
+        if (!value || typeof value !== "object") continue;
+        const offer = value as Record<string, unknown>;
+        if (offer.priceCurrency && offer.priceCurrency !== "EUR") continue;
+        const price = offer.price ?? offer.lowPrice;
+        if (typeof price === "number" || typeof price === "string") {
+          const amount = normalizeNumber(String(price));
+          if (amount != null) return amount;
+        }
+      }
+    }
+    return null;
+  })();
   const current =
     matchPriceNear(html, /class=["'][^"']*(?:priceToPay|apexPriceToPay)[^"']*["']/i) ??
     matchPriceNear(html, /id=["'](?:priceblock_ourprice|priceblock_dealprice|corePriceDisplay_desktop_feature_div)["']/i) ??
+    structuredPrice ??
     jsonNumber(html, ["priceAmount", "displayPrice"]);
 
   if (current == null) return null;
@@ -146,10 +195,12 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
   if (!/^[A-Z0-9]{10}$/i.test(asin)) throw new Error("Invalid product ASIN");
   const normalizedAsin = asin.toUpperCase();
   let url = new URL("https://www.amazon.it/dp/" + normalizedAsin);
-  const signal = AbortSignal.timeout(10000);
+  const signal = AbortSignal.timeout(15000);
 
   for (let redirects = 0; redirects <= 3; redirects++) {
     if (!AMAZON_HOSTS.has(url.hostname.toLowerCase())) throw new Error("Unapproved Amazon offer redirect");
+    const redirectedAsin = extractAsin(url);
+    if (redirectedAsin && redirectedAsin !== normalizedAsin) throw new Error("Amazon redirected to another product");
     const response = await fetcher(url, {
       redirect: "manual",
       cache: "no-store",
@@ -157,7 +208,7 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
       headers: {
         accept: "text/html",
         "accept-language": "it-IT,it;q=0.9",
-        "user-agent": "ScalaDeiTurchiCatalog/1.0",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
       },
     });
     if (response.status >= 300 && response.status < 400) {
@@ -168,24 +219,28 @@ export async function fetchAmazonProductSnapshot(asin: string, fetcher: typeof f
       continue;
     }
     if (!response.ok) throw new Error("Amazon HTTP " + response.status);
-    if (!response.headers.get("content-type")?.includes("text/html")) throw new Error("Amazon response is not HTML");
+    const contentType = response.headers.get("content-type") || "assente";
+    if (!contentType.includes("text/html")) throw new Error("Amazon response is not HTML (" + contentType.slice(0, 60) + ")");
     const html = await readHtml(response);
     if (/\/errors\/validateCaptcha|<title>\s*Robot Check/i.test(html)) throw new Error("Amazon blocked the product page");
+    const asinInput = [...html.matchAll(/<input\b[^>]*>/gi)].find(([tag]) => /(?:id|name)=["']ASIN["']/i.test(tag));
+    const pageAsin = asinInput?.[0].match(/\bvalue=["']([A-Z0-9]{10})["']/i)?.[1]?.toUpperCase();
+    if (pageAsin && pageAsin !== normalizedAsin) throw new Error("Amazon returned another product");
     return {
       offer: extractAmazonProductOffer(html),
       imageUrl: extractAmazonProductImage(html, normalizedAsin),
       title: extractAmazonProductTitle(html),
+      description: extractAmazonProductDescription(html),
     };
   }
 
-  return { offer: null, imageUrl: null, title: null };
+  return { offer: null, imageUrl: null, title: null, description: null };
 }
 
 export async function fetchAmazonProductOffer(asin: string, fetcher: typeof fetch = fetch) {
   const snapshot = await fetchAmazonProductSnapshot(asin, fetcher);
   return snapshot.offer;
 }
-
 
 export async function fetchAmazonSearchTitle(asin: string, fetcher: typeof fetch = fetch) {
   if (!/^[A-Z0-9]{10}$/i.test(asin)) return null;

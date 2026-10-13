@@ -1,138 +1,169 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import { getProductPrice } from "../lib/product-price";
 
-type Product = {
-  id: string;
-  asin: string;
-  title: string;
-  image_url: string | null;
-  affiliate_url: string;
-  current_price: number | null;
-  list_price: number | null;
-  currency: string;
-  discount_percent: number | null;
-  price_verified_at: string | null;
-  haul_category?: string | null;
+import { defaultCatalogSort, type StoreProduct } from "../lib/catalog-presentation";
+
+import { recordInterest } from "../lib/interest-events";
+
+import StoreProductCard from "./StoreProductCard";
+
+import CatalogFilterPanel, { type CatalogFilterValues } from "./CatalogFilterPanel";
+
+type Options = CatalogFilterValues & {
+  q: string;
 };
 
-const categories = [
-  ["tutte", "Tutte"],
-  ["tecnologia", "Tecnologia"],
-  ["casa", "Casa"],
-  ["bellezza", "Bellezza"],
-  ["tempo-libero", "Tempo libero"],
-];
+const defaults: Options = { q: "", min: "", max: "", brand: "", sort: "default", incomplete: false };
+const optionsForCategory = (category?: string): Options => ({ ...defaults, sort: defaultCatalogSort(category || "tutte") });
 
-function formatPrice(value: number | null, currency: string) {
-  if (value == null) return null;
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(value);
+type Result = {
+  products: StoreProduct[];
+  total: number;
+  incomplete: number;
+  brands: string[];
+  has_more: boolean;
+  next_offset: number;
+  truncated?: boolean;
+  latest_price_verified_at?: string | null;
+};
+
+function parseCatalogResult(value: unknown): Result {
+  if (!value || typeof value !== "object" || !Array.isArray((value as { products?: unknown }).products))
+    throw new Error("La risposta del catalogo non è valida. Riprova.");
+  const result = value as Partial<Result>;
+  return {
+    products: result.products as StoreProduct[],
+    total: Number.isFinite(result.total) ? Number(result.total) : 0,
+    incomplete: Number.isFinite(result.incomplete) ? Number(result.incomplete) : 0,
+    brands: Array.isArray(result.brands) ? result.brands.filter((brand): brand is string => typeof brand === "string") : [],
+    has_more: Boolean(result.has_more),
+    next_offset: Number.isFinite(result.next_offset) ? Number(result.next_offset) : 0,
+    truncated: Boolean(result.truncated),
+    latest_price_verified_at: typeof result.latest_price_verified_at === "string" ? result.latest_price_verified_at : null,
+  };
 }
 
-function displayProductTitle(title: string) {
-  const cleaned = title.replace(/\s+/g, " ").trim();
-  const withoutAmazonEssentials = cleaned.replace(/^Amazon Essentials\s*[-–—:]?\s+/i, "");
-  return withoutAmazonEssentials || cleaned;
-}
+const introductions: Record<string, string> = { bestseller: "Prodotti dalle classifiche Amazon, mostrati prima per sconto rilevato e poi per prezzo. La posizione in classifica non è una valutazione di qualità.", "offerte-lambo": "Occasioni raccolte dalla pagina offerte Amazon. Prezzi, sconti e disponibilità possono cambiare: controllali su Amazon.", haul: "Occasioni dalla selezione Amazon HAUL, con i dati che siamo riusciti a verificare dalla fonte." };
 
-export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i prodotti", eyebrow = "CATALOGO", showCategoryChips = true, excludeCategories = "" }: { fixedCategory?: string; heading?: string; eyebrow?: string; showCategoryChips?: boolean; excludeCategories?: string }) {
-  const [q, setQ] = useState("");
-  const [category, setCategory] = useState(fixedCategory ?? "tutte");
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [now, setNow] = useState(Date.now);
-
+export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i prodotti", eyebrow = "CATALOGO", excludeCategories = "", asins, pageSize = 30 }: {
+  fixedCategory?: string;
+  heading?: string;
+  eyebrow?: string;
+  showCategoryChips?: boolean;
+  excludeCategories?: string;
+  asins?: string[];
+  pageSize?: number;
+}) {
+  const [draft, setDraft] = useState<Options>(() => optionsForCategory(fixedCategory)), [selected, setSelected] = useState<Options>(() => optionsForCategory(fixedCategory));
+  const [products, setProducts] = useState<StoreProduct[]>([]), [loading, setLoading] = useState(true), [moreLoading, setMoreLoading] = useState(false), [error, setError] = useState("");
+  const [meta, setMeta] = useState<Omit<Result, "products">>({ total: 0, incomplete: 0, brands: [], has_more: false, next_offset: 0 });
+  const [revision, setRevision] = useState(0), [now, setNow] = useState(Date.now);
+  const latest = useRef(0);
+  const moreController = useRef<AbortController | null>(null);
+  const previousCategory = useRef(fixedCategory);
+  const asinKey = asins?.join(",");
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const [selection, setSelection] = useState({ q: "", category: fixedCategory ?? "tutte", revision: 0 });
-  const latestRequest = useRef(0);
-
+    if (previousCategory.current === fixedCategory) return;
+    previousCategory.current = fixedCategory;
+    const next = optionsForCategory(fixedCategory);
+    setDraft(next);
+    setSelected(next);
+  }, [fixedCategory]);
+  function parameters(options: Options, offset = 0) {
+    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), offset: String(offset), category: fixedCategory || "tutte", q: options.q, min: options.min, max: options.max, brand: options.brand, sort: options.sort, incomplete: options.incomplete ? "1" : "0" });
+    if (asinKey !== undefined)
+      params.set("asins", asinKey);
+    if (excludeCategories)
+      params.set("exclude", excludeCategories);
+    return params;
+  }
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(timer); }, []);
+  useEffect(() => () => moreController.current?.abort(), []);
   useEffect(() => {
-    const controller = new AbortController();
-    const requestId = ++latestRequest.current;
-    const params = new URLSearchParams({ limit: "30" });
-    if (selection.q.trim()) params.set("q", selection.q.trim());
-    if (selection.category !== "tutte") params.set("category", selection.category);
-    if (!fixedCategory && excludeCategories) params.set("exclude", excludeCategories);
-    fetch("/api/catalog?" + params.toString(), { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Impossibile caricare il catalogo.");
-        return await response.json() as { products?: Product[] };
-      })
-      .then((data) => { if (!controller.signal.aborted && latestRequest.current === requestId) setProducts(data.products ?? []); })
-      .catch((err) => {
-        if (!controller.signal.aborted && latestRequest.current === requestId) setError(err instanceof Error ? err.message : "Errore durante il caricamento.");
-      })
-      .finally(() => { if (!controller.signal.aborted && latestRequest.current === requestId) setLoading(false); });
+    const controller = new AbortController(), requestId = ++latest.current;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]);
+    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), category: fixedCategory || "tutte", q: selected.q, min: selected.min, max: selected.max, brand: selected.brand, sort: selected.sort, incomplete: selected.incomplete ? "1" : "0" });
+    if (asinKey !== undefined)
+      params.set("asins", asinKey);
+    if (excludeCategories)
+      params.set("exclude", excludeCategories);
+    fetch("/api/catalog?" + params, { signal }).then(async (response) => {
+      if (!response.ok)
+        throw new Error("Catalogo temporaneamente non disponibile. Riprova.");
+      return parseCatalogResult(await response.json());
+    }).then(data => {
+      if (!controller.signal.aborted && requestId === latest.current) {
+        setProducts(data.products);
+        setMeta(data);
+        setError("");
+      }
+    }).catch(err => {
+      if (!controller.signal.aborted && requestId === latest.current)
+        setError(err instanceof Error && err.name === "TimeoutError" ? "Il catalogo sta impiegando troppo tempo. Riprova." : err instanceof Error ? err.message : "Caricamento interrotto.");
+    }).finally(() => {
+      if (!controller.signal.aborted && requestId === latest.current)
+        setLoading(false);
+    });
     return () => controller.abort();
-  }, [selection, fixedCategory, excludeCategories]);
-
-  function startSearch(search: string, selectedCategory: string) {
+  }, [selected, fixedCategory, excludeCategories, asinKey, revision, pageSize]);
+  useEffect(() => { recordInterest("catalog-view", asinKey !== undefined ? "preferiti" : fixedCategory || "tutte"); }, [fixedCategory, asinKey]);
+  function apply(options = draft) {
+    latest.current++;
+    moreController.current?.abort();
+    moreController.current = null;
     setLoading(true);
-    setError("");
+    setMoreLoading(false);
     setProducts([]);
-    setSelection((previous) => ({ q: search, category: selectedCategory, revision: previous.revision + 1 }));
+    setError("");
+    setSelected({ ...options });
+    setRevision(value => value + 1);
+    recordInterest(options.q ? "search" : "filter", fixedCategory || "tutte");
+    if (options.sort !== selected.sort)
+      recordInterest("sort", fixedCategory || "tutte");
   }
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    startSearch(q, category);
+  function submit(event: FormEvent) { event.preventDefault(); apply(); }
+  async function more() {
+    if (loading || moreLoading)
+      return;
+    const id = latest.current;
+    const controller = new AbortController();
+    moreController.current = controller;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]);
+    setMoreLoading(true);
+    setError("");
+    try {
+      const response = await fetch("/api/catalog?" + parameters(selected, meta.next_offset), { signal });
+      if (!response.ok)
+        throw new Error("Non è stato possibile caricare altri prodotti. Riprova.");
+      const data = parseCatalogResult(await response.json());
+      if (id === latest.current) {
+        setProducts(previous => [...new Map([...previous, ...data.products].map(p => [p.id, p])).values()]);
+        setMeta(data);
+      }
+    }
+    catch (err) {
+      if (id === latest.current && !controller.signal.aborted)
+        setError(err instanceof Error && err.name === "TimeoutError" ? "Il caricamento sta impiegando troppo tempo. Riprova." : err instanceof Error ? err.message : "Errore di caricamento.");
+    }
+    finally {
+      if (id === latest.current && !controller.signal.aborted)
+        setMoreLoading(false);
+      if (moreController.current === controller)
+        moreController.current = null;
+    }
   }
-  function selectCategory(next: string) {
-    setCategory(next);
-    startSearch(q, next);
-  }
-
-  return (
-    <section className="catalogSection" id="cerca">
-      <div className="catalogHead">
-        <div><p className="eyebrow">{eyebrow}</p><h2>{heading}</h2><p className="catalogOrder">Ordinati dal prezzo più basso.</p></div>
-        <form className="searchBox" onSubmit={submit}>
-          <label className="srOnly" htmlFor="catalog-search">Cerca prodotti</label>
-          <input id="catalog-search" type="search" value={q} onChange={(event) => setQ(event.target.value)} placeholder="Es. cuffie, cucina, sport..." />
-          <button type="submit">Cerca</button>
-        </form>
-      </div>
-
-      {showCategoryChips ? <div className="chips" aria-label="Categorie">
-        {categories.map(([slug, label]) => (
-          <button className={category === slug ? "active" : ""} type="button" key={slug} onClick={() => selectCategory(slug)}>{label}</button>
-        ))}
-      </div> : null}
-
-      {loading && <p className="catalogState">Caricamento prodotti…</p>}
-      {error && <p className="catalogState">{error}</p>}
-      {!loading && !error && products.length === 0 && <p className="catalogState">Nessun prodotto disponibile al momento.</p>}
-
-      <div className="productGrid">
-        {products.map((product) => {
-          const price = getProductPrice(product, now);
-          return (
-            <article className="productCard" key={product.id}>
-              <a className="productImage" href={product.affiliate_url} target="_blank" rel="sponsored noopener noreferrer">
-                {product.image_url ? <Image src={product.image_url} alt={product.title} width={400} height={300} unoptimized /> : <span>Immagine non disponibile</span>}
-              </a>
-              <div className="productBody">
-                {fixedCategory === "haul" && product.haul_category ? <span className="cardTag">{product.haul_category}</span> : null}
-                {price?.discount != null ? <span className="discount">RISPARMIA {price.discount}%</span> : null}
-                <h3>{displayProductTitle(product.title)}</h3>
-                <div className="priceRow">
-                  {price ? <strong>{formatPrice(price.current, product.currency)}</strong> : <strong>Vedi prezzo su Amazon</strong>}
-                  {price?.reference != null ? <del aria-label="Prezzo di riferimento">{formatPrice(price.reference, product.currency)}</del> : null}
-                </div>
-                {price?.reference != null ? <small>Prezzo di riferimento: {formatPrice(price.reference, product.currency)}</small> : null}
-                {price ? <small>{price.fresh ? "Prezzo rilevato" : "Ultimo prezzo rilevato"}: {new Date(price.verifiedAt).toLocaleString("it-IT")}.</small> : <small>Prezzo aggiornato disponibile su Amazon</small>}
-                <a className="buyButton" href={`/api/click/${product.id}`} target="_blank" rel="sponsored noopener noreferrer">Vedi su Amazon</a>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
+  const Heading = fixedCategory || asins ? "h1" : "h2";
+  return <section className="catalogSection" id="catalogo" aria-busy={loading || moreLoading}>
+  <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p>{fixedCategory === "offerte-lambo" && meta.latest_price_verified_at ? <p className="catalogVerifiedAt">Ultima verifica dei prezzi nel catalogo: <time dateTime={meta.latest_price_verified_at}>{new Date(meta.latest_price_verified_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Rome" })}</time></p> : null}</div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
+  <CatalogFilterPanel value={draft} brands={meta.brands} defaultSortLabel={fixedCategory === "bestseller" ? "Classifica Amazon" : fixedCategory === "haul" || fixedCategory === "offerte-lambo" ? "Sconto maggiore" : "Completezza dei dati"} onChange={(filters) => setDraft({ ...draft, ...filters })} onSubmit={submit} onReset={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}/>
+  <p className="catalogResults" role="status">{loading ? "Caricamento prodotti…" : `${meta.total} prodotti trovati · ${products.length} mostrati`}{!loading && !selected.incomplete && meta.incomplete > 0 ? ` · ${meta.incomplete} incompleti esclusi` : ""}</p>
+  {!loading && !selected.incomplete && meta.incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draft, incomplete: true }; setDraft(next); apply(next); }}>Includi i prodotti incompleti</button> : null}
+  {meta.truncated ? <p role="status">Catalogo molto ampio: la ricerca riguarda i primi 11.000 prodotti. Scegli un catalogo specifico per restringerla.</p> : null}
+  {error ? <p className="adminError" role="alert">{error} <button type="button" onClick={() => apply(selected)}>Riprova</button></p> : null}
+  {!loading && !error && !products.length ? <div className="catalogState"><p>Nessun prodotto con questi filtri. Prova una parola più breve, un’altra marca o includi i dati incompleti.</p><button type="button" onClick={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}>Mostra tutti i prodotti disponibili</button></div> : null}
+  {loading ? <div className="productGrid productGridLoading" aria-hidden="true">{Array.from({ length: 3 }, (_, index) => <div className="productSkeleton" key={index}><span/><div><i/><i/><i/><b/></div></div>)}</div> : <div className="productGrid">{products.map((product, index) => <StoreProductCard key={product.id} product={product} now={now} catalog={fixedCategory || "tutte"} priority={index === 0 && fixedCategory !== "bestseller"}/>)}</div>}
+  {meta.has_more ? <button className="buyButton catalogMoreButton" type="button" disabled={loading || moreLoading} onClick={more}>{moreLoading ? "Caricamento…" : "Mostra altri prodotti"}</button> : null}
+  <p className="catalogDisclaimer">I prezzi indicano l’ultima lettura riuscita. Prezzo finale e disponibilità sono quelli mostrati su Amazon al momento dell’acquisto. I link affiliati possono generare una commissione senza costi aggiuntivi.</p>
+ </section>;
 }

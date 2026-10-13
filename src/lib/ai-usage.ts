@@ -57,6 +57,7 @@ export async function recordAIQuery(data: {
   totalTokens?: number;
   productsCount?: number;
   productAsins?: string[];
+  productTitles?: string[];
   productSources?: string[];
   errorMessage?: string | null;
 }) {
@@ -74,6 +75,7 @@ export async function recordAIQuery(data: {
       total_tokens: data.totalTokens || 0,
       products_count: data.productsCount || 0,
       product_asins: data.productAsins || [],
+      product_titles: data.productTitles || [],
       product_sources: data.productSources || [],
       error_message: data.errorMessage ? data.errorMessage.slice(0, 500) : null,
     }),

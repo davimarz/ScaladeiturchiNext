@@ -1,16 +1,11 @@
-import Link from "next/link";
+import PublicHeader from "../../components/PublicHeader";
 import ProductBrowser from "../../components/ProductBrowser";
 import PublicTabs from "../../components/PublicTabs";
 
 export default function CercaPage() {
   return (
     <main>
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Scala dei Turchi - home">
-          <span className="brandMark">ST</span>
-          <span><strong>Scala dei Turchi</strong><small>Offerte Amazon</small></span>
-        </Link>
-      </header>
+      <PublicHeader />
 
       <PublicTabs active="cerca" />
 

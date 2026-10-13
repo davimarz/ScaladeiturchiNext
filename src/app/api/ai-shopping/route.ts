@@ -5,8 +5,12 @@ import {
   searchAmazonCreators,
   searchAmazonFallback,
   searchLocalCatalog,
+  enrichMissingProductData,
+  interpretShoppingQuery,
 } from "../../../lib/ai-shopping";
 import { searchAmazonViaBrave } from "../../../lib/brave-shopping";
+import { searchAmazonViaJina } from "../../../lib/jina-shopping";
+import { isRelevantProduct, isUnrequestedAccessory, maxPriceFromQuery } from "../../../lib/ai-relevance";
 import {
   finalizeAIUsage,
   markAIExhausted,
@@ -17,18 +21,26 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 120;
 
 const quotaMessage = "Ciao! Al momento non possiamo elaborare la tua richiesta perché è stato raggiunto il limite di utilizzo gratuito per oggi. Il servizio tornerà disponibile domani. Grazie per la comprensione!";
 
 export async function POST(request: NextRequest) {
+  const searchStarted = Date.now();
   let usageDay = "";
   let query = "";
   let reserved = false;
 
   try {
-    const body = await request.json() as { query?: string };
+    const body = await request.json() as { query?: string; excludeAsins?: string[]; mode?: string };
     query = String(body.query ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+    const mode = body.mode === "more" ? "more" : "search";
+    const excludedAsins = new Set(
+      (Array.isArray(body.excludeAsins) ? body.excludeAsins : [])
+        .map((value) => String(value).trim().toUpperCase())
+        .filter((value) => /^[A-Z0-9]{10}$/.test(value))
+        .slice(0, 40),
+    );
     if (query.length < 3) {
       return NextResponse.json({ error: "Scrivi una richiesta un po’ più precisa." }, { status: 400 });
     }
@@ -51,38 +63,89 @@ export async function POST(request: NextRequest) {
       }, { status: 429 });
     }
 
-    const local = await searchLocalCatalog(query, 8).catch(() => []);
+    const TARGET_PRODUCTS = 8;
+    const DISCOVERY_TARGET = Math.min(32, TARGET_PRODUCTS + excludedAsins.size);
+    const [intent, local] = await Promise.all([
+      interpretShoppingQuery(query),
+      searchLocalCatalog(query, DISCOVERY_TARGET).catch(() => []),
+    ]);
+    const semanticQuery = intent.canonicalQuery;
+    // Never let generated reformulations displace the user's exact words.
+    // Brand/model queries such as "iRobot Roomba" are often more precise than
+    // a broader semantic rewrite produced by the language model.
+    const searchQueries = [...new Set([
+      query,
+      semanticQuery,
+      ...intent.searchQueries,
+    ].map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, 4);
+    const requestedMaxPrice = maxPriceFromQuery(query);
     let products = local;
-    const searchInputTokens = 0;
-    const searchOutputTokens = 0;
-    const searchTotalTokens = 0;
+    const searchInputTokens = intent.inputTokens;
+    const searchOutputTokens = intent.outputTokens;
+    const searchTotalTokens = intent.totalTokens;
     const searchErrors: string[] = [];
+    const usableProductCount = () => products.filter((product) =>
+      !excludedAsins.has(product.asin)
+      && isRelevantProduct(product.title, query)
+      && Boolean(product.imageUrl)
+      && product.currentPrice != null
+    ).length;
 
-    if (products.length < 4) {
-      try {
-        const creators = await searchAmazonCreators(query, 8);
-        products = mergeProducts(products, creators);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        searchErrors.push("Creators: " + message);
-        console.info("ai-shopping-creators-fallback", message);
+    const MIN_USABLE_PRODUCTS = 4;
+    if (usableProductCount() < MIN_USABLE_PRODUCTS) {
+      for (const candidateQuery of searchQueries) {
+        if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
+        try {
+          const started = Date.now();
+          const creators = await searchAmazonCreators(candidateQuery, DISCOVERY_TARGET);
+          // Fresh API offer data should take precedence over local snapshots.
+          products = mergeProducts(creators, products);
+          console.info("ai-shopping-creators-ms", Date.now() - started, "items", creators.length, "usable", usableProductCount());
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Creators: " + message);
+          console.info("ai-shopping-creators-fallback", message);
+          // An eligibility or access error applies to the account, not to a keyword.
+          if (/AssociateNotEligible|AccessDeniedException|eligibility requirements/i.test(message)) break;
+        }
       }
     }
 
-    if (products.length < 4) {
-      try {
-        const fallback = await searchAmazonFallback(query, 8);
-        products = mergeProducts(products, fallback);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        searchErrors.push("Amazon browser: " + message);
-        console.info("ai-shopping-browser-fallback", message);
+    if (usableProductCount() < MIN_USABLE_PRODUCTS) {
+      for (const candidateQuery of searchQueries.slice(0, 2)) {
+        if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
+        try {
+          const jina = await searchAmazonViaJina(candidateQuery, DISCOVERY_TARGET);
+          products = mergeProducts(products, jina);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Jina Amazon: " + message);
+          console.info("ai-shopping-jina-fallback", message);
+        }
       }
     }
 
-    if (products.length < 4) {
+    if (usableProductCount() < MIN_USABLE_PRODUCTS) {
+      for (const candidateQuery of searchQueries.slice(0, 2)) {
+        if (usableProductCount() >= MIN_USABLE_PRODUCTS) break;
+        if (Date.now() - searchStarted > 55_000) break;
+        try {
+          const started = Date.now();
+          const fallback = await searchAmazonFallback(candidateQuery, DISCOVERY_TARGET);
+          products = mergeProducts(products, fallback);
+          console.info("ai-shopping-amazon-fallback-ms", Date.now() - started, "usable", usableProductCount());
+          if (fallback.length) break;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          searchErrors.push("Amazon browser: " + message);
+          console.info("ai-shopping-browser-fallback", message);
+        }
+      }
+    }
+
+    if (usableProductCount() < MIN_USABLE_PRODUCTS && Date.now() - searchStarted < 45_000) {
       try {
-        const external = await searchAmazonViaBrave(query, 8);
+        const external = await searchAmazonViaBrave(query, DISCOVERY_TARGET, searchQueries);
         products = mergeProducts(products, external);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -91,7 +154,60 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    products = products.slice(0, 8);
+    products = products
+      .filter((product) => !excludedAsins.has(product.asin))
+      .filter((product) => isRelevantProduct(product.title, query));
+
+    const candidateLimit = Math.min(10, TARGET_PRODUCTS + Math.min(excludedAsins.size, 2));
+    products = products
+      .sort((a, b) => {
+        const completeness = (product: typeof a) =>
+          (product.imageUrl ? 1 : 0) + (product.currentPrice != null ? 1 : 0);
+        return completeness(b) - completeness(a);
+      })
+      .slice(0, candidateLimit);
+    const enrichmentStarted = Date.now();
+    products = await enrichMissingProductData(products, Date.now() - searchStarted < 55_000 ? 2 : 0);
+    console.info("ai-shopping-enrichment-ms", Date.now() - enrichmentStarted, "candidates", products.length);
+
+    const plausiblePrices = products
+      .map((product) => product.currentPrice)
+      .filter((value): value is number => value != null && Number.isFinite(value) && value >= 1 && value <= 9999)
+      .sort((a, b) => a - b);
+    const medianPrice = plausiblePrices.length
+      ? plausiblePrices[Math.floor(plausiblePrices.length / 2)]
+      : null;
+
+    products = products
+      .filter((product) => !isUnrequestedAccessory(product.title, query))
+      .map((product) => {
+        const tooHighAbsolute = product.currentPrice != null && product.currentPrice > 9999;
+        const tooHighRelative = product.currentPrice != null
+          && medianPrice != null
+          && plausiblePrices.length >= 2
+          && product.currentPrice > Math.max(1000, medianPrice * 8);
+
+        if (!tooHighAbsolute && !tooHighRelative) return product;
+
+        return {
+          ...product,
+          currentPrice: null,
+          listPrice: null,
+          discountPercent: null,
+        };
+      })
+      .sort((a, b) => {
+        const score = (product: typeof a) =>
+          (product.imageUrl ? 3 : 0)
+          + (product.currentPrice != null ? 4 : 0)
+          + (product.listPrice != null ? 1 : 0)
+          + (product.source === "amazon-api" || product.source === "amazon-search" || product.source === "catalogo" ? 1 : 0);
+        return score(b) - score(a);
+      })
+      .filter((product) => product.imageUrl && product.currentPrice != null)
+      .filter((product) => requestedMaxPrice == null
+        || (product.currentPrice != null && product.currentPrice <= requestedMaxPrice))
+      .slice(0, TARGET_PRODUCTS);
 
     if (!products.length) {
       if (searchTotalTokens > 0) {
@@ -100,16 +216,18 @@ export async function POST(request: NextRequest) {
         await releaseAIUsage(usageDay);
       }
       reserved = false;
-      await recordAIQuery({
-        usageDay,
-        query,
-        status: "no_products",
-        inputTokens: searchInputTokens,
-        outputTokens: searchOutputTokens,
-        totalTokens: searchTotalTokens,
-        productsCount: 0,
-        errorMessage: searchErrors.join(" | ") || null,
-      }).catch(() => undefined);
+      if (mode !== "more") {
+        await recordAIQuery({
+          usageDay,
+          query,
+          status: "no_products",
+          inputTokens: searchInputTokens,
+          outputTokens: searchOutputTokens,
+          totalTokens: searchTotalTokens,
+          productsCount: 0,
+          errorMessage: searchErrors.join(" | ") || null,
+        }).catch(() => undefined);
+      }
 
       return NextResponse.json({
         answer: "Non ho trovato prodotti sufficientemente pertinenti per questa richiesta. Prova a specificare meglio cosa cerchi.",
@@ -118,7 +236,32 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const gemini = await generateShoppingAnswer(query, products);
+    if (mode === "more") {
+      if (searchTotalTokens > 0) {
+        await finalizeAIUsage(usageDay, searchInputTokens, searchOutputTokens, searchTotalTokens);
+      } else {
+        await releaseAIUsage(usageDay);
+      }
+      reserved = false;
+      return NextResponse.json({
+        products,
+        count: products.length,
+      });
+    }
+
+    let gemini: Awaited<ReturnType<typeof generateShoppingAnswer>> = {
+      text: `Ho trovato ${products.length} prodotti pertinenti per “${semanticQuery}”. Controlla i dettagli e la disponibilità su Amazon.`,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      model: "fallback-locale",
+    };
+    try {
+      gemini = await generateShoppingAnswer(semanticQuery, products);
+    } catch (error) {
+      // The product search must remain useful when the optional answer model is unavailable.
+      console.info("ai-shopping-answer-fallback", error instanceof Error ? error.message : String(error));
+    }
     const inputTokens = searchInputTokens + gemini.inputTokens;
     const outputTokens = searchOutputTokens + gemini.outputTokens;
     const totalTokens = searchTotalTokens + gemini.totalTokens;
@@ -135,6 +278,7 @@ export async function POST(request: NextRequest) {
       totalTokens,
       productsCount: products.length,
       productAsins: products.map((product) => product.asin),
+      productTitles: products.map((product) => product.title),
       productSources: products.map((product) => product.source),
     }).catch(() => undefined);
 

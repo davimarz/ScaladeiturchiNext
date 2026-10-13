@@ -1,6 +1,6 @@
 # Scala dei Turchi Next
 
-Nuova versione web di Scala dei Turchi Amazon. Il progetto originale Streamlit rimane separato e invariato.
+Applicazione web di Scala dei Turchi per aggregare le offerte Amazon.
 
 ## Architettura
 
@@ -55,7 +55,7 @@ docker run --env-file .env.local -p 3000:3000 scaladeiturchi-next
 
 ## Deploy
 
-Il repository è pronto per essere importato in Vercel. Dopo il primo deploy vanno configurate le variabili ambiente server-side e verificata la sincronizzazione reale con Amazon Creators API.
+Il progetto viene distribuito su Vercel. Le variabili d’ambiente vanno configurate lato server e la sincronizzazione Amazon va verificata nell’ambiente Preview prima di pubblicare le modifiche in Production.
 
 ## Correzioni admin e sicurezza
 - Installazione riproducibile: `pnpm install --frozen-lockfile`; verifiche: `pnpm lint`, `pnpm test`, `pnpm build`.
@@ -71,3 +71,8 @@ Il repository è pronto per essere importato in Vercel. Dopo il primo deploy van
 
 ## Immagini automatiche dal link Amazon
 Se non esiste una foto e non viene fornita un’immagine, l’admin legge la pagina pubblica canonica Amazon del prodotto e seleziona soltanto l’immagine principale. Le richieste hanno un timeout complessivo di 10 secondi, massimo 3 redirect verificati e un limite di 2 MB di HTML. Non vengono aggirati CAPTCHA o blocchi: se Amazon non permette la lettura, il prodotto viene salvato e l’admin segnala la foto mancante. Le foto esistenti sono conservate. Si salva il collegamento CDN Amazon, senza copiare il file.
+
+
+## Chromium su Vercel
+
+Le funzioni di importazione Amazon usano `@sparticuz/chromium-min`. Il pacchetto Chromium non viene salvato dentro `public/` e quindi non viene duplicato in ogni deployment Vercel. A runtime viene usato il pack ufficiale della release Chromium 153; opzionalmente può essere sostituito impostando `CHROMIUM_PACK_URL` su un URL HTTPS compatibile.

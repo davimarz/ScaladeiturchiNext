@@ -114,3 +114,16 @@ test("recognizes Amazon.it Offerte Lambo URLs", () => {
   assert.equal(isAmazonDealsUrl("https://www.amazon.it/haul/store"), false);
   assert.equal(isAmazonDealsUrl("https://example.com/offerte-lampo-del-giorno/s?k=offerte+lampo+del+giorno"), false);
 });
+
+test('duplicate ASIN fragments enrich the same item without creating duplicates', () => {
+ const products = parseHaulHtml('<div data-asin="B012345678"><img src="https://m.media-amazon.com/images/I/test.jpg"></div><div data-asin="B012345678"><h2><span>Cuffie bluetooth con microfono</span></h2><span class="a-price"><span class="a-offscreen">12,99 €</span></span></div>');
+ assert.equal(products.length, 1); assert.equal(products[0].currentPrice, 12.99); assert.equal(products[0].title, 'Cuffie bluetooth con microfono'); assert.ok(products[0].imageUrl);
+});
+test('does not attribute the next product price to an unpriced card', () => {
+ const products = parseHaulHtml('<div data-asin="B012345678"><h2><span>Cuffie senza prezzo disponibile</span></h2></div><div data-asin="B087654321"><h2><span>Computer con prezzo disponibile</span></h2><span class="a-price"><span class="a-offscreen">199,99 €</span></span></div>');
+ assert.equal(products[0].currentPrice, null); assert.equal(products[1].currentPrice, 199.99);
+});
+test('catalogue sources reject insecure URLs and embedded credentials', () => {
+ assert.equal(isAmazonDealsUrl('http://www.amazon.it/deals'), false);
+ assert.equal(isAmazonDealsUrl('https://username:password@www.amazon.it/deals'), false);
+});

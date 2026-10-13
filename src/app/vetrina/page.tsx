@@ -1,27 +1,17 @@
+import PublicHeader from "../../components/PublicHeader";
 import Link from "next/link";
 import ProductBrowser from "../../components/ProductBrowser";
 
 export default function VetrinaPage() {
   return (
     <main>
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="Scala dei Turchi - home">
-          <span className="brandMark">ST</span>
-          <span><strong>Scala dei Turchi</strong><small>Offerte Amazon</small></span>
-        </Link>
-        <nav aria-label="Navigazione principale">
-          <Link href="/vetrina">Vetrina</Link>
-          <Link href="/haul">HAUL</Link>
-          <Link href="/offerte-lambo">Offerte Lambo</Link>
-          <Link href="/">Home</Link>
-        </nav>
-      </header>
+      <PublicHeader />
 
       <section className="hero">
         <div>
           <p className="eyebrow">VETRINA</p>
           <h1>Prodotti selezionati</h1>
-          <p className="lead">La vetrina generale contiene solo i prodotti del catalogo standard. I prodotti HAUL e Offerte Lambo restano nelle rispettive pagine dedicate.</p>
+          <p className="lead">La vetrina generale contiene solo i prodotti del catalogo standard. I prodotti HAUL e Offerte Lampo restano nelle rispettive pagine dedicate.</p>
           <div className="heroActions"><Link className="cta" href="#vetrina-products">Vedi i prodotti</Link><Link className="secondary" href="/">Torna alla home</Link></div>
         </div>
       </section>
