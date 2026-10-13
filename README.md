@@ -23,11 +23,12 @@ Copia `.env.example` e configura solo sul server:
 - `AMAZON_CREDENTIAL_ID`
 - `AMAZON_CREDENTIAL_SECRET`
 - `AMAZON_CREDENTIAL_VERSION`
+- `APIFY_API_TOKEN` (opzionale: fallback ricerca AI con `junglee/amazon-crawler`, solo se Creators API non restituisce abbastanza risultati completi)
 - `CRON_SECRET`
 - `ADMIN_PASSWORD`
 - `ADMIN_SESSION_SECRET`
 
-Le credenziali Amazon e Supabase non devono essere esposte tramite variabili `NEXT_PUBLIC_*`.
+Le credenziali Amazon e Supabase non devono essere esposte tramite variabili `NEXT_PUBLIC_*`.\nIl fallback Apify non è open source e può consumare credito: il piano gratuito include $5 di utilizzo mensile, mentre gli Actor possono applicare costi per risultati e risorse di calcolo. Configurare `APIFY_API_TOKEN` solo nei Secrets Vercel e monitorare il consumo nell’account Apify.
 
 ## Sviluppo
 
