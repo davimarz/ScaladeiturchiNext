@@ -239,6 +239,29 @@ export default async function AdminPage({ searchParams, }: {
 
     <CatalogAutoSchedule enabled={catalogAutoEnabled} time={catalogAutoTime} lastRun={catalogAutoLastRunRaw ? formatLastCheck(catalogAutoLastRunRaw) : ""} stale={catalogAutoEnabled && (catalogAutoLastStatus === "running" || !catalogAutoLastRunRaw)} lastStatus={catalogAutoLastStatus} lastMessage={catalogAutoLastMessage}/>
 
+    <details className="adminAdvanced"><summary>Gestione e svuotamento dei cataloghi</summary>
+       <section className="adminPanel catalogManagerPanel">
+        <div className="compactPanelHead">
+         <div>
+          <h2>Cataloghi</h2>
+          <p>Ogni scheda pubblica ha il proprio catalogo indipendente. Puoi controllare quanti prodotti contiene e svuotare solo quello che ti interessa.</p>
+         </div>
+        </div>
+    
+        {params.catalog_clear === "success" ? (<p className="adminNotice">
+          Catalogo {params.catalog === "haul" ? "HAUL" : params.catalog === "offerte-lampo" ? "Offerte Lampo" : params.catalog === "bestseller" ? "Bestseller" : ""} svuotato senza modificare gli altri cataloghi.
+         </p>) : null}
+        {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
+    
+        <div className="catalogManagerGrid">
+         <AdminCatalogCard catalog="haul" label="HAUL" count={Number(stats?.haul_count ?? 0)}/>
+         <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={Number(stats?.lambo_count ?? 0)}/>
+         <AdminCatalogCard catalog="bestseller" label="Bestseller" count={Number(stats?.bestseller_count ?? 0)}/>
+        </div>
+       </section>
+    
+       </details>
+
     <div className="quickImportGrid">
      <form action="/api/admin/haul/import" method="post" className="quickImportCard">
       <input type="hidden" name="return_to" value="/admin"/>
@@ -292,29 +315,6 @@ export default async function AdminPage({ searchParams, }: {
           ? "bestseller"
           : null}/></section>
    <VisitorInterests />
-
-   <details className="adminAdvanced"><summary>Gestione e svuotamento dei cataloghi</summary>
-   <section className="adminPanel catalogManagerPanel">
-    <div className="compactPanelHead">
-     <div>
-      <h2>Cataloghi</h2>
-      <p>Ogni scheda pubblica ha il proprio catalogo indipendente. Puoi controllare quanti prodotti contiene e svuotare solo quello che ti interessa.</p>
-     </div>
-    </div>
-
-    {params.catalog_clear === "success" ? (<p className="adminNotice">
-      Catalogo {params.catalog === "haul" ? "HAUL" : params.catalog === "offerte-lampo" ? "Offerte Lampo" : params.catalog === "bestseller" ? "Bestseller" : ""} svuotato senza modificare gli altri cataloghi.
-     </p>) : null}
-    {params.catalog_clear === "error" ? <p className="adminError">Non è stato possibile svuotare il catalogo selezionato.</p> : null}
-
-    <div className="catalogManagerGrid">
-     <AdminCatalogCard catalog="haul" label="HAUL" count={Number(stats?.haul_count ?? 0)}/>
-     <AdminCatalogCard catalog="offerte-lampo" label="Offerte Lampo" count={Number(stats?.lambo_count ?? 0)}/>
-     <AdminCatalogCard catalog="bestseller" label="Bestseller" count={Number(stats?.bestseller_count ?? 0)}/>
-    </div>
-   </section>
-
-   </details>
 
    <details className="adminAdvanced"><summary>Diagnostica Amazon Creators API</summary>
    <section className="adminPanel">
