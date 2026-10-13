@@ -21,7 +21,7 @@ export type ShoppingProduct = {
   discountPercent: number | null;
   currency: string;
   affiliateUrl: string;
-  source: "catalogo" | "amazon-api" | "amazon-search" | "brave-search";
+  source: "catalogo" | "amazon-api" | "amazon-search" | "amazon-apify" | "brave-search";
   features?: string[];
   priceVerifiedAt?: string | null;
   description?: string | null;
