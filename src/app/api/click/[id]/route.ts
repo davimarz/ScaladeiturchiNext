@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { supabaseAdminFetch } from "../../../../lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -19,14 +19,14 @@ export async function GET(
     return NextResponse.redirect(new URL("/", request.url), 302);
   }
 
-  await supabaseAdminFetch("affiliate_clicks", {
-    method: "POST",
-    headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({
-      product_id: product.id,
-      placement: "catalog-card",
-    }),
-  }).catch(() => undefined);
+  // Analytics must never hold up the visitor's navigation to Amazon.
+  after(async () => {
+    await supabaseAdminFetch("affiliate_clicks", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ product_id: product.id, placement: "catalog-card" }),
+    }).catch(() => undefined);
+  });
 
   return NextResponse.redirect(product.affiliate_url, 302);
 }

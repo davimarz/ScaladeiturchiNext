@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { defaultCatalogSort, type StoreProduct } from "../lib/catalog-presentation";
 
 import { recordInterest } from "../lib/interest-events";
+import { readCatalogSnapshot, writeCatalogSnapshot } from "../lib/catalog-snapshot";
 
 import StoreProductCard from "./StoreProductCard";
 
@@ -40,7 +41,7 @@ function parseCatalogResult(value: unknown): Result {
     has_more: Boolean(result.has_more),
     next_offset: Number.isFinite(result.next_offset) ? Number(result.next_offset) : 0,
     truncated: Boolean(result.truncated),
-    latest_price_verified_at: typeof result.latest_price_verified_at === "string" ? result.latest_price_verified_at : null,
+    latest_price_verified_at: typeof result.latest_price_verified_at === "string" && Number.isFinite(Date.parse(result.latest_price_verified_at)) ? result.latest_price_verified_at : null,
   };
 }
 
@@ -83,17 +84,27 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
   useEffect(() => {
     const controller = new AbortController(), requestId = ++latest.current;
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(12000)]);
-    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), category: fixedCategory || "tutte", q: selected.q, min: selected.min, max: selected.max, brand: selected.brand, sort: selected.sort, incomplete: selected.incomplete ? "1" : "0" });
+    const params = new URLSearchParams({ presentation: "1", limit: String(pageSize), offset: "0", category: fixedCategory || "tutte", q: selected.q, min: selected.min, max: selected.max, brand: selected.brand, sort: selected.sort, incomplete: selected.incomplete ? "1" : "0" });
     if (asinKey !== undefined)
       params.set("asins", asinKey);
     if (excludeCategories)
       params.set("exclude", excludeCategories);
+    const key = params.toString();
+    const cached = revision === 0 ? readCatalogSnapshot(key) : undefined;
+    if (cached) {
+      setProducts(cached.products);
+      setMeta(cached);
+      setLoading(false);
+      setError("");
+      return () => controller.abort();
+    }
     fetch("/api/catalog?" + params, { signal }).then(async (response) => {
       if (!response.ok)
         throw new Error("Catalogo temporaneamente non disponibile. Riprova.");
       return parseCatalogResult(await response.json());
     }).then(data => {
       if (!controller.signal.aborted && requestId === latest.current) {
+        writeCatalogSnapshot(key, data);
         setProducts(data.products);
         setMeta(data);
         setError("");
@@ -138,7 +149,9 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
         throw new Error("Non è stato possibile caricare altri prodotti. Riprova.");
       const data = parseCatalogResult(await response.json());
       if (id === latest.current) {
-        setProducts(previous => [...new Map([...previous, ...data.products].map(p => [p.id, p])).values()]);
+        const combined = [...new Map([...products, ...data.products].map(p => [p.id, p])).values()];
+        writeCatalogSnapshot(parameters(selected).toString(), { ...data, products: combined });
+        setProducts(combined);
         setMeta(data);
       }
     }
@@ -154,15 +167,16 @@ export default function ProductBrowser({ fixedCategory, heading = "Cerca tra i p
     }
   }
   const Heading = fixedCategory || asins ? "h1" : "h2";
+  const staleCatalog = Boolean(meta.latest_price_verified_at && now - Date.parse(meta.latest_price_verified_at) > 48 * 60 * 60 * 1000);
   return <section className="catalogSection" id="catalogo" aria-busy={loading || moreLoading}>
-  <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p>{fixedCategory === "offerte-lambo" && meta.latest_price_verified_at ? <p className="catalogVerifiedAt">Ultima verifica dei prezzi nel catalogo: <time dateTime={meta.latest_price_verified_at}>{new Date(meta.latest_price_verified_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Rome" })}</time></p> : null}</div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
+  <div className="catalogHead"><div><p className="eyebrow">{eyebrow}</p><Heading>{heading}</Heading><p className="catalogOrder">{introductions[fixedCategory || ""] || "Esplora i prodotti con foto, descrizione e prezzo rilevato. Puoi includere quelli ancora da completare."}</p>{!loading && meta.latest_price_verified_at ? <p className="catalogVerifiedAt">Ultima verifica dei prezzi nel catalogo: <time dateTime={meta.latest_price_verified_at}>{new Date(meta.latest_price_verified_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Rome" })}</time>{staleCatalog ? " · Dati da aggiornare: verifica prezzo e disponibilità su Amazon." : ""}</p> : null}</div><form className="searchBox" onSubmit={submit}><label className="srOnly" htmlFor="catalog-search">Cerca prodotto o marca</label><input id="catalog-search" type="search" value={draft.q} onChange={e => setDraft({ ...draft, q: e.target.value })} placeholder="Prodotto, marca o ASIN" maxLength={120}/><button type="submit">Cerca</button></form></div>
   <CatalogFilterPanel value={draft} brands={meta.brands} defaultSortLabel={fixedCategory === "bestseller" ? "Classifica Amazon" : fixedCategory === "haul" || fixedCategory === "offerte-lambo" ? "Sconto maggiore" : "Completezza dei dati"} onChange={(filters) => setDraft({ ...draft, ...filters })} onSubmit={submit} onReset={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}/>
   <p className="catalogResults" role="status">{loading ? "Caricamento prodotti…" : `${meta.total} prodotti trovati · ${products.length} mostrati`}{!loading && !selected.incomplete && meta.incomplete > 0 ? ` · ${meta.incomplete} incompleti esclusi` : ""}</p>
   {!loading && !selected.incomplete && meta.incomplete > 0 ? <button className="textButton" type="button" onClick={() => { const next = { ...draft, incomplete: true }; setDraft(next); apply(next); }}>Includi i prodotti incompleti</button> : null}
   {meta.truncated ? <p role="status">Catalogo molto ampio: la ricerca riguarda i primi 11.000 prodotti. Scegli un catalogo specifico per restringerla.</p> : null}
   {error ? <p className="adminError" role="alert">{error} <button type="button" onClick={() => apply(selected)}>Riprova</button></p> : null}
   {!loading && !error && !products.length ? <div className="catalogState"><p>Nessun prodotto con questi filtri. Prova una parola più breve, un’altra marca o includi i dati incompleti.</p><button type="button" onClick={() => { const next = optionsForCategory(fixedCategory); setDraft(next); apply(next); }}>Mostra tutti i prodotti disponibili</button></div> : null}
-  {loading ? <div className="productGrid productGridLoading" aria-hidden="true">{Array.from({ length: 3 }, (_, index) => <div className="productSkeleton" key={index}><span/><div><i/><i/><i/><b/></div></div>)}</div> : <div className="productGrid">{products.map((product, index) => <StoreProductCard key={product.id} product={product} now={now} catalog={fixedCategory || "tutte"} priority={index === 0 && fixedCategory !== "bestseller"}/>)}</div>}
+  {loading ? <div className="productGrid productGridLoading" aria-hidden="true">{Array.from({ length: 3 }, (_, index) => <div className="productSkeleton" key={index}><span/><div><i/><i/><i/><b/></div></div>)}</div> : <div className="productGrid">{products.map((product, index) => <StoreProductCard key={product.id} product={product} now={now} catalog={fixedCategory || "tutte"} priority={index === 0}/>)}</div>}
   {meta.has_more ? <button className="buyButton catalogMoreButton" type="button" disabled={loading || moreLoading} onClick={more}>{moreLoading ? "Caricamento…" : "Mostra altri prodotti"}</button> : null}
   <p className="catalogDisclaimer">I prezzi indicano l’ultima lettura riuscita. Prezzo finale e disponibilità sono quelli mostrati su Amazon al momento dell’acquisto. I link affiliati possono generare una commissione senza costi aggiuntivi.</p>
  </section>;
