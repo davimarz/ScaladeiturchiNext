@@ -1,0 +1,23 @@
+*{box-sizing:border-box}
+body{margin:0;background:#f5f8fa;color:#153348;font:16px/1.5 system-ui,sans-serif}
+header{background:#103854;color:#fff;padding:clamp(1.5rem,6vw,4rem) max(1rem,calc((100% - 70rem)/2))}
+header span{font-size:.8rem;font-weight:800;letter-spacing:.14em}
+h1{margin:.4rem 0;font-size:clamp(1.7rem,5vw,3rem);line-height:1.12}
+header p{margin:.6rem 0 0}
+main,footer{max-width:72rem;margin:auto;padding:1rem}
+.filtri{display:flex;flex-wrap:wrap;gap:.75rem}
+label{flex:1 1 15rem;min-width:0;font-weight:650}
+input,select,button{min-height:44px;font:inherit;border:1px solid #9eafba;border-radius:.6rem;padding:.55rem .7rem}
+input,select{display:block;width:100%;margin-top:.25rem;background:white;color:inherit}
+.offerte{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:.75rem}
+article{min-width:0;background:#fff;border:1px solid #d8e3e9;border-radius:.85rem;padding:.8rem;display:flex;flex-direction:column;gap:.4rem;overflow-wrap:anywhere}
+article img{width:100%;height:9rem;object-fit:contain}
+article h2{font-size:1rem;line-height:1.35;margin:0}
+article p{margin:0} del{margin-left:.45rem;color:#516678}
+.sconto{font-weight:750;color:#9b3024}
+article a,button{background:#103854;color:white;border-radius:.6rem;font-weight:650}
+article a{margin-top:auto;padding:.6rem;min-height:44px;text-align:center;text-decoration:none}
+button{margin-top:1rem;cursor:pointer}
+:focus-visible{outline:3px solid #b55b21;outline-offset:3px}
+footer{font-size:.85rem;color:#40586a}
+@media(max-width:520px){.offerte{grid-template-columns:repeat(2,minmax(0,1fr))}article{padding:.6rem}article img{height:7rem}}

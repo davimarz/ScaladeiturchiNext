@@ -9,3 +9,8 @@ out/
 *.tsbuildinfo
 
 supabase/.temp/
+
+# Private source feeds must stay on the publisher's computer.
+tools/awin/LISTINI-SCALA*/
+tools/awin/.scarica-awin-*.cjs
+tools/awin/.awin-profile/
