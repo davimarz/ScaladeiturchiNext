@@ -76,3 +76,41 @@ Se non esiste una foto e non viene fornita un’immagine, l’admin legge la pag
 ## Chromium su Vercel
 
 Le funzioni di importazione Amazon usano `@sparticuz/chromium-min`. Il pacchetto Chromium non viene salvato dentro `public/` e quindi non viene duplicato in ogni deployment Vercel. A runtime viene usato il pack ufficiale della release Chromium 153; opzionalmente può essere sostituito impostando `CHROMIUM_PACK_URL` su un URL HTTPS compatibile.
+
+## Scala dei Turchi: catalogo Awin
+
+La versione Awin è in `awin-site/`. Riprende il ciclo di ArchivioScarpe:
+scaricamento con l’account Awin già configurato, importazione dal computer e
+pubblicazione via Git sul repository dedicato. L’importatore accetta tutte le
+categorie dei feed disponibili al publisher, calzature comprese. Scarta le
+offerte non disponibili o senza prezzo in euro, immagine HTTPS e link affiliato
+utilizzabile. Non scarica listini di programmi a cui l’account non ha accesso.
+
+Generazione locale, senza pubblicazione:
+
+```powershell
+node tools/awin/importa-listini-awin.cjs . "C:\Awin\Listini-Scala" <publisher-id>
+```
+
+Per pubblicare, dopo aver attivato GitHub Pages con sorgente GitHub Actions per
+questo repository, esegui dalla tua copia locale:
+
+```powershell
+node tools/awin/aggiorna-scala-dei-turchi.cjs <publisher-id> --da-listini "C:\Awin\Listini-Scala"
+```
+
+Senza `--da-listini` lo script usa lo scaricatore di ArchivioScarpe, fissato alla
+stessa revisione. Per riutilizzare la sessione e Playwright già configurati,
+metti lo script di aggiornamento nella stessa cartella locale dello scaricatore
+ArchivioScarpe. I listini di Scala dei Turchi restano in `LISTINI-SCALA`. Puoi passare
+`--advertiser "Nome" "Altro nome"` per indicare gli advertiser da scaricare.
+**Ogni pubblicazione sostituisce il catalogo con i listini del lotto:** usa una
+cartella dedicata contenente tutti i feed da mantenere. Le credenziali e i
+listini originali non vanno caricati su GitHub. La pubblicazione richiede
+l’accesso Git dell’utente al repository Scala dei Turchi e verifica la presenza
+online dell’indice generato.
+
+Per provare il catalogo generato in locale, servi la cartella `awin-site/` via
+HTTP, ad esempio con `python -m http.server 8000 --directory awin-site`.
+La versione Vercel e l’archivio delle calzature rimangono separati finché non
+viene deciso il passaggio al nuovo sito.
